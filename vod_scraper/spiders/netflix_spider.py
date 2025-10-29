@@ -1,4 +1,6 @@
 import scrapy
+import json
+from pathlib import Path
 from vod_scraper.items import VodScraperItem
 
 class NetflixSpider(scrapy.Spider):
@@ -6,37 +8,34 @@ class NetflixSpider(scrapy.Spider):
     allowed_domains = ["netflix.com"]
     start_urls = ["https://www.netflix.com/jp/title/81092221"]
 
-    def start_requests(self):
-        """URLに直接アクセスし、HTTPステータスで配信可否を判断"""
-        for url in self.start_urls:
-            yield scrapy.Request(
-                url,
-                callback=self.parse,
-                errback=self.handle_error,
-                dont_filter=True,
-            )
+    def parse(self, response, **kwargs):
+        slug = "joker-2019"
+        title = "ジョーカー"
+        output_path = Path("outputs/vod_summary.json")
 
-    def parse(self, response):
-        """200番台なら配信中と判定"""
+        # すでにJSONにデータが存在する場合、スキップ
+        if output_path.exists():
+            try:
+                with output_path.open(encoding="utf-8") as f:
+                    existing_data = json.load(f)
+                    if slug in existing_data and existing_data[slug].get("netflix", {}).get("url"):
+                        self.logger.info(f"🟢 Skipping Netflix crawl for {title} (already in JSON)")
+                        return  # スクレイピングをスキップ
+            except Exception as e:
+                self.logger.warning(f"⚠️ Failed to read existing JSON: {e}")
+
+        # レスポンスステータスで判定
+        if 200 <= response.status < 400:
+            service = "available"
+            price = "free"
+        else:
+            service = "disable"
+            price = None
+
         yield VodScraperItem(
-            slug="joker-2019",
-            title="ジョーカー",
+            slug=slug,
+            title=title,
             url=response.url,
-            service="available",
-            price="free",
-        )
-
-    def handle_error(self, failure):
-        """404/403などのエラー時は配信停止とする"""
-        request = failure.request
-        status = getattr(failure.value.response, "status", None)
-
-        self.logger.warning(f"Netflix access failed: {request.url} (status: {status})")
-
-        yield VodScraperItem(
-            slug="joker-2019",
-            title="ジョーカー",
-            url=request.url,
-            service="disable",
-            price=None,
+            service=service,
+            price=price,
         )

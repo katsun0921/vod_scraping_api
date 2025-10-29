@@ -17,7 +17,8 @@ async def run_spider(spider_name: str, output_file: str):
     print(f"\n🚀 Running spider: {spider_name}")
 
     process = await asyncio.create_subprocess_exec(
-        "scrapy", "crawl", spider_name, "-o", str(OUTPUT_DIR / output_file),
+        "scrapy", "crawl", spider_name,
+        f"-o={OUTPUT_DIR / (output_file + ':jsonlines')}",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -56,6 +57,26 @@ def read_json_lines(file_path: Path):
         print(f"⚠️ {file_path.name} not found.")
     return items
 
+def load_existing_summary():
+    """既存のvod_summary.jsonを読み込み"""
+    if SUMMARY_FILE.exists():
+        try:
+            with SUMMARY_FILE.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            print("⚠️ vod_summary.json の読み込みに失敗しました。スキップ判定を無効化します。")
+    return {}
+
+
+def should_skip_spider(spider_name: str, summary_data: dict) -> bool:
+    """既存データに有効なVOD情報があればスクレイピングをスキップ"""
+    service = spider_name.replace("_spider", "")
+    for slug, info in summary_data.items():
+        vod_info = info.get(service, {})
+        if vod_info.get("service") and vod_info["service"] != "unavailable":
+            print(f"⏩ {spider_name} skipped: '{slug}' already has {service} data.")
+            return True
+    return False
 
 def merge_json_files():
     """個別スパイダーの出力を統合してvod_summary.jsonを生成"""
@@ -94,19 +115,29 @@ def merge_json_files():
 
 
 async def main():
-    print("=== Scrapy Multi-Spider Runner (async merge version) ===\n")
+    print("=== Scrapy Multi-Spider Runner (async + skip + merge) ===\n")
 
+    summary_data = load_existing_summary()
     if SUMMARY_FILE.exists():
         backup = SUMMARY_FILE.with_name("vod_summary_backup.json")
         SUMMARY_FILE.rename(backup)
         print(f"📦 Backup created: {backup}")
 
-    results = await asyncio.gather(*(run_spider(name, file) for name, file in SPIDERS.items()))
+    # スキップ条件をチェックして実行対象のみ選択
+    spiders_to_run = [
+        (name, file)
+        for name, file in SPIDERS.items()
+        if not should_skip_spider(name, summary_data)
+    ]
 
-    if all(r == 0 for r in results):
-        print("\n🎉 All spiders finished successfully.")
+    if not spiders_to_run:
+        print("⏹ すべてのスパイダーがスキップされました。")
     else:
-        print("\n⚠️ Some spiders failed. Check logs above.")
+        results = await asyncio.gather(*(run_spider(name, file) for name, file in spiders_to_run))
+        if all(r == 0 for r in results):
+            print("\n🎉 All executed spiders finished successfully.")
+        else:
+            print("\n⚠️ Some spiders failed. Check logs above.")
 
     merge_json_files()
 
