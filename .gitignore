@@ -1,0 +1,4 @@
+.scrapy/*
+outputs/*
+vod_scraper/__pycache__/*
+vod_scraper/spiders/__pycache__/*
