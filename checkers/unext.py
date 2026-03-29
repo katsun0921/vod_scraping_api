@@ -8,16 +8,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "ja-JP,ja;q=0.9",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
+from checkers import HEADERS, NOT_FOUND_INDICATORS
 
 # 見放題の判定キーワード
 STREAMING_INDICATORS = [
@@ -32,13 +23,6 @@ RENTAL_PT_PATTERN = re.compile(r"(\d[\d,]+)\s*(?:ポイント|pt)(?!\s*不要)",
 
 # 購入価格パターン
 PURCHASE_PATTERN = re.compile(r"購入[^\d]*(\d[\d,]+)\s*(?:ポイント|pt|円)", re.IGNORECASE)
-
-NOT_FOUND_INDICATORS = [
-    "ページが見つかりません",
-    "404",
-    "not found",
-    "お探しのページは見つかりませんでした",
-]
 
 
 def _parse_price(price_str: str) -> float:

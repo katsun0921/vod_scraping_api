@@ -11,24 +11,7 @@ Hulu はサブスクリプション型のみのため、配信中であれば st
 import requests
 from bs4 import BeautifulSoup
 
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "ja-JP,ja;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
-
-NOT_FOUND_INDICATORS = [
-    "404",
-    "ページが見つかりません",
-    "page not found",
-    "not found",
-    "お探しのページは見つかりません",
-]
+from checkers import HEADERS, NOT_FOUND_INDICATORS
 
 
 class HuluChecker:
