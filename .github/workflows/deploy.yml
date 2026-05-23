@@ -30,9 +30,12 @@ jobs:
 
       - name: Build and Push image
         run: |
-          gcloud builds submit \
+          docker build \
             --tag asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:${{ github.sha }} \
+            --tag asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:latest \
             .
+          docker push asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:${{ github.sha }}
+          docker push asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:latest
 
       - name: Deploy to Cloud Run
         run: |
