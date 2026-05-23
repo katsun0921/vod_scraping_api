@@ -1,14 +1,16 @@
 """U-NEXT 配信状況チェッカー。
 
 対象URL形式: https://video.unext.jp/title/SID{id}
+
+U-NEXT は SPA（React）のため requests では JS レンダリング後のコンテンツが
+取得できない。Playwright を使用してブラウザレンダリング後のテキストを取得する。
 """
 
 import re
 
-import requests
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
-from checkers import HEADERS, NOT_FOUND_INDICATORS
+from checkers import NOT_FOUND_INDICATORS
 
 # 見放題の判定キーワード
 STREAMING_INDICATORS = [
@@ -24,6 +26,9 @@ RENTAL_PT_PATTERN = re.compile(r"(\d[\d,]+)\s*(?:ポイント|pt)(?!\s*不要)",
 # 購入価格パターン
 PURCHASE_PATTERN = re.compile(r"購入[^\d]*(\d[\d,]+)\s*(?:ポイント|pt|円)", re.IGNORECASE)
 
+# JS レンダリング待機時間（ミリ秒）
+WAIT_MS = 3000
+
 
 def _parse_price(price_str: str) -> float:
     """価格文字列を float に変換する（カンマ除去）。"""
@@ -31,7 +36,10 @@ def _parse_price(price_str: str) -> float:
 
 
 class UnextChecker:
-    """U-NEXT の配信状況を確認するチェッカー。"""
+    """U-NEXT の配信状況を確認するチェッカー。
+
+    Playwright でブラウザレンダリング後のテキストを取得して判定する。
+    """
 
     def check(self, url: str) -> dict:
         """指定URLの配信状況を確認する。
@@ -43,28 +51,33 @@ class UnextChecker:
             {"status": str, "price": float | None} の辞書。
 
         Raises:
-            RuntimeError: リクエスト失敗時。
+            RuntimeError: ブラウザ起動失敗またはページ取得失敗時。
         """
         try:
-            response = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
-        except requests.RequestException as e:
-            raise RuntimeError(f"U-NEXT: リクエスト失敗 {e}") from e
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                response = page.goto(url, timeout=30000)
+                page.wait_for_timeout(WAIT_MS)
 
-        if response.status_code == 404:
+                status_code = response.status if response else 200
+                page_text = page.inner_text("body")
+                browser.close()
+        except Exception as e:
+            raise RuntimeError(f"U-NEXT: ブラウザ取得失敗 {e}") from e
+
+        if status_code == 404:
             return {"status": "ended", "price": None}
 
-        if response.status_code >= 500:
-            raise RuntimeError(f"U-NEXT: サーバーエラー (HTTP {response.status_code})")
-
-        soup = BeautifulSoup(response.text, "lxml")
-        page_text = soup.get_text()
+        if status_code >= 500:
+            raise RuntimeError(f"U-NEXT: サーバーエラー (HTTP {status_code})")
 
         # 404相当のコンテンツ確認
         for indicator in NOT_FOUND_INDICATORS:
             if indicator in page_text:
                 return {"status": "ended", "price": None}
 
-        # 見放題確認（ポイント不要キーワード優先）
+        # 見放題確認
         for indicator in STREAMING_INDICATORS:
             if indicator in page_text:
                 return {"status": "streaming", "price": 0}
@@ -86,8 +99,5 @@ class UnextChecker:
         if pt_match:
             price = _parse_price(pt_match.group(1))
             return {"status": "rental", "price": price}
-
-        if response.status_code == 200:
-            return {"status": "unavailable", "price": None}
 
         return {"status": "unavailable", "price": None}
