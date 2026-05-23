@@ -1,0 +1,50 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Workload Identity Federation に必要
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/988844432705/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-actions-sa@katsumascore.iam.gserviceaccount.com
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker asia-northeast1-docker.pkg.dev --quiet
+
+      - name: Build and Push image
+        run: |
+          gcloud builds submit \
+            --tag asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:${{ github.sha }} \
+            .
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy vod-scraping-api \
+            --image asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:${{ github.sha }} \
+            --platform managed \
+            --region asia-northeast1 \
+            --execution-environment gen2 \
+            --no-allow-unauthenticated \
+            --set-env-vars SPREADSHEET_ID=${{ secrets.SPREADSHEET_ID }} \
+            --memory 512Mi \
+            --timeout 540 \
+            --max-instances 1 \
+            --concurrency 1 \
+            --quiet
