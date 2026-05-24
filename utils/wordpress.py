@@ -29,10 +29,11 @@ VOD_TERM_IDS: dict[str, int] = {
     "unext": 71,
     "disney_plus": 232,
     "dmm_tv": 838,
+    "youtube": 0,   # YouTube は term_id 未確定のため 0（確定後に更新する）
 }
 
 # スクレイピング対象サービス一覧
-SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv"]
+SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "youtube"]
 
 PER_PAGE = 20
 

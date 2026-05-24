@@ -17,7 +17,8 @@ vod_scraping_api/
 │   ├── hulu.py                # Hulu チェッカー
 │   ├── unext.py               # U-NEXT チェッカー（Playwright 使用）
 │   ├── disney_plus.py         # Disney+ チェッカー
-│   └── dmm_tv.py              # DMM TV チェッカー（Playwright 使用）
+│   ├── dmm_tv.py              # DMM TV チェッカー（Playwright 使用）
+│   └── youtube.py             # YouTube チェッカー
 ├── utils/
 │   ├── sheets.py              # Google Sheets 読み書きユーティリティ（現行）
 │   └── rate_limit.py          # リクエスト間隔制御
@@ -50,6 +51,7 @@ vod_scraping_api/
 | U-NEXT | `https://video.unext.jp/title/SID{id}` | Playwright（Chromium） |
 | Disney+ | `https://www.disneyplus.com/ja-jp/movies/{slug}` | requests + BeautifulSoup |
 | DMM TV | `https://tv.dmm.com/vod/detail/?season={id}` | Playwright（Chromium） |
+| YouTube | `https://www.youtube.com/watch?v={video_id}` | requests + BeautifulSoup |
 
 ### Amazon Prime Video URL について
 

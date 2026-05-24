@@ -23,6 +23,7 @@ from checkers.dmm_tv import DmmTvChecker
 from checkers.hulu import HuluChecker
 from checkers.netflix import NetflixChecker
 from checkers.unext import UnextChecker
+from checkers.youtube import YoutubeChecker
 from utils.rate_limit import RateLimiter
 from utils.wordpress import SERVICES, get_posts, get_vod_term_ids, update_post
 
@@ -41,6 +42,7 @@ _CHECKER_MAP: dict[str, type] = {
     "unext":              UnextChecker,
     "disney_plus":        DisneyPlusChecker,
     "dmm_tv":             DmmTvChecker,
+    "youtube":            YoutubeChecker,
 }
 
 MAX_CONSECUTIVE_ERRORS = 3
