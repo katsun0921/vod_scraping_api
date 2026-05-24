@@ -26,6 +26,7 @@ from checkers.netflix import NetflixChecker
 from checkers.unext import UnextChecker
 from checkers.youtube import YoutubeChecker
 from utils.rate_limit import RateLimiter
+from utils.slack import notify_new_streaming
 from utils.wordpress import (
     SERVICES,
     VOD_TERM_IDS,
@@ -107,6 +108,7 @@ def run(dry_run: bool = False, force: bool = False, slug: Optional[str] = None) 
                 except ValueError:
                     logger.warning("[%s] scraping_cooldown_until の形式が不正: %r", post_slug, cooldown_str)
 
+        post_title = (post.get("title") or {}).get("rendered") or post_slug
         vod_term_ids = get_vod_term_ids(post)
         post_checked = False  # この投稿で1サービスでも処理したか
 
@@ -154,7 +156,7 @@ def run(dry_run: bool = False, force: bool = False, slug: Optional[str] = None) 
                 rate_limiter.wait()
 
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                update_post(
+                is_new_streaming = update_post(
                     post_id=post_id,
                     service=service,
                     status=result["status"],
@@ -162,6 +164,8 @@ def run(dry_run: bool = False, force: bool = False, slug: Optional[str] = None) 
                     updated_at=now,
                     current_vod_term_ids=vod_term_ids,
                 )
+                if is_new_streaming:
+                    notify_new_streaming(post_title, service, scraping_url)
                 # taxonomy 更新後の term_ids を反映（次サービスの処理に使う）
                 term_id = VOD_TERM_IDS.get(service, 0)
                 if term_id:
