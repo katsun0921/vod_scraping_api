@@ -32,7 +32,7 @@
   - [x] 配信中サービスがあれば30日サイクル + カウントリセット
   - [x] 全サービス未配信なら指数バックオフ + 年齢補正
 - [x] `utils/wordpress.py` に `patch_cooldown(post_id, acf_payload)` 関数を追加
-- [ ] ユニットテスト追加（任意）
+- [x] ユニットテスト追加（tests/test_wordpress.py、32件）
 
 ---
 
