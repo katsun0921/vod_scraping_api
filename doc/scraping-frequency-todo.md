@@ -57,9 +57,9 @@
 
 ## Phase 5: 動作確認
 
-- [ ] ローカルで `checker.py --dry-run` 相当を実行
-- [ ] スキップカウント・実行カウントをログで確認
-- [ ] Cloud Run にデプロイ
+- [x] ローカルで `checker.py --dry-run` 相当を実行
+- [x] スキップカウント・実行カウントをログで確認（processed=50 skipped=3550 errors=0）
+- [x] Cloud Run にデプロイ（GitHub Actions CI/CD）
 - [ ] 1週間の運用ログを確認
   - [ ] スキップ率
   - [ ] 平均リクエスト数/日
