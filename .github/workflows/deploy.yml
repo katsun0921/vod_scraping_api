@@ -23,8 +23,8 @@ jobs:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: projects/988844432705/locations/global/workloadIdentityPools/github-pool/providers/github-provider
-          service_account: github-actions-sa@katsumascore.iam.gserviceaccount.com
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -35,16 +35,16 @@ jobs:
       - name: Build and Push image
         run: |
           docker build \
-            --tag asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:${{ github.sha }} \
-            --tag asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:latest \
+            --tag asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:${{ github.sha }} \
+            --tag asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:latest \
             .
-          docker push asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:${{ github.sha }}
-          docker push asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:latest
+          docker push asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:${{ github.sha }}
+          docker push asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:latest
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy vod-scraping-api \
-            --image asia-northeast1-docker.pkg.dev/katsumascore/vod-scraping-api/app:${{ github.sha }} \
+            --image asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:${{ github.sha }} \
             --platform managed \
             --region asia-northeast1 \
             --execution-environment gen2 \
