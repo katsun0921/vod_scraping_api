@@ -203,6 +203,12 @@ def _normalize_acf_for_patch(acf: dict, schema: dict) -> dict:
         if isinstance(field_type, str):
             field_type = [field_type]
         min_items = field_schema.get("minItems")
+        max_length = field_schema.get("maxLength")
+
+        # maxLength 制約があり文字列が超過している場合はスキップ（description 等）
+        if max_length and isinstance(val, str) and len(val) > max_length:
+            logger.debug("ACF normalize: skip %s (maxLength=%d, len=%d)", key, max_length, len(val))
+            continue
 
         # array 型で minItems >= 1 のフィールドが空値ならスキップ
         if "array" in field_type and min_items and min_items >= 1:
@@ -282,20 +288,22 @@ def update_post(
     else:
         streaming_started_at = prev_ssa
 
-    # 対象サービスのフィールドだけ上書き
-    existing_acf[service] = {
+    # 対象サービスのフィールドのみ PATCH する（他フィールドはバリデーションエラー回避のため送らない）
+    # ただし REST API スキーマで required=True のフィールドは既存値をそのまま含める
+    schema = _get_acf_schema()
+    required_keys = [k for k, v in schema.items() if isinstance(v, dict) and v.get("required")]
+    acf_patch: dict = {}
+    for key in required_keys:
+        if key in existing_acf:
+            acf_patch[key] = existing_acf[key]
+    acf_patch[service] = {
         "scraping_url": (existing_acf.get(service) or {}).get("scraping_url", ""),
         "status": status,
         "price": price if price is not None else 0,
         "updated_at": updated_at,
         "streaming_started_at": streaming_started_at,
     }
-
-    # スキーマに基づいて ACF データを正規化（空文字列の数値→null、空配列の除外等）
-    schema = _get_acf_schema()
-    normalized_acf = _normalize_acf_for_patch(existing_acf, schema)
-
-    acf_payload = {"acf": normalized_acf}
+    acf_payload = {"acf": acf_patch}
     resp = session.patch(url, json=acf_payload, timeout=30)
     if not resp.ok:
         logger.error("PATCH ACF failed: status=%d body=%s", resp.status_code, resp.text[:500])
@@ -462,7 +470,17 @@ def patch_cooldown(post_id: int, acf_payload: dict) -> None:
         return
     url = f"{_base_url()}/posts/{post_id}"
     session = _session(wp_auth=True)
-    resp = session.patch(url, json={"acf": acf_payload}, timeout=30)
+
+    # required フィールドを既存 ACF から取得して含める
+    get_resp = session.get(url, params={"_fields": "acf"}, timeout=30)
+    get_resp.raise_for_status()
+    existing_acf: dict = (get_resp.json().get("acf") or {})
+    schema = _get_acf_schema()
+    required_keys = [k for k, v in schema.items() if isinstance(v, dict) and v.get("required")]
+    patch: dict = {k: existing_acf[k] for k in required_keys if k in existing_acf}
+    patch.update(acf_payload)
+
+    resp = session.patch(url, json={"acf": patch}, timeout=30)
     if not resp.ok:
         logger.error(
             "PATCH cooldown failed: post_id=%d status=%d body=%s",
