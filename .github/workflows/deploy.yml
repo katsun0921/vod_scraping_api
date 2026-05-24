@@ -35,16 +35,16 @@ jobs:
       - name: Build and Push image
         run: |
           docker build \
-            --tag asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:${{ github.sha }} \
-            --tag asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:latest \
+            --tag ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:${{ github.sha }} \
+            --tag ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:latest \
             .
-          docker push asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:${{ github.sha }}
-          docker push asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:latest
+          docker push ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:${{ github.sha }}
+          docker push ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:latest
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy vod-scraping-api \
-            --image asia-northeast1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/vod-scraping-api/app:${{ github.sha }} \
+            --image ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:${{ github.sha }} \
             --platform managed \
             --region asia-northeast1 \
             --execution-environment gen2 \
