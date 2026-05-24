@@ -29,11 +29,12 @@ VOD_TERM_IDS: dict[str, int] = {
     "unext": 71,
     "disney_plus": 232,
     "dmm_tv": 838,
+    "apple_tv": 1114,
     "youtube": 973,
 }
 
 # スクレイピング対象サービス一覧
-SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "youtube"]
+SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "apple_tv", "youtube"]
 
 PER_PAGE = 20
 
@@ -257,7 +258,7 @@ def update_post(
 
     Args:
         post_id       : WordPress 投稿 ID。
-        service       : サービス名（"amazon" / "netflix" / "hulu" / "unext"）。
+        service       : サービス名（"amazon_prime_video" / "netflix" / "hulu" / "unext" 等）。
         status        : 配信ステータス（"streaming" / "rental" / "purchase" / "unavailable" / "ended"）。
         price         : 価格（None の場合は 0 を設定）。
         updated_at    : 更新日時文字列（"YYYY-MM-DD HH:MM:SS" 形式）。
@@ -271,12 +272,22 @@ def update_post(
     get_resp.raise_for_status()
     existing_acf: dict = (get_resp.json().get("acf") or {}).copy()
 
+    # streaming_started_at: 未取得→streaming への初回遷移時のみ更新
+    prev_status = (existing_acf.get(service) or {}).get("status", "")
+    prev_ssa = (existing_acf.get(service) or {}).get("streaming_started_at", "")
+    if status == "streaming" and prev_status != "streaming" and not prev_ssa:
+        streaming_started_at = updated_at
+        logger.info("post_id=%d service=%s: 新規配信検知 → streaming_started_at=%s", post_id, service, streaming_started_at)
+    else:
+        streaming_started_at = prev_ssa
+
     # 対象サービスのフィールドだけ上書き
     existing_acf[service] = {
-        "scraping_url": existing_acf.get(service, {}).get("scraping_url", ""),
+        "scraping_url": (existing_acf.get(service) or {}).get("scraping_url", ""),
         "status": status,
         "price": price if price is not None else 0,
         "updated_at": updated_at,
+        "streaming_started_at": streaming_started_at,
     }
 
     # スキーマに基づいて ACF データを正規化（空文字列の数値→null、空配列の除外等）
