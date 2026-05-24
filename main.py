@@ -27,9 +27,14 @@ app = Flask(__name__)
 def index():
     """VOD配信状況チェックを実行するエンドポイント。
 
-    リクエストボディは不要。全件チェックを実行する。
+    リクエストボディ（JSON）で以下のオプションを指定できる：
+        slug  (str) : 指定した slug の投稿のみ処理する
+        force (bool): updated_at に関わらず全件処理する
     """
-    result = run()
+    body = request.get_json(silent=True) or {}
+    slug = body.get("slug")
+    force = bool(body.get("force", False))
+    result = run(force=force, slug=slug)
     return jsonify(result)
 
 

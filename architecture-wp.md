@@ -8,9 +8,9 @@ WordPress（データ管理・REST API）
 │   ├── ACF Group: VOD配信状況
 │   │   ├── amazon / netflix / hulu / unext
 │   │   └── 各 Group: scraping_url / status / price / updated_at
-│   └── Taxonomy: vod_service（配信中サービスを紐付け）
+│   └── Taxonomy: vod（配信中サービスを紐付け）
 │
-└── Taxonomy: vod_service
+└── Taxonomy: vod
     ├── amazon-prime
     ├── netflix
     ├── hulu
@@ -41,7 +41,7 @@ WordPress（データ管理・REST API）
 | slug | 映画識別子（例: `equalizer-2014`） |
 | URL | `https://katsumascore.blog/ja/movie/{slug}` |
 
-### Taxonomy: `vod_service`
+### Taxonomy: `vod`
 
 「現在配信中のサービス」を Post に紐付ける。
 `status=streaming` のサービスのみ付与し、それ以外は削除する。
@@ -88,7 +88,7 @@ post
 
 ```
 # VOD一覧ページ（/vod/amazon-prime）
-GET /wp-json/wp/v2/posts?vod_service=amazon-prime&per_page=100
+GET /wp-json/wp/v2/posts?vod=amazon-prime&per_page=30
 
 # 記事詳細
 GET /wp-json/wp/v2/posts?slug=equalizer-2014
@@ -150,7 +150,7 @@ Authorization: Basic base64(user:application_password)
 # taxonomy の更新
 PATCH /wp-json/wp/v2/posts/{id}
 {
-  "vod_service": [term_id]
+  "vod": [term_id]
 }
 ```
 
@@ -159,18 +159,100 @@ PATCH /wp-json/wp/v2/posts/{id}
 ## vod-scraping-api 処理フロー
 
 ```
-① GET /wp-json/wp/v2/posts（全件取得、200件 → 2回リクエスト）
+① GET /wp-json/wp/v2/posts（per_page=20 でページネーション全件取得）
    scraping_url が入っているサービスのみ処理対象
 
 ② 各サービスの scraping_url をスクレイピング
    status / price を取得
 
-③ PATCH /wp-json/wp/v2/posts/{id}
+③ GET /wp-json/wp/v2/posts/{id}?_fields=acf
+   既存 ACF データを取得（PATCH 時に必須フィールドを保持するため）
+
+④ PATCH /wp-json/wp/v2/posts/{id}
    ACF の status / price / updated_at を更新
 
-④ status = streaming → vod_service taxonomy を付与
-   status ≠ streaming → vod_service taxonomy を削除
+⑤ status = streaming → vod taxonomy を付与
+   status ≠ streaming → vod taxonomy を削除
 ```
+
+---
+
+## Cloud Run デプロイ手順
+
+### 環境変数
+
+Cloud Run の環境変数は GCP コンソールから設定する（gcloud CLI でのシェルエスケープ問題を避けるため）。
+
+| 変数名 | 内容 |
+|---|---|
+| `WP_API_URL` | `https://YOUR_DOMAIN/wp-json/wp/v2` |
+| `WP_USER` | WordPress ユーザー名 |
+| `WP_APP_PASSWORD` | WordPress Application Password（スペースなし） |
+| `WP_BASIC_USER` | サーバー Basic 認証ユーザー名 |
+| `WP_BASIC_PASSWORD` | サーバー Basic 認証パスワード |
+
+### ビルド・デプロイ
+
+```bash
+# イメージビルド & プッシュ
+gcloud builds submit \
+  --tag asia-northeast1-docker.pkg.dev/YOUR_GCP_PROJECT/vod-scraping-api/app:latest .
+
+# デプロイ
+gcloud run deploy vod-scraping-api \
+  --image asia-northeast1-docker.pkg.dev/YOUR_GCP_PROJECT/vod-scraping-api/app:latest \
+  --region asia-northeast1
+```
+
+### 動作テスト
+
+```bash
+# 特定 slug のみテスト
+curl -s -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "Content-Type: application/json" \
+  -d '{"slug": "equalizer-2014", "force": true}' \
+  https://YOUR_CLOUD_RUN_URL/
+
+# 全件実行（30日以内更新済みはスキップ）
+curl -s -X POST \
+  -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  https://YOUR_CLOUD_RUN_URL/
+```
+
+---
+
+## ACF PATCH の注意点
+
+### なぜ既存データを取得してから PATCH するか
+
+WordPress REST API は ACF フィールド更新時にグループ全体のバリデーションを行う。
+`acf.amazon.status` だけ送っても、同じ ACF グループの `lang`（required）や `genre`（required, minItems=1）が
+ないとエラーになるため、**既存データを取得して必要フィールドを保持したまま更新**する必要がある。
+
+### データ正規化が必要な理由
+
+WordPress 管理画面で未入力のフィールドは空文字列 `""` で保存されるが、
+REST API バリデーションは型チェックを行うため、そのまま送り返すとエラーになる。
+
+| フィールド型 | 空文字列の挙動 | 対処 |
+|---|---|---|
+| `number\|null` | バリデーションエラー | `null` に変換（`score`, `price` 等） |
+| `array` (minItems=1) | バリデーションエラー | ペイロードから除外 |
+| `array\|null` で `null` | バリデーションエラー | ペイロードから除外 |
+
+スキーマは起動時に `OPTIONS /wp-json/wp/v2/posts` で取得し、インメモリキャッシュする。
+
+### 認証の分離
+
+| 操作 | 認証方式 |
+|---|---|
+| GET（投稿取得・スキーマ取得） | サーバー Basic 認証（`WP_BASIC_USER` / `WP_BASIC_PASSWORD`） |
+| PATCH（ACF・taxonomy 更新） | WordPress Application Password（`Authorization: Basic` ヘッダー） |
+
+PATCH 時はサーバー Basic 認証を使わない（`requests` の `auth=` パラメータと `Authorization` ヘッダーが競合するため）。
 
 ---
 
@@ -179,4 +261,4 @@ PATCH /wp-json/wp/v2/posts/{id}
 | ページ | エンドポイント |
 |---|---|
 | `/ja/movie/{slug}` | `GET /wp-json/wp/v2/posts?slug={slug}` |
-| `/vod/{service}` | `GET /wp-json/wp/v2/posts?vod_service={service}&per_page=100` |
+| `/vod/{service}` | `GET /wp-json/wp/v2/posts?vod={service}&per_page=100` |

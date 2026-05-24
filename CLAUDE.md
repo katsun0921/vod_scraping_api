@@ -15,7 +15,9 @@ vod_scraping_api/
 │   ├── amazon.py              # Amazon Prime Video チェッカー
 │   ├── netflix.py             # Netflix チェッカー
 │   ├── hulu.py                # Hulu チェッカー
-│   └── unext.py               # U-NEXT チェッカー（Playwright 使用）
+│   ├── unext.py               # U-NEXT チェッカー（Playwright 使用）
+│   ├── disney_plus.py         # Disney+ チェッカー
+│   └── dmm_tv.py              # DMM TV チェッカー（Playwright 使用）
 ├── utils/
 │   ├── sheets.py              # Google Sheets 読み書きユーティリティ（現行）
 │   └── rate_limit.py          # リクエスト間隔制御
@@ -46,6 +48,8 @@ vod_scraping_api/
 | Netflix | `https://www.netflix.com/jp/title/{id}` | requests + BeautifulSoup |
 | Hulu | `https://www.hulu.jp/watch/{id}` | requests + BeautifulSoup |
 | U-NEXT | `https://video.unext.jp/title/SID{id}` | Playwright（Chromium） |
+| Disney+ | `https://www.disneyplus.com/ja-jp/movies/{slug}` | requests + BeautifulSoup |
+| DMM TV | `https://tv.dmm.com/vod/detail/?season={id}` | Playwright（Chromium） |
 
 ### Amazon Prime Video URL について
 
@@ -75,11 +79,9 @@ Cloud Run 環境では `/gp/video/detail/{id}` 形式を使用すること。
 
 | 変数名 | 用途 | 必須 |
 |---|---|---|
-| `SPREADSHEET_ID` | Google Sheets のスプレッドシート ID（現行） | ○（現行） |
-| `GOOGLE_APPLICATION_CREDENTIALS` | SA キーのパス（ローカルのみ） | ローカルのみ |
-| `WP_API_URL` | WordPress REST API のベース URL（移行後） | ○（移行後） |
-| `WP_USER` | WordPress ユーザー名（移行後） | ○（移行後） |
-| `WP_APP_PASSWORD` | WordPress Application Password（移行後） | ○（移行後） |
+| `WP_API_URL` | WordPress REST API のベース URL（例: `https://example.com/wp-json/wp/v2`） | ○ |
+| `WP_USER` | WordPress ユーザー名 | ○ |
+| `WP_APP_PASSWORD` | WordPress Application Password | ○ |
 
 ## セキュリティ規約
 
@@ -88,16 +90,13 @@ Cloud Run 環境では `/gp/video/detail/{id}` 形式を使用すること。
 - Cloud Run では環境変数または Secret Manager で管理する
 - ドキュメントに記載する場合は `YOUR_SPREADSHEET_ID` などのプレースホルダーを使用する
 
-## 今後の移行計画
+## アーキテクチャ
 
-現在は Google Sheets を入力源・出力先としているが、WordPress REST API に移行予定。
+入力源・出力先ともに WordPress REST API を使用する。
 詳細は [architecture-wp.md](architecture-wp.md) を参照。
 
-### 移行後の変更点
-
-| 項目 | 現行 | 移行後 |
-|---|---|---|
-| 入力源 | Google Sheets（gspread） | WordPress REST API |
-| 出力先 | Google Sheets（gspread） | WordPress REST API |
-| 認証 | サービスアカウント | Application Password |
-| 環境変数 | `SPREADSHEET_ID` | `WP_API_URL` / `WP_USER` / `WP_APP_PASSWORD` |
+| 項目 | 内容 |
+|---|---|
+| 入力源 | WordPress REST API（ACF: scraping_url） |
+| 出力先 | WordPress REST API（ACF: status / price / updated_at、taxonomy: vod） |
+| 認証 | Application Password（Basic 認証） |
