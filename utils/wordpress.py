@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 # vod taxonomy のサービス名 → term_id マッピング
 # WordPress 管理画面で確認した値
 VOD_TERM_IDS: dict[str, int] = {
-    "amazon_prime_video": 70,
+    "amazon_prime_video": 433,
     "netflix": 161,
-    "hulu": 0,      # Hulu は term_id 未確定のため 0（配信中でも taxonomy 付与しない）
+    "hulu": 72,
     "unext": 71,
     "disney_plus": 232,
     "dmm_tv": 838,
