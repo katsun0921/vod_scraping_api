@@ -70,7 +70,9 @@ GET /wp-json/wp/v2/posts/{id}?_fields=id,slug,acf,vod
     "is_exclusive": false,
     "exclusive_service": null,
     "languages": ["ja"],
-    "scraping_cooldown_until": ""
+    "scraping_disabled": false,
+    "scraping_cooldown_until": "",
+    "unavailable_check_count": 0
   },
   "vod": [161]
 }
@@ -90,7 +92,9 @@ GET /wp-json/wp/v2/posts/{id}?_fields=id,slug,acf,vod
 | `is_exclusive` | boolean | 独占配信フラグ |
 | `exclusive_service` | integer\|null | vod term_id |
 | `languages` | array | `["ja"]` / `["en"]` / `["ja","en"]` |
-| `scraping_cooldown_until` | string | `"YYYY-MM-DD"` または `''` |
+| `scraping_disabled` | boolean | 管理者による探索停止フラグ |
+| `scraping_cooldown_until` | string | `"YYYY-MM-DD"` または `''`。次回チェック予定日 |
+| `unavailable_check_count` | integer | 連続未配信カウント（クールダウン計算用） |
 | `vod` | integer[] | 現在 streaming 中サービスの term_id リスト |
 
 ---

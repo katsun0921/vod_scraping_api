@@ -73,10 +73,12 @@ post
     │
     │  ── 作品メタフィールド ──
     │
-    ├── is_exclusive            : 0 | 1
-    ├── exclusive_service       : vod term_id | null
-    ├── languages               : ["ja"] | ["en"] | ["ja","en"]
-    └── scraping_cooldown_until : "YYYY-MM-DD" | ''
+    ├── is_exclusive              : 0 | 1
+    ├── exclusive_service         : vod term_id | null
+    ├── languages                 : ["ja"] | ["en"] | ["ja","en"]
+    ├── scraping_disabled         : 0 | 1   （管理者による探索停止フラグ）
+    ├── scraping_cooldown_until   : "YYYY-MM-DD" | ''  （次回チェック予定日）
+    └── unavailable_check_count   : number  （連続未配信カウント、システム管理）
 ```
 
 ---

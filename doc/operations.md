@@ -54,15 +54,16 @@ flowchart TD
 
 ## スクレイピングスキップ条件
 
-以下に該当する場合、そのサービスのスクレイピングをスキップする。
+以下に該当する場合、その投稿またはサービスのスクレイピングをスキップする（優先順）。
 
-| 条件 | 判定フィールド | 備考 |
-|---|---|---|
-| scraping_url が未登録 | `{service}_scraping_url` が空 | URL 未登録は対象外 |
-| 独占配信サービスが他社 | `is_exclusive = true` かつ `exclusive_service` が対象サービスと不一致 | Netflix オリジナル等 |
-| スクレイピング停止期間中 | `scraping_cooldown_until >= today` | 古い作品・長期未配信作品 |
-| 言語不一致 | `languages` に対象サービスの対応言語が含まれない | ja のみ作品に Crunchyroll 等 |
-| 直近更新済み | `{service}_updated_at` が 30 日以内 | `--force` オプションで上書き可 |
+| 優先 | 条件 | 判定フィールド | 備考 |
+|---|---|---|---|
+| 1 | 管理者が探索停止 | `scraping_disabled = 1` | 投稿レベル、全サービス停止 |
+| 2 | クールダウン期間中 | `scraping_cooldown_until >= today` | 投稿レベル、古い作品・長期未配信 |
+| 3 | scraping_url が未登録 | `{service}_scraping_url` が空 | サービスレベル |
+| 4 | 直近 30 日以内に更新済み | `{service}_updated_at` が 30 日以内 | サービスレベル、`--force` で上書き可 |
+
+> `--force` オプション指定時は条件 2〜4 をすべて無視して全件処理する。
 
 ---
 
@@ -96,7 +97,7 @@ Next.js TOP「新着配信」セクションで 7 日以内の作品を表示
 | U-NEXT | `unext` | ja | Playwright（Chromium） |
 | Disney+ | `disney_plus` | ja / en | requests + BeautifulSoup |
 | DMM TV | `dmm_tv` | ja | Playwright（Chromium） |
-| Apple TV | `apple_tv` | ja / en | requests + BeautifulSoup（実装予定） |
+| Apple TV | `apple_tv` | ja / en | requests + BeautifulSoup |
 | YouTube | `youtube` | ja / en | requests + BeautifulSoup |
 
 ---
@@ -126,6 +127,10 @@ Next.js TOP「新着配信」セクションで 7 日以内の作品を表示
 - 新規フィールド追加: ACF に追加後、`CLAUDE.md` の定義を更新
 
 ### スクレイピング負荷制御
-- `scraping_cooldown_until` で古い作品・長期未配信作品をスキップ
+- `scraping_disabled` で管理者が手動停止（マイナー作品・永久停止）
+- `scraping_cooldown_until` で古い作品・長期未配信作品のチェック間隔を動的延長
+  - 配信中サービスあり → 30 日後にリセット
+  - 全サービス未配信 → 指数バックオフ（30 / 60 / 120 / 240 / 360 日）＋年齢補正
+  - 詳細仕様: [scraping-frequency.md](scraping-frequency.md)
 - `updated_at` が 30 日以内は `--force` なしでスキップ
 - サービスごとにリクエスト間隔制御（`utils/rate_limit.py`）

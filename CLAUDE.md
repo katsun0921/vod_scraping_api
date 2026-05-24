@@ -29,6 +29,8 @@ vod_scraping_api/
 │   ├── vod-scraping-api.md    # VODスクレイピングAPI仕様
 │   ├── cache.md               # キャッシュ設計
 │   └── cloudflare-cache-setup.md  # Cloudflareキャッシュ設定
+├── acf/
+│   └── acf-vod-status.json    # ACF フィールド定義（WP管理画面からインポート用）
 ├── Dockerfile                 # Cloud Run 用コンテナ定義
 ├── requirements.txt           # Python 依存ライブラリ
 ├── cloud-run-deploy.md        # Cloud Run デプロイ手順
@@ -56,7 +58,7 @@ vod_scraping_api/
 | U-NEXT | `unext` | `https://video.unext.jp/title/SID{id}` | Playwright |
 | Disney+ | `disney_plus` | `https://www.disneyplus.com/ja-jp/movies/{slug}` | requests + BS4 |
 | DMM TV | `dmm_tv` | `https://tv.dmm.com/vod/detail/?season={id}` | Playwright |
-| Apple TV | `apple_tv` | `https://tv.apple.com/jp/movie/{slug}` | requests + BS4（実装予定） |
+| Apple TV | `apple_tv` | `https://tv.apple.com/{region}/movie/{slug}/{id}` | requests + BS4 |
 | YouTube | `youtube` | `https://www.youtube.com/watch?v={video_id}` | requests + BS4 |
 
 > Amazon: Cloud Run 環境では `/gp/video/detail/{id}` 形式を使用すること（`/dp/{asin}` はブロックされる場合あり）

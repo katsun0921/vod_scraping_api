@@ -8,13 +8,13 @@
 
 ## Phase 1: ACF フィールド追加
 
-- [ ] ACF JSON に 3 フィールドを追加
-  - [ ] `scraping_disabled` (true_false)
-  - [ ] `scraping_cooldown_until` (date_picker)
-  - [ ] `unavailable_check_count` (number)
-- [ ] フィールドの配置先を決定（「作品メタ」グループ推奨）
-- [ ] WordPress 管理画面で ACF JSON をインポート
-- [ ] 全 publish 投稿に初期値を投入（SQL バッチ）
+- [x] ACF JSON に 3 フィールドを追加
+  - [x] `scraping_disabled` (true_false)
+  - [x] `scraping_cooldown_until` (date_picker)
+  - [x] `unavailable_check_count` (number)
+- [x] フィールドの配置先を決定（VOD配信状況グループ末尾）
+- [x] WordPress 管理画面で ACF JSON をインポート
+- [x] 全 publish 投稿に初期値を投入（SQL バッチ、498件）
   - `scraping_disabled = 0`
   - `scraping_cooldown_until = ''`
   - `unavailable_check_count = 0`
@@ -23,34 +23,35 @@
 
 ## Phase 2: 判定ロジック実装
 
-- [ ] `utils/wordpress.py` に `should_skip(post, service, today)` 関数を追加
-  - [ ] `scraping_disabled` チェック
-  - [ ] `scraping_cooldown_until` チェック
-  - [ ] `scraping_url` 空チェック
-  - [ ] 直近30日更新済みチェック
-- [ ] `utils/wordpress.py` に `update_cooldown(post, today)` 関数を追加
-  - [ ] 配信中サービスがあれば30日サイクル + カウントリセット
-  - [ ] 全サービス未配信なら指数バックオフ + 年齢補正
+- [x] `utils/wordpress.py` に `should_skip(post, service, today)` 関数を追加
+  - [x] `scraping_disabled` チェック
+  - [x] `scraping_cooldown_until` チェック
+  - [x] `scraping_url` 空チェック
+  - [x] 直近30日更新済みチェック
+- [x] `utils/wordpress.py` に `update_cooldown(post, today, acf_payload)` 関数を追加
+  - [x] 配信中サービスがあれば30日サイクル + カウントリセット
+  - [x] 全サービス未配信なら指数バックオフ + 年齢補正
+- [x] `utils/wordpress.py` に `patch_cooldown(post_id, acf_payload)` 関数を追加
 - [ ] ユニットテスト追加（任意）
 
 ---
 
 ## Phase 3: checker.py 統合
 
-- [ ] 投稿ループの最初で `should_skip` チェックを実行
-- [ ] 全サービスチェック完了後に `update_cooldown` を呼び出し
-- [ ] ACF PATCH 時に `scraping_cooldown_until` / `unavailable_check_count` を含める
-- [ ] ログ出力でスキップ理由を可視化
+- [x] 投稿ループの最初で `scraping_disabled` / `cooldown` チェックを実行
+- [x] サービスループで `should_skip`（scraping_url / updated_at）チェックを実行
+- [x] 全サービスチェック完了後に `update_cooldown` + `patch_cooldown` を呼び出し
+- [x] ログ出力でスキップ理由を可視化
 
 ---
 
 ## Phase 4: ドキュメント更新
 
-- [ ] `doc/relations.md` に新規 ACF フィールドを追加
-- [ ] `doc/json-output.md` に新規フィールドを追加
-- [ ] `doc/operations.md` のスキップ条件表を更新
-- [ ] `doc/operations.md` にチェック頻度早見表を追加
-- [ ] ルート `CLAUDE.md` の ACF フィールド定義を更新
+- [x] `doc/relations.md` に新規 ACF フィールドを追加
+- [x] `doc/json-output.md` に新規フィールドを追加
+- [x] `doc/operations.md` のスキップ条件表を更新
+- [x] `doc/operations.md` の設計思想にクールダウン説明を追加
+- [x] ルート `CLAUDE.md` の ACF フィールド定義を更新（apple_tv 追加 + 新規3フィールド）
 
 ---
 
@@ -69,10 +70,10 @@
 ## 関連する未着手タスク（別仕様）
 
 ### Apple TV チェッカー実装
-- [ ] `checkers/apple_tv.py` を新規作成
-- [ ] URL 形式: `https://tv.apple.com/jp/movie/{slug}`
-- [ ] `check(url: str) -> dict` を実装
-- [ ] `checker.py` の `_SERVICE_KEYWORDS` に追加
+- [x] `checkers/apple_tv.py` を新規作成
+- [x] URL 形式: `https://tv.apple.com/{region}/movie/{slug}/{id}`
+- [x] `check(url: str) -> dict` を実装（streaming / purchase / ended / unavailable）
+- [x] `checker.py` の `_CHECKER_MAP` に追加
 
 ### Slack 通知
 - [ ] `utils/slack.py` を新規作成
