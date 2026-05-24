@@ -6,7 +6,11 @@ on:
       - main
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -45,7 +49,6 @@ jobs:
             --region asia-northeast1 \
             --execution-environment gen2 \
             --no-allow-unauthenticated \
-            --set-env-vars SPREADSHEET_ID=${{ secrets.SPREADSHEET_ID }} \
             --memory 512Mi \
             --timeout 540 \
             --max-instances 1 \
