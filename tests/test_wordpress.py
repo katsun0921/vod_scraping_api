@@ -25,6 +25,8 @@ def _make_post(
     release_year: int = 0,
     unavailable_check_count: int = 0,
     languages: list | None = None,
+    is_exclusive: bool = False,
+    exclusive_service: str = "",
 ) -> dict:
     """テスト用の最小限の post dict を生成する。"""
     acf: dict = {
@@ -32,6 +34,8 @@ def _make_post(
         "scraping_cooldown_until": cooldown_until,
         "release_year": release_year,
         "unavailable_check_count": unavailable_check_count,
+        "is_exclusive": is_exclusive,
+        "exclusive_service": exclusive_service,
         service: {
             "scraping_url": scraping_url,
             "status": status,
@@ -166,6 +170,49 @@ class TestShouldSkip:
         skip, reason = should_skip(post, "netflix", TODAY)
         assert "cooldown_until" in reason
 
+    # --- 3. 独占配信スキップ ---
+
+    def test_skip_if_exclusive_and_different_service(self):
+        """is_exclusive=True かつ exclusive_service が別サービス → スキップ"""
+        post = _make_post(is_exclusive=True, exclusive_service="netflix")
+        skip, reason = should_skip(post, "amazon_prime_video", TODAY)
+        assert skip is True
+        assert reason == "exclusive=netflix"
+
+    def test_no_skip_if_exclusive_and_same_service(self):
+        """is_exclusive=True かつ exclusive_service が一致 → スキップしない"""
+        post = _make_post(is_exclusive=True, exclusive_service="netflix")
+        skip, _ = should_skip(post, "netflix", TODAY)
+        assert skip is False
+
+    def test_no_skip_if_not_exclusive(self):
+        """is_exclusive=False → スキップしない"""
+        post = _make_post(
+            service="amazon_prime_video",
+            scraping_url="https://www.amazon.co.jp/gp/video/detail/B09ABC",
+            is_exclusive=False,
+            exclusive_service="netflix",
+        )
+        skip, _ = should_skip(post, "amazon_prime_video", TODAY)
+        assert skip is False
+
+    def test_no_skip_if_exclusive_service_empty(self):
+        """is_exclusive=True でも exclusive_service が未設定 → スキップしない"""
+        post = _make_post(
+            service="amazon_prime_video",
+            scraping_url="https://www.amazon.co.jp/gp/video/detail/B09ABC",
+            is_exclusive=True,
+            exclusive_service="",
+        )
+        skip, _ = should_skip(post, "amazon_prime_video", TODAY)
+        assert skip is False
+
+    def test_exclusive_takes_priority_over_scraping_url_empty(self):
+        """独占判定は scraping_url 空チェックより優先される"""
+        post = _make_post(is_exclusive=True, exclusive_service="netflix", scraping_url="")
+        skip, reason = should_skip(post, "amazon_prime_video", TODAY)
+        assert skip is True
+        assert "exclusive" in reason
 
     # --- 5. 言語ミスマッチ ---
 

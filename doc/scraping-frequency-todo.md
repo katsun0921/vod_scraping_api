@@ -82,8 +82,8 @@
 - [x] 通知フォーマット決定（作品タイトル / サービス名 / URL）
 
 ### 独占配信スキップ
-- [ ] `is_exclusive` / `exclusive_service` フィールドを ACF に追加
-- [ ] `should_skip` に独占判定を追加（対象サービスが exclusive_service と不一致なら true）
+- [x] `is_exclusive` / `exclusive_service` フィールドを ACF に追加
+- [x] `should_skip` に独占判定を追加（対象サービスが exclusive_service と不一致なら true）
 
 ### 言語別スキップ
 - [x] `languages` フィールドを ACF に追加（ja / en の checkbox）

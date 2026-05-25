@@ -1122,6 +1122,68 @@
                 "allow_in_bindings": 0
             },
             {
+                "key": "field_vod_is_exclusive",
+                "label": "独占配信",
+                "name": "is_exclusive",
+                "aria-label": "",
+                "type": "true_false",
+                "instructions": "特定サービスの独占配信作品の場合にON。exclusive_service と組み合わせて使用。",
+                "required": 0,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "message": "",
+                "default_value": 0,
+                "ui": 1,
+                "ui_on_text": "独占",
+                "ui_off_text": "通常",
+                "allow_in_bindings": 0
+            },
+            {
+                "key": "field_vod_exclusive_service",
+                "label": "独占配信サービス",
+                "name": "exclusive_service",
+                "aria-label": "",
+                "type": "select",
+                "instructions": "独占配信しているサービスを選択。is_exclusive が ON のときのみ有効。",
+                "required": 0,
+                "conditional_logic": [
+                    [
+                        {
+                            "field": "field_vod_is_exclusive",
+                            "operator": "==",
+                            "value": "1"
+                        }
+                    ]
+                ],
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "choices": {
+                    "amazon_prime_video": "Amazon Prime Video",
+                    "netflix": "Netflix",
+                    "hulu": "Hulu",
+                    "unext": "U-NEXT",
+                    "disney_plus": "Disney+",
+                    "dmm_tv": "DMM TV",
+                    "apple_tv": "Apple TV",
+                    "youtube": "YouTube"
+                },
+                "default_value": "",
+                "return_format": "value",
+                "multiple": 0,
+                "allow_null": 1,
+                "ui": 0,
+                "ajax": 0,
+                "placeholder": "サービスを選択",
+                "allow_in_bindings": 0
+            },
+            {
                 "key": "field_scraping_disabled",
                 "label": "スクレイピング停止",
                 "name": "scraping_disabled",
