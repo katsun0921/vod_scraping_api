@@ -107,7 +107,7 @@ def get_posts() -> list[dict]:
         for attempt in range(3):
             resp = session.get(
                 url,
-                params={"per_page": PER_PAGE, "page": page, "_fields": "id,slug,acf,vod"},
+                params={"per_page": PER_PAGE, "page": page, "_fields": "id,slug,title,acf,vod"},
                 timeout=30,
             )
             logger.info("GET posts page=%d status=%d (attempt=%d)", page, resp.status_code, attempt + 1)
@@ -260,7 +260,7 @@ def update_post(
     price: Optional[float],
     updated_at: str,
     current_vod_term_ids: list[int],
-) -> None:
+) -> bool:
     """投稿の ACF フィールドと vod タクソノミーを更新する。
 
     Args:
@@ -270,6 +270,9 @@ def update_post(
         price         : 価格（None の場合は 0 を設定）。
         updated_at    : 更新日時文字列（"YYYY-MM-DD HH:MM:SS" 形式）。
         current_vod_term_ids: 現在付与されている vod タクソノミーの term_id リスト。
+
+    Returns:
+        True の場合、未配信 → streaming への初回遷移（新規配信検知）。
     """
     url = f"{_base_url()}/posts/{post_id}"
     session = _session(wp_auth=True)
@@ -282,7 +285,8 @@ def update_post(
     # streaming_started_at: 未取得→streaming への初回遷移時のみ更新
     prev_status = (existing_acf.get(service) or {}).get("status", "")
     prev_ssa = (existing_acf.get(service) or {}).get("streaming_started_at", "")
-    if status == "streaming" and prev_status != "streaming" and not prev_ssa:
+    is_new_streaming = status == "streaming" and prev_status != "streaming" and not prev_ssa
+    if is_new_streaming:
         streaming_started_at = updated_at
         logger.info("post_id=%d service=%s: 新規配信検知 → streaming_started_at=%s", post_id, service, streaming_started_at)
     else:
@@ -312,7 +316,7 @@ def update_post(
     # vod タクソノミー更新
     term_id = VOD_TERM_IDS.get(service, 0)
     if term_id == 0:
-        return  # term_id 未確定サービスは taxonomy 操作しない
+        return is_new_streaming  # term_id 未確定サービスは taxonomy 操作しない
 
     new_term_ids = set(current_vod_term_ids)
     if status == "streaming":
@@ -325,6 +329,8 @@ def update_post(
     if not resp.ok:
         logger.error("PATCH vod failed: status=%d body=%s", resp.status_code, resp.text[:500])
     resp.raise_for_status()
+
+    return is_new_streaming
 
 
 def get_vod_term_ids(post: dict) -> list[int]:
