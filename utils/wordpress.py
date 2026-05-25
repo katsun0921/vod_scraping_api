@@ -364,8 +364,10 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
     スキップ条件（優先順）:
       1. scraping_disabled が True（管理者停止）
       2. scraping_cooldown_until が today 以降（クールダウン中）
-      3. scraping_url が空（探索対象外）
-      4. 直近30日以内に updated_at が更新済み
+      3. 独占配信かつ対象サービスが exclusive_service と不一致
+      4. scraping_url が空（探索対象外）
+      5. 直近30日以内に updated_at が更新済み
+      6. 言語ミスマッチ（languages が設定されておりサービス対応言語と交差しない）
 
     Args:
         post   : WordPress REST API の投稿データ。
@@ -392,13 +394,19 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
         except ValueError:
             logger.warning("post_id=%d scraping_cooldown_until の形式が不正: %r", post.get("id"), cooldown_str)
 
-    # 3. scraping_url が空
+    # 3. 独占配信スキップ（is_exclusive=True かつ exclusive_service が別サービスの場合）
+    if acf.get("is_exclusive"):
+        exclusive_svc = (acf.get("exclusive_service") or "").strip()
+        if exclusive_svc and exclusive_svc != service:
+            return True, f"exclusive={exclusive_svc}"
+
+    # 4. scraping_url が空
     service_acf = acf.get(service) or {}
     scraping_url = service_acf.get("scraping_url") or ""
     if not scraping_url:
         return True, "scraping_url=empty"
 
-    # 4. 直近30日以内に更新済み
+    # 5. 直近30日以内に更新済み
     updated_at_str = service_acf.get("updated_at") or ""
     if updated_at_str:
         try:
@@ -409,7 +417,7 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
         except ValueError:
             logger.warning("post_id=%d service=%s updated_at の形式が不正: %r", post.get("id"), service, updated_at_str)
 
-    # 5. 言語ミスマッチ（languages が未設定の場合はスキップしない）
+    # 6. 言語ミスマッチ（languages が未設定の場合はスキップしない）
     post_languages = set(acf.get("languages") or [])
     if post_languages:
         supported = SERVICE_SUPPORTED_LANGUAGES.get(service, frozenset({"ja", "en"}))
