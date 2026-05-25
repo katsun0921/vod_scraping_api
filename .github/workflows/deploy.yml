@@ -53,4 +53,11 @@ jobs:
             --timeout 540 \
             --max-instances 1 \
             --concurrency 1 \
+            --set-env-vars "\
+              WP_API_URL=${{ secrets.WP_API_URL }},\
+              WP_USER=${{ secrets.WP_USER }},\
+              WP_APP_PASSWORD=${{ secrets.WP_APP_PASSWORD }},\
+              WP_BASIC_USER=${{ secrets.WP_BASIC_USER }},\
+              WP_BASIC_PASSWORD=${{ secrets.WP_BASIC_PASSWORD }},\
+              SLACK_WEBHOOK_URL=${{ secrets.SLACK_WEBHOOK_URL }}" \
             --quiet
