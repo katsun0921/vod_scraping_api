@@ -43,7 +43,7 @@ SERVICE_SUPPORTED_LANGUAGES: dict[str, frozenset] = {
     "amazon_prime_video": frozenset({"ja", "en"}),
     "netflix":            frozenset({"ja", "en"}),
     "hulu":               frozenset({"ja", "en"}),
-    "unext":              frozenset({"ja", "en"}),
+    "unext":              frozenset({"ja"}),
     "disney_plus":        frozenset({"ja", "en"}),
     "dmm_tv":             frozenset({"ja"}),
     "apple_tv":           frozenset({"en"}),

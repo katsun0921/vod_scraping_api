@@ -243,6 +243,9 @@ class TestServiceSupportedLanguages:
     def test_apple_tv_en_only(self):
         assert SERVICE_SUPPORTED_LANGUAGES["apple_tv"] == frozenset({"en"})
 
+    def test_unext_ja_only(self):
+        assert SERVICE_SUPPORTED_LANGUAGES["unext"] == frozenset({"ja"})
+
     def test_netflix_both(self):
         assert "ja" in SERVICE_SUPPORTED_LANGUAGES["netflix"]
         assert "en" in SERVICE_SUPPORTED_LANGUAGES["netflix"]
