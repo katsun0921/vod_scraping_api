@@ -76,19 +76,19 @@
 - [x] `checker.py` の `_CHECKER_MAP` に追加
 
 ### Slack 通知
-- [ ] `utils/slack.py` を新規作成
-- [ ] `streaming_started_at` 新規セット時に Webhook 送信
-- [ ] 環境変数 `SLACK_WEBHOOK_URL` 対応
-- [ ] 通知フォーマット決定（作品タイトル / サービス名 / URL）
+- [x] `utils/slack.py` を新規作成
+- [x] `streaming_started_at` 新規セット時に Webhook 送信
+- [x] 環境変数 `SLACK_WEBHOOK_URL` 対応
+- [x] 通知フォーマット決定（作品タイトル / サービス名 / URL）
 
 ### 独占配信スキップ
 - [ ] `is_exclusive` / `exclusive_service` フィールドを ACF に追加
 - [ ] `should_skip` に独占判定を追加（対象サービスが exclusive_service と不一致なら true）
 
 ### 言語別スキップ
-- [ ] `languages` フィールドを ACF に追加（ja / en の checkbox）
-- [ ] サービスごとの対応言語マッピングをコードに追加
-- [ ] `should_skip` に言語判定を追加
+- [x] `languages` フィールドを ACF に追加（ja / en の checkbox）
+- [x] サービスごとの対応言語マッピングをコードに追加
+- [x] `should_skip` に言語判定を追加
 
 ### 月次 JustWatch 再問い合わせ（任意）
 - [ ] `scraping_url` 空のサービスに対する月次バッチ
