@@ -37,6 +37,19 @@ VOD_TERM_IDS: dict[str, int] = {
 # スクレイピング対象サービス一覧
 SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "apple_tv", "youtube"]
 
+# サービスごとの対応言語セット（post.acf.languages との照合に使用）
+# 言語コード: "ja" = 日本語, "en" = 英語
+SERVICE_SUPPORTED_LANGUAGES: dict[str, frozenset] = {
+    "amazon_prime_video": frozenset({"ja", "en"}),
+    "netflix":            frozenset({"ja", "en"}),
+    "hulu":               frozenset({"ja", "en"}),
+    "unext":              frozenset({"ja"}),
+    "disney_plus":        frozenset({"ja", "en"}),
+    "dmm_tv":             frozenset({"ja"}),
+    "apple_tv":           frozenset({"en"}),
+    "youtube":            frozenset({"ja", "en"}),
+}
+
 PER_PAGE = 20
 
 
@@ -395,6 +408,13 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
                 return True, f"updated_within_30d={updated_at_str[:10]}"
         except ValueError:
             logger.warning("post_id=%d service=%s updated_at の形式が不正: %r", post.get("id"), service, updated_at_str)
+
+    # 5. 言語ミスマッチ（languages が未設定の場合はスキップしない）
+    post_languages = set(acf.get("languages") or [])
+    if post_languages:
+        supported = SERVICE_SUPPORTED_LANGUAGES.get(service, frozenset({"ja", "en"}))
+        if not post_languages & supported:
+            return True, f"language_mismatch={','.join(sorted(post_languages))}"
 
     return False, ""
 

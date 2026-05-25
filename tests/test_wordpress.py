@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from utils.wordpress import should_skip, update_cooldown
+from utils.wordpress import SERVICE_SUPPORTED_LANGUAGES, should_skip, update_cooldown
 
 
 # ---------------------------------------------------------------------------
@@ -24,23 +24,23 @@ def _make_post(
     status: str = "",
     release_year: int = 0,
     unavailable_check_count: int = 0,
+    languages: list | None = None,
 ) -> dict:
     """テスト用の最小限の post dict を生成する。"""
-    return {
-        "id": 1,
-        "slug": "test-movie",
-        "acf": {
-            "scraping_disabled": scraping_disabled,
-            "scraping_cooldown_until": cooldown_until,
-            "release_year": release_year,
-            "unavailable_check_count": unavailable_check_count,
-            service: {
-                "scraping_url": scraping_url,
-                "status": status,
-                "updated_at": updated_at,
-            },
+    acf: dict = {
+        "scraping_disabled": scraping_disabled,
+        "scraping_cooldown_until": cooldown_until,
+        "release_year": release_year,
+        "unavailable_check_count": unavailable_check_count,
+        service: {
+            "scraping_url": scraping_url,
+            "status": status,
+            "updated_at": updated_at,
         },
     }
+    if languages is not None:
+        acf["languages"] = languages
+    return {"id": 1, "slug": "test-movie", "acf": acf}
 
 
 TODAY = date(2026, 5, 25)
@@ -165,6 +165,90 @@ class TestShouldSkip:
         post = _make_post(cooldown_until=future, scraping_url="")
         skip, reason = should_skip(post, "netflix", TODAY)
         assert "cooldown_until" in reason
+
+
+    # --- 5. 言語ミスマッチ ---
+
+    def test_skip_if_ja_only_post_and_apple_tv(self):
+        """ja のみの作品 → apple_tv（en のみ対応）はスキップ"""
+        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", languages=["ja"])
+        skip, reason = should_skip(post, "apple_tv", TODAY)
+        assert skip is True
+        assert reason == "language_mismatch=ja"
+
+    def test_skip_if_en_only_post_and_dmm_tv(self):
+        """en のみの作品 → dmm_tv（ja のみ対応）はスキップ"""
+        post = _make_post(service="dmm_tv", scraping_url="https://tv.dmm.com/vod/detail/?season=123", languages=["en"])
+        skip, reason = should_skip(post, "dmm_tv", TODAY)
+        assert skip is True
+        assert reason == "language_mismatch=en"
+
+    def test_no_skip_if_ja_en_both(self):
+        """ja + en の両方が設定されていれば全サービスをスキップしない"""
+        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", languages=["ja", "en"])
+        skip, _ = should_skip(post, "apple_tv", TODAY)
+        assert skip is False
+
+    def test_no_skip_if_languages_empty(self):
+        """languages が空リストのときはスキップしない"""
+        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", languages=[])
+        skip, _ = should_skip(post, "apple_tv", TODAY)
+        assert skip is False
+
+    def test_no_skip_if_languages_not_set(self):
+        """languages フィールド未設定（None）のときはスキップしない"""
+        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", languages=None)
+        skip, _ = should_skip(post, "apple_tv", TODAY)
+        assert skip is False
+
+    def test_no_skip_en_post_on_netflix(self):
+        """en のみの作品でも netflix（ja + en 対応）はスキップしない"""
+        post = _make_post(languages=["en"])
+        skip, _ = should_skip(post, "netflix", TODAY)
+        assert skip is False
+
+    def test_no_skip_ja_post_on_netflix(self):
+        """ja のみの作品でも netflix（ja + en 対応）はスキップしない"""
+        post = _make_post(languages=["ja"])
+        skip, _ = should_skip(post, "netflix", TODAY)
+        assert skip is False
+
+    def test_language_mismatch_priority_after_updated_at(self):
+        """言語ミスマッチは updated_at チェックより後（優先順5）"""
+        # updated_at が古く（スキップ対象外）、言語ミスマッチ
+        old = (TODAY - timedelta(days=60)).isoformat()
+        post = _make_post(
+            service="apple_tv",
+            scraping_url="https://tv.apple.com/jp/movie/test/id1",
+            updated_at=old,
+            languages=["ja"],
+        )
+        skip, reason = should_skip(post, "apple_tv", TODAY)
+        assert skip is True
+        assert "language_mismatch" in reason
+
+
+class TestServiceSupportedLanguages:
+    """SERVICE_SUPPORTED_LANGUAGES 定数の整合性チェック。"""
+
+    def test_all_services_defined(self):
+        """全 SERVICES がマッピングに含まれている"""
+        from utils.wordpress import SERVICES
+        for svc in SERVICES:
+            assert svc in SERVICE_SUPPORTED_LANGUAGES, f"{svc} がマッピングに未定義"
+
+    def test_dmm_tv_ja_only(self):
+        assert SERVICE_SUPPORTED_LANGUAGES["dmm_tv"] == frozenset({"ja"})
+
+    def test_apple_tv_en_only(self):
+        assert SERVICE_SUPPORTED_LANGUAGES["apple_tv"] == frozenset({"en"})
+
+    def test_unext_ja_only(self):
+        assert SERVICE_SUPPORTED_LANGUAGES["unext"] == frozenset({"ja"})
+
+    def test_netflix_both(self):
+        assert "ja" in SERVICE_SUPPORTED_LANGUAGES["netflix"]
+        assert "en" in SERVICE_SUPPORTED_LANGUAGES["netflix"]
 
 
 # ---------------------------------------------------------------------------

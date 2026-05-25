@@ -1096,6 +1096,32 @@
                 ]
             },
             {
+                "key": "field_vod_languages",
+                "label": "言語",
+                "name": "languages",
+                "aria-label": "",
+                "type": "checkbox",
+                "instructions": "作品の言語を選択。スクレイピング対象サービスの絞り込みに使用（例: ja のみ → Apple TV+ をスキップ）。未選択の場合は全サービスをチェック。",
+                "required": 0,
+                "conditional_logic": 0,
+                "wrapper": {
+                    "width": "",
+                    "class": "",
+                    "id": ""
+                },
+                "choices": {
+                    "ja": "日本語",
+                    "en": "英語"
+                },
+                "default_value": [],
+                "return_format": "value",
+                "layout": "horizontal",
+                "toggle": 0,
+                "allow_custom": 0,
+                "save_custom": 0,
+                "allow_in_bindings": 0
+            },
+            {
                 "key": "field_scraping_disabled",
                 "label": "スクレイピング停止",
                 "name": "scraping_disabled",
