@@ -117,25 +117,25 @@ INFO  QUOTA total=30 skipped=457
 
 ### Phase A: 日次クォータ + ソート実装
 
-- [ ] `checker.py` に `_all_updated_at_empty(post) -> bool` を追加
-- [ ] `checker.py` に `_has_any_streaming(post) -> bool` を追加
-- [ ] `checker.py` に `_sort_key_phase1(post) -> tuple` を追加
-- [ ] `checker.py` に `_sort_key_phase2(post) -> tuple` を追加
-- [ ] `checker.py` の `run()` に `_select_targets(posts, quota) -> list` を追加
-  - フェーズ1 対象 post を洗い出し
-  - フェーズ1 対象が quota 未満なら残り枠をフェーズ2 で補完
-  - ログ出力（phase, 各件数）
-- [ ] `run()` の post ループを `_select_targets()` の戻り値に差し替え
-- [ ] 環境変数 `DAILY_QUOTA`（デフォルト 30）を `run()` で参照
-- [ ] `--force` 時はクォータを無視して全件処理（既存挙動を維持）
+- [x] `checker.py` に `_all_updated_at_empty(post) -> bool` を追加
+- [x] `checker.py` に `_has_any_streaming(post) -> bool` を追加
+- [x] `checker.py` に `_sort_key_phase1(post) -> tuple` を追加
+- [x] `checker.py` に `_sort_key_phase2(post) -> tuple` を追加
+- [x] `checker.py` の `run()` に `_select_targets(posts, quota) -> list` を追加
+  - [x] フェーズ1 対象 post を洗い出し
+  - [x] フェーズ1 対象が quota 未満なら残り枠をフェーズ2 で補完
+  - [x] ログ出力（phase, 各件数）
+- [x] `run()` の post ループを `_select_targets()` の戻り値に差し替え
+- [x] 環境変数 `DAILY_QUOTA`（デフォルト 30）を `run()` で参照
+- [x] `--force` 時はクォータを無視して全件処理（既存挙動を維持）
 
 ### Phase B: ユニットテスト
 
-- [ ] `tests/test_quota.py` を新規作成
-  - [ ] `_all_updated_at_empty`：全空欄 / 一部あり / 全あり
-  - [ ] `_sort_key_phase1`：release_year ソート順・空欄は最後尾
-  - [ ] `_sort_key_phase2`：配信中優先 → 新作優先 → updated_at 古い順
-  - [ ] `_select_targets`：フェーズ1のみ / フェーズ2のみ / 混在 / quota 未満
+- [x] `tests/test_quota.py` を新規作成
+  - [x] `_all_updated_at_empty`：全空欄 / 一部あり / 全あり
+  - [x] `_sort_key_phase1`：release_year ソート順・空欄は最後尾
+  - [x] `_sort_key_phase2`：配信中優先 → 新作優先 → updated_at 古い順
+  - [x] `_select_targets`：フェーズ1のみ / フェーズ2のみ / 混在 / quota 未満
 
 ### Phase C: ログ・運用確認
 
