@@ -13,6 +13,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date, datetime
 from typing import Optional
@@ -59,6 +60,87 @@ _CHECKER_MAP: dict[str, type] = {
 
 MAX_CONSECUTIVE_ERRORS = 3
 
+_RELEASE_YEAR_FALLBACK_PHASE1 = 9999  # ASC ソートで空欄を最後尾にする
+_RELEASE_YEAR_FALLBACK_PHASE2 = 0     # DESC(-) ソートで空欄を最後尾にする
+_DATE_FAR_FUTURE = date(9999, 12, 31)
+
+
+def _all_updated_at_empty(post: dict) -> bool:
+    """全サービスの updated_at が空欄なら True（未スクレイピング post の判定）。"""
+    acf = post.get("acf") or {}
+    return all(not (acf.get(svc) or {}).get("updated_at") for svc in SERVICES)
+
+
+def _has_any_streaming(post: dict) -> bool:
+    """1つでも配信中のサービスがあれば True。"""
+    acf = post.get("acf") or {}
+    return any((acf.get(svc) or {}).get("status") == "streaming" for svc in SERVICES)
+
+
+def _min_updated_at(post: dict) -> date:
+    """全サービス中で最も古い updated_at を返す。なければ _DATE_FAR_FUTURE。"""
+    acf = post.get("acf") or {}
+    dates = []
+    for svc in SERVICES:
+        val = (acf.get(svc) or {}).get("updated_at") or ""
+        if val:
+            try:
+                dates.append(date.fromisoformat(val[:10]))
+            except ValueError:
+                pass
+    return min(dates) if dates else _DATE_FAR_FUTURE
+
+
+def _sort_key_phase1(post: dict) -> tuple:
+    """フェーズ1ソートキー: release_year ASC（空欄=9999最後尾）, min_updated_at ASC。"""
+    acf = post.get("acf") or {}
+    try:
+        year = int(acf.get("release_year") or 0) or _RELEASE_YEAR_FALLBACK_PHASE1
+    except (ValueError, TypeError):
+        year = _RELEASE_YEAR_FALLBACK_PHASE1
+    return (year, _min_updated_at(post))
+
+
+def _sort_key_phase2(post: dict) -> tuple:
+    """フェーズ2ソートキー: 配信中先頭, release_year DESC（空欄=最後尾）, min_updated_at ASC。"""
+    acf = post.get("acf") or {}
+    streaming_last = 0 if _has_any_streaming(post) else 1
+    try:
+        year = int(acf.get("release_year") or 0) or _RELEASE_YEAR_FALLBACK_PHASE2
+    except (ValueError, TypeError):
+        year = _RELEASE_YEAR_FALLBACK_PHASE2
+    return (streaming_last, -year, _min_updated_at(post))
+
+
+def _select_targets(candidates: list[dict], quota: int) -> tuple[list[dict], int, int]:
+    """クォータ内で処理する post を優先順に選ぶ。
+
+    フェーズ1（未スクレイピング post）を先に消化し、枠が余ればフェーズ2（通常優先）で補完。
+
+    Returns:
+        (targets, phase1_count, phase2_count)
+    """
+    phase1 = sorted(
+        [p for p in candidates if _all_updated_at_empty(p)],
+        key=_sort_key_phase1,
+    )
+    p1_take = min(len(phase1), quota)
+    targets: list[dict] = list(phase1[:p1_take])
+
+    remaining = quota - p1_take
+    if remaining > 0:
+        p1_ids = {p["id"] for p in targets}
+        phase2 = sorted(
+            [p for p in candidates if p["id"] not in p1_ids],
+            key=_sort_key_phase2,
+        )
+        p2_take = min(len(phase2), remaining)
+        targets.extend(phase2[:p2_take])
+    else:
+        p2_take = 0
+
+    return targets, p1_take, p2_take
+
 
 def run(dry_run: bool = False, force: bool = False, slug: Optional[str] = None) -> dict:
     """WordPress 投稿の VOD 配信状況チェックを実行する。
@@ -79,24 +161,26 @@ def run(dry_run: bool = False, force: bool = False, slug: Optional[str] = None) 
     rate_limiter = RateLimiter()
     current_service: Optional[str] = None
     today = date.today()
+    quota = len(posts) if force else int(os.environ.get("DAILY_QUOTA", "30"))
 
-    for post in posts:
-        post_id = post["id"]
-        post_slug = post.get("slug", "")
+    # slug フィルタ
+    if slug:
+        before = len(posts)
+        posts = [p for p in posts if p.get("slug") == slug]
+        skipped += before - len(posts)
 
-        # slug フィルタ
-        if slug and post_slug != slug:
-            skipped += 1
-            continue
-
-        # 投稿レベルのスキップ判定（scraping_disabled / cooldown）
-        if not force:
+    # 投稿レベルのスキップ判定（scraping_disabled / cooldown）
+    candidates: list[dict] = []
+    if force:
+        candidates = list(posts)
+    else:
+        for post in posts:
+            post_slug = post.get("slug", "")
             acf = post.get("acf") or {}
             if acf.get("scraping_disabled"):
                 logger.info("SKIP  [%s] scraping_disabled=true", post_slug)
                 skipped += 1
                 continue
-
             cooldown_str = acf.get("scraping_cooldown_until") or ""
             if cooldown_str:
                 try:
@@ -107,7 +191,20 @@ def run(dry_run: bool = False, force: bool = False, slug: Optional[str] = None) 
                         continue
                 except ValueError:
                     logger.warning("[%s] scraping_cooldown_until の形式が不正: %r", post_slug, cooldown_str)
+            candidates.append(post)
 
+    # 日次クォータ適用（優先順位ソート → スライス）
+    targets, phase1_count, phase2_count = _select_targets(candidates, quota)
+    quota_skipped = len(candidates) - len(targets)
+    skipped += quota_skipped
+    logger.info(
+        "QUOTA phase1=%d phase2=%d total=%d quota_skipped=%d",
+        phase1_count, phase2_count, len(targets), quota_skipped,
+    )
+
+    for post in targets:
+        post_id = post["id"]
+        post_slug = post.get("slug", "")
         post_title = (post.get("title") or {}).get("rendered") or post_slug
         vod_term_ids = get_vod_term_ids(post)
         post_checked = False  # この投稿で1サービスでも処理したか
