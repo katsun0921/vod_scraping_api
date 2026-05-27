@@ -106,9 +106,19 @@ def run(
             skipped += 1
             continue
 
+        # lang フィールドに応じて country / language を切り替え
+        lang = acf.get("lang") or "ja"
+        if lang == "en":
+            jw_country, jw_language = "US", "en"
+        else:
+            jw_country, jw_language = "JP", "ja"
+
         # JustWatch で検索（title → slug の順で試す）
         try:
-            found_urls = search_urls(title=post_title, slug=post_slug)
+            found_urls = search_urls(
+                title=post_title, slug=post_slug,
+                country=jw_country, language=jw_language,
+            )
         except RuntimeError as e:
             logger.error("ERROR [%s] JustWatch 検索失敗: %s", post_slug, e)
             errors += 1

@@ -335,10 +335,10 @@ class TestPatchMultiServiceFields:
 
 class TestJustwatchBatchRun:
 
-    def _make_post(self, post_id: int, slug: str, title: str, missing: list[str]) -> dict:
+    def _make_post(self, post_id: int, slug: str, title: str, missing: list[str], lang: str = "ja") -> dict:
         """missing に含まれるサービスは scraping_url 空、それ以外は設定済みにする。"""
         from utils.wordpress import SERVICES
-        acf: dict = {}
+        acf: dict = {"lang": lang}
         for svc in SERVICES:
             if svc in missing:
                 acf[svc] = {"scraping_url": ""}
@@ -452,6 +452,56 @@ class TestJustwatchBatchRun:
         assert result["errors"] == 1
         assert result["registered"] == 0
         assert result["unavailable"] == 0
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_lang_en_uses_us_country(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """lang=en の投稿は country=US / language=en で JustWatch を検索する。"""
+        mock_get_posts.return_value = [
+            self._make_post(1, "the-revenant", "The Revenant", ["netflix"], lang="en"),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        justwatch_batch.run()
+
+        mock_search.assert_called_once()
+        _, kwargs = mock_search.call_args
+        assert kwargs.get("country") == "US"
+        assert kwargs.get("language") == "en"
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_lang_ja_uses_jp_country(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """lang=ja の投稿は country=JP / language=ja で JustWatch を検索する。"""
+        mock_get_posts.return_value = [
+            self._make_post(1, "john-wick", "ジョン・ウィック", ["netflix"], lang="ja"),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        justwatch_batch.run()
+
+        mock_search.assert_called_once()
+        _, kwargs = mock_search.call_args
+        assert kwargs.get("country") == "JP"
+        assert kwargs.get("language") == "ja"
 
 
 class TestJustwatchBatchSlackNotify:
