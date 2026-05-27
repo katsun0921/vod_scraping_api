@@ -200,8 +200,6 @@ gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
 | `roles/artifactregistry.writer` | Artifact Registry へのイメージ書き込み |
 | `roles/iam.serviceAccountUser` | Cloud Run デプロイ時に SA を指定するために必要 |
 
-> ⚠ `roles/sheets.editor` は GCP IAM には存在しない。Sheets へのアクセスは Google Sheets 側の共有設定で管理する。
-
 ---
 
 ## Step 5: Workload Identity Pool と SA を紐付け

@@ -10,9 +10,7 @@ vod-scraping-api を Google Cloud Run（第2世代）へデプロイする手順
 |------|------|
 | Docker コンテナ化 | ✅ 完了 |
 | Cloud Run デプロイ | ✅ 完了 |
-| Sheets アクセス権限 | ✅ 完了 |
-| GAS Config 設定 | ✅ 完了 |
-| CI/CD（GitHub Actions） | ⏳ 未 |
+| CI/CD（GitHub Actions） | ✅ 完了 |
 
 ---
 
@@ -35,8 +33,7 @@ gcloud config get project  # 確認
 gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com \
-  sheets.googleapis.com
+  artifactregistry.googleapis.com
 ```
 
 ---
@@ -74,7 +71,7 @@ gcloud run deploy vod-scraping-api \
   --region asia-northeast1 \
   --execution-environment gen2 \
   --no-allow-unauthenticated \
-  --set-env-vars SPREADSHEET_ID=YOUR_SPREADSHEET_ID \
+  --set-env-vars WP_API_URL=YOUR_WP_API_URL,WP_USER=YOUR_WP_USER,WP_APP_PASSWORD=YOUR_WP_APP_PASSWORD \
   --memory 512Mi \
   --timeout 540 \
   --max-instances 1 \
@@ -88,7 +85,7 @@ gcloud run deploy vod-scraping-api \
 | `--execution-environment gen2` | 第2世代 | 高速起動・長いタイムアウト対応 |
 | `--no-allow-unauthenticated` | 認証必須 | IAM で保護 |
 | `--timeout 540` | 9分 | 全VOD確認に時間がかかるため |
-| `--max-instances 1` | 最大1インスタンス | シートの同時書き込み競合を防ぐ |
+| `--max-instances 1` | 最大1インスタンス | 同時書き込み競合を防ぐ |
 | `--concurrency 1` | 同時リクエスト1 | 同上 |
 
 デプロイ完了後に URL が表示される：
@@ -113,31 +110,7 @@ curl -X GET \
 
 ---
 
-## Step 6: Google Sheets へのアクセス権限付与
-
-Cloud Run はデフォルトのコンピューティングサービスアカウントで動作する。
-スプレッドシート側でこのアカウントに編集権限を付与する。
-
-**サービスアカウントのメールアドレス形式：**
-```
-YOUR_PROJECT_NUMBER-compute@developer.gserviceaccount.com
-```
-
-プロジェクト番号の確認：
-```bash
-gcloud projects describe YOUR_PROJECT_ID --format "value(projectNumber)"
-```
-
-**Sheets 側の設定：**
-1. 対象のスプレッドシートを開く
-2. 右上「共有」をクリック
-3. 上記のサービスアカウントのメールアドレスを **編集者** として追加
-
-> ⚠ GCP IAM の `roles/sheets.editor` は存在しない。Sheets の共有設定のみで権限管理する。
-
----
-
-## Step 7: 動作確認（本番実行）
+## Step 6: 動作確認（本番実行）
 
 ```bash
 curl -X POST \
@@ -146,18 +119,6 @@ curl -X POST \
 
 # {"processed": N, "skipped": N, "errors": 0} が返れば成功
 ```
-
----
-
-## Step 8: GAS Config シートの更新
-
-Google Sheets の Config シートに以下を設定する：
-
-| key | value |
-|---|---|
-| `VOD_CHECKER_URL` | `https://vod-scraping-api-XXXX-an.a.run.app` |
-
-設定後、GAS メニュー「VOD管理 → VOD状況を更新（強制実行）」から動作確認できる。
 
 ---
 
@@ -201,7 +162,6 @@ gcloud logging read \
 |------|------|------|
 | `gcloud builds submit` が失敗 | API 未有効化 | Step 1 の API 有効化を再確認 |
 | Cloud Run が 401 | 認証トークンなし | `-H "Authorization: Bearer $(gcloud auth print-identity-token)"` を追加 |
-| Sheets への書き込みが 403 | 権限不足 | Step 6 の Sheets 共有設定を確認 |
 | タイムアウト（540秒超） | 対象行が多すぎる | `--timeout 600` に延長またはバッチサイズを減らす |
 | Amazon: ロボット検出 | 連続アクセス | 実行頻度を下げる |
 
@@ -210,11 +170,13 @@ gcloud logging read \
 ## 全体フロー
 
 ```
-GAS メニュー or Cloud Scheduler
-         ↓ HTTP POST（IAM 認証）
+Cloud Scheduler or 手動 HTTP POST（IAM 認証）
+         ↓
 Cloud Run（第2世代）vod-scraping-api
+         ↓ WordPress REST API で投稿データ取得
+WordPress
          ↓ HTTP スクレイピング
 各 VOD サービスのページ
-         ↓ Google Sheets API で書き込み
-VODs シート（status / price / updated_at を更新）
+         ↓ WordPress REST API で status / price / updated_at を更新
+WordPress
 ```
