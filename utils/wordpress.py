@@ -625,7 +625,7 @@ def get_posts_missing_url(
 ) -> list[dict]:
     """scraping_url が 1 件以上 空のサービスを持つ publish 投稿を返す。
 
-    月次 JustWatch バッチ用。
+    週次 JustWatch バッチ用。
     slug を指定した場合は該当する 1 件のみを取得する。
     limit を指定した場合は最大 limit 件でフィルタ後の結果を打ち切る。
 
@@ -722,16 +722,16 @@ def get_all_posts_for_patch(
     slug: Optional[str] = None,
     limit: Optional[int] = None,
 ) -> list[dict]:
-    """月次パッチ用: 全 publish 投稿を取得する（scraping_url 有無問わず）。
+    """週次パッチ用: 全 publish 投稿を取得する（scraping_url 有無問わず）。
 
     通常の get_posts() は scraping_url が1件以上ある投稿のみを返すが、
     この関数は scraping_url がない投稿も含めて全件返す。
-    月次パッチでは JustWatch による URL 探索も行うため、URL なし投稿も対象にする。
+    週次パッチでは JustWatch による URL 探索も行うため、URL なし投稿も対象にする。
 
     除外条件:
       - scraping_disabled=true の投稿（管理者が明示的に停止）
 
-    月次パッチでは cooldown を無視するため、cooldown フィルタは適用しない。
+    週次パッチでは cooldown を無視するため、cooldown フィルタは適用しない。
     バッチ番号フィルタ（post_id % 4）は呼び出し元で適用する。
 
     Args:
@@ -788,7 +788,7 @@ def get_all_posts_for_patch(
         filtered = filtered[:limit]
 
     logger.info(
-        "全投稿 %d 件中、月次パッチ対象: %d 件（scraping_disabled 除外済み, limit=%s）",
+        "全投稿 %d 件中、週次パッチ対象: %d 件（scraping_disabled 除外済み, limit=%s）",
         len(posts), len(filtered), limit,
     )
     return filtered

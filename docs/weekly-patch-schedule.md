@@ -1,8 +1,8 @@
-# 月次パッチスケジューリング仕様
+# 週次パッチスケジューリング仕様
 
 ## 概要
 
-月次パッチは、VOD 投稿全件を月1サイクルで体系的に確認・更新する仕組み。
+週次パッチは、VOD 投稿全件を月1サイクルで体系的に確認・更新する仕組み。
 通常の日次スクレイピング（`checker.py`）とは独立して動作し、以下を1パスで統合処理する。
 
 - **URL あり投稿** → 既存チェッカーでステータス確認
@@ -85,7 +85,7 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 
 ### 日次スクレイピングとの違い
 
-| 項目 | 日次 checker.py | 月次 monthly_patch.py |
+| 項目 | 日次 checker.py | 週次 weekly_patch.py |
 |------|----------------|-----------------------|
 | クールダウン | 厳守 | **無視**（直近7日以内のみスキップ） |
 | URL なし投稿 | スキップ | **JustWatch で探索** |
@@ -94,7 +94,7 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 
 ---
 
-## 月次予算
+## 週次予算
 
 ### 1バッチ（100件）の予算
 
@@ -106,7 +106,7 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 | URL スクレイピング（Playwright） | ~60回 | 15秒/回 | ~15分 |
 | **合計** | | | **約36〜40分** |
 
-### 月次合計（4バッチ）
+### 週次合計（4バッチ）
 
 | 指標 | 推定値 |
 |------|--------|
@@ -132,9 +132,9 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 
 ## API エンドポイント
 
-### `POST /monthly-patch`
+### `POST /weekly-patch`
 
-月次パッチを実行する。
+週次パッチを実行する。
 
 **リクエストボディ（JSON）:**
 
@@ -187,11 +187,11 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 
 ```yaml
 # cloud-scheduler.yaml（参考）
-- name: monthly-patch-weekly
+- name: weekly-patch-weekly
   schedule: "0 2 * * 1"       # 毎週月曜 02:00 JST (UTC+9 → UTC: 日曜 17:00)
   timeZone: "Asia/Tokyo"
   httpTarget:
-    uri: https://<CLOUD_RUN_URL>/monthly-patch
+    uri: https://<CLOUD_RUN_URL>/weekly-patch
     httpMethod: POST
     body: ""                  # batch は日付から自動判定
     headers:
@@ -206,13 +206,13 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 
 ```bash
 # 第1週バッチを手動実行
-curl -X POST https://<CLOUD_RUN_URL>/monthly-patch \
+curl -X POST https://<CLOUD_RUN_URL>/weekly-patch \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
   -H "Content-Type: application/json" \
   -d '{"batch": 0, "limit": 100}'
 
 # ドライラン（対象確認のみ）
-curl -X POST https://<CLOUD_RUN_URL>/monthly-patch \
+curl -X POST https://<CLOUD_RUN_URL>/weekly-patch \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
   -H "Content-Type: application/json" \
   -d '{"batch": 0, "dry_run": true}'
@@ -224,28 +224,28 @@ curl -X POST https://<CLOUD_RUN_URL>/monthly-patch \
 
 ```bash
 # 今週のバッチを自動判定して実行
-python monthly_patch.py
+python weekly_patch.py
 
 # バッチ0（第1週）を強制実行
-python monthly_patch.py --batch 0
+python weekly_patch.py --batch 0
 
 # 対象確認のみ（更新なし）
-python monthly_patch.py --dry-run
+python weekly_patch.py --dry-run
 
 # 最大10件でテスト
-python monthly_patch.py --limit 10 --dry-run
+python weekly_patch.py --limit 10 --dry-run
 
 # 特定 slug をデバッグ
-python monthly_patch.py --slug john-wick
+python weekly_patch.py --slug john-wick
 ```
 
 ---
 
 ## スキップ条件
 
-月次パッチでのスキップ条件は通常の日次チェックより緩い。
+週次パッチでのスキップ条件は通常の日次チェックより緩い。
 
-| 条件 | 日次 checker.py | 月次 monthly_patch.py |
+| 条件 | 日次 checker.py | 週次 weekly_patch.py |
 |------|----------------|-----------------------|
 | `scraping_disabled=true` | スキップ ✓ | スキップ ✓ |
 | `scraping_cooldown_until` 期間中 | スキップ ✓ | **無視** ✗ |
@@ -259,8 +259,8 @@ python monthly_patch.py --slug john-wick
 ## ファイル構成
 
 ```
-monthly_patch.py          # 月次パッチ統合ランナー（新規）
-main.py                   # POST /monthly-patch エンドポイント追加
+weekly_patch.py          # 週次パッチ統合ランナー（新規）
+main.py                   # POST /weekly-patch エンドポイント追加
 utils/wordpress.py        # get_all_posts_for_patch() 追加
-docs/monthly-patch-schedule.md  # 本ドキュメント
+docs/weekly-patch-schedule.md  # 本ドキュメント
 ```

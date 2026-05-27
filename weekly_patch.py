@@ -1,4 +1,4 @@
-"""月次パッチ統合ランナー（旧 checker.py + justwatch_batch.py を統合）。
+"""週次パッチ統合ランナー（URLチェック + JustWatch検索）。
 
 各 VOD 投稿に対して以下を1パスで実行する:
   - scraping_url が設定済みのサービス → 既存チェッカーでステータス確認
@@ -17,7 +17,7 @@
   batch 3 (post_id % 4 == 3) → 毎月第4月曜
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-月次予算（100件/バッチ × 4バッチ = 400件/月）
+週次予算（100件/バッチ × 4バッチ = 400件/月）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   JustWatch GraphQL  : 最大 400件 × 1〜2回 = 400〜800 calls/月
   URL スクレイピング : 400件 × 平均3サービス ≈ 1,200 calls/月
@@ -29,15 +29,15 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Cloud Scheduler 推奨設定（毎週月曜 02:00 JST）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  POST /monthly-patch  ← batch は実行日から自動判定
+  POST /weekly-patch  ← batch は実行日から自動判定
 
 Usage:
-    python monthly_patch.py              # 今週のバッチを日付から自動判定
-    python monthly_patch.py --batch 0    # バッチ0（第1週）を強制実行
-    python monthly_patch.py --force      # 7日以内の更新済みもスキップしない
-    python monthly_patch.py --dry-run    # 対象の確認のみ（更新なし）
-    python monthly_patch.py --limit 50   # 最大50件のみ処理
-    python monthly_patch.py --slug john-wick  # 特定 slug のみ
+    python weekly_patch.py              # 今週のバッチを日付から自動判定
+    python weekly_patch.py --batch 0    # バッチ0（第1週）を強制実行
+    python weekly_patch.py --force      # 7日以内の更新済みもスキップしない
+    python weekly_patch.py --dry-run    # 対象の確認のみ（更新なし）
+    python weekly_patch.py --limit 50   # 最大50件のみ処理
+    python weekly_patch.py --slug john-wick  # 特定 slug のみ
 """
 
 import argparse
@@ -104,7 +104,7 @@ DEFAULT_BATCH_SIZE = 100
 # JustWatch リクエスト間隔（秒）
 _JW_WAIT_SECONDS = 3.0
 
-# 月次パッチで直近何日以内に更新済みのサービスをスキップするか
+# 週次パッチで直近何日以内に更新済みのサービスをスキップするか
 # force=True のときはこのチェックをスキップする
 _PATCH_SKIP_WITHIN_DAYS = 7
 
@@ -305,7 +305,7 @@ def run(
     force: bool = False,
     slug: Optional[str] = None,
 ) -> dict:
-    """月次パッチを実行する。
+    """週次パッチを実行する。
 
     バッチ番号が None の場合は今日の日付から自動判定する。
 
@@ -327,7 +327,7 @@ def run(
         slug   : 指定した場合、該当 slug のみ処理する。
 
     Returns:
-        月次パッチの実行結果と予算レポートの辞書。
+        週次パッチの実行結果と予算レポートの辞書。
 
     Example return value::
 
@@ -357,7 +357,7 @@ def run(
     cycle = today.strftime("%Y-%m")
 
     logger.info(
-        "月次パッチ開始: batch=%d cycle=%s limit=%d dry_run=%s force=%s",
+        "週次パッチ開始: batch=%d cycle=%s limit=%d dry_run=%s force=%s",
         batch, cycle, limit, dry_run, force,
     )
 
@@ -708,7 +708,7 @@ def _build_result(
             "estimated_minutes": estimated_minutes,
         },
     }
-    logger.info("月次パッチ完了: %s", result)
+    logger.info("週次パッチ完了: %s", result)
     return result
 
 
@@ -726,7 +726,7 @@ def main() -> None:
         pass
 
     parser = argparse.ArgumentParser(
-        description="月次パッチ統合ランナー（URLチェック + JustWatch検索）",
+        description="週次パッチ統合ランナー（URLチェック + JustWatch検索）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 バッジ方式（スケジューリング）:

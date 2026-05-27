@@ -1,11 +1,11 @@
-"""monthly_patch.py の優先順位ソート・クォータ選択ロジックのユニットテスト。
+"""weekly_patch.py の優先順位ソート・クォータ選択ロジックのユニットテスト。
 
 外部APIへのアクセスは一切行わない。
 """
 
 from datetime import date
 
-from monthly_patch import (
+from weekly_patch import (
     _DATE_FAR_FUTURE,
     _all_updated_at_empty,
     _has_any_streaming,
