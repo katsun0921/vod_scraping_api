@@ -169,3 +169,50 @@ def update_cooldown(post, today):
 
 ### 管理者が手動で `scraping_disabled` を解除
 → `scraping_cooldown_until` をクリアすれば次回バッチで即チェック対象になる。
+
+---
+
+## JustWatch 月次バッチ仕様（`justwatch_batch.py`）
+
+`scraping_url` が未設定のサービスに対して JustWatch 非公式 API で URL を検索し、
+見つかれば `scraping_url` を登録、見つからなければ `status=unavailable` を書き込む。
+
+### 実行タイミング
+
+- **自動**: 毎月1日 02:00 JST（GitHub Actions cron）
+- **手動**: GitHub Actions `workflow_dispatch` / Cloud Run `POST /justwatch`
+
+### 処理対象の選定条件
+
+以下をすべて満たす投稿のみ処理する（`get_posts_missing_url` でフィルタリング）。
+
+| 条件 | 内容 |
+|---|---|
+| `scraping_disabled=false` | 管理者停止フラグが OFF |
+| `scraping_cooldown_until` が今日より前 | クールダウン期間外 |
+| 対象サービスの `scraping_url` が空 | URL 未登録のサービスが1件以上ある |
+| 対象サービスの `updated_at` が1か月以上前または未設定 | 直近1か月以内に確認済みのサービスは再検索しない |
+
+### 処理結果
+
+| 結果 | 書き込み内容 |
+|---|---|
+| URL 発見 | `scraping_url` に URL を登録（`registered` カウント） |
+| URL 未発見 | `status=unavailable` + `updated_at=現在日時`（`unavailable` カウント） |
+
+### Slack 通知
+
+- **開始時**: 処理対象件数・limit を通知
+- **投稿ごと**: title / slug・登録 URL または unavailable サービス一覧を通知
+- **完了時**: registered / unavailable / skipped / errors のサマリーを通知
+- `dry_run=True` のときは通知しない
+
+### 1投稿あたりのリクエスト数
+
+| 処理 | リクエスト数 |
+|---|---|
+| JustWatch GraphQL 検索 | 1〜2回（title → slug の順で再試行） |
+| WordPress GET（既存 ACF 取得） | 1回 |
+| WordPress PATCH（全サービス一括更新） | 1回 |
+
+→ 合計 **3〜4リクエスト / 投稿**、投稿間に 3秒のウェイトを挿入。

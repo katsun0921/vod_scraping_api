@@ -665,11 +665,23 @@ def get_posts_missing_url(
             except ValueError:
                 pass
 
-        has_missing = any(
-            not (acf.get(svc) or {}).get("scraping_url")
-            for svc in target_services
-        )
-        if has_missing:
+        # scraping_url が空 かつ updated_at が1か月以上前（または未設定）のサービスが1件以上あるか判定
+        one_month_ago = today.replace(month=today.month - 1) if today.month > 1 else today.replace(year=today.year - 1, month=12)
+        has_target = False
+        for svc in target_services:
+            svc_data = acf.get(svc) or {}
+            if svc_data.get("scraping_url"):
+                continue  # scraping_url 設定済みはスキップ対象外
+            updated_at_str = (svc_data.get("updated_at") or "")[:10]
+            if updated_at_str:
+                try:
+                    if date.fromisoformat(updated_at_str) > one_month_ago:
+                        continue  # 1か月未満はスキップ
+                except ValueError:
+                    pass
+            has_target = True
+            break
+        if has_target:
             filtered.append(post)
 
     if limit is not None:
