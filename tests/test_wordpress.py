@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from utils.wordpress import SERVICE_SUPPORTED_LANGUAGES, should_skip, update_cooldown
+from utils.wordpress import SERVICE_REQUIRED_CATEGORY_IDS, SERVICE_SUPPORTED_LANGUAGES, should_skip, update_cooldown
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +27,7 @@ def _make_post(
     lang: str | None = None,
     is_exclusive: bool = False,
     exclusive_service: str = "",
+    categories: list[int] | None = None,
 ) -> dict:
     """テスト用の最小限の post dict を生成する。"""
     acf: dict = {
@@ -44,7 +45,10 @@ def _make_post(
     }
     if lang is not None:
         acf["lang"] = lang
-    return {"id": 1, "slug": "test-movie", "acf": acf}
+    post: dict = {"id": 1, "slug": "test-movie", "acf": acf}
+    if categories is not None:
+        post["categories"] = categories
+    return post
 
 
 TODAY = date(2026, 5, 25)
@@ -285,6 +289,95 @@ class TestServiceSupportedLanguages:
     def test_netflix_both(self):
         assert "ja" in SERVICE_SUPPORTED_LANGUAGES["netflix"]
         assert "en" in SERVICE_SUPPORTED_LANGUAGES["netflix"]
+
+    def test_crunchyroll_en_only(self):
+        """crunchyroll は en のみ対応"""
+        assert SERVICE_SUPPORTED_LANGUAGES["crunchyroll"] == frozenset({"en"})
+
+
+# ---------------------------------------------------------------------------
+# crunchyroll スキップ条件のテスト（lang=en かつ anime カテゴリのみ対象）
+# ---------------------------------------------------------------------------
+
+CRUNCHYROLL_URL = "https://www.crunchyroll.com/series/GRDQPM1ZY/attack-on-titan"
+ANIME_CATEGORY_ID = 3  # WordPress category: anime (term_id=3)
+
+
+class TestCrunchyrollSkip:
+    """crunchyroll の言語・カテゴリ制約スキップ条件のテスト。"""
+
+    # --- 言語制約 ---
+
+    def test_skip_if_ja_post(self):
+        """lang=ja の作品 → crunchyroll（en のみ対応）はスキップ"""
+        post = _make_post(
+            service="crunchyroll", scraping_url=CRUNCHYROLL_URL,
+            lang="ja", categories=[ANIME_CATEGORY_ID],
+        )
+        skip, reason = should_skip(post, "crunchyroll", TODAY)
+        assert skip is True
+        assert reason == "language_mismatch=ja"
+
+    def test_no_skip_if_en_post_with_anime(self):
+        """lang=en かつ anime カテゴリ → スキップしない"""
+        post = _make_post(
+            service="crunchyroll", scraping_url=CRUNCHYROLL_URL,
+            lang="en", categories=[ANIME_CATEGORY_ID],
+        )
+        skip, _ = should_skip(post, "crunchyroll", TODAY)
+        assert skip is False
+
+    # --- カテゴリ制約 ---
+
+    def test_skip_if_no_anime_category(self):
+        """anime カテゴリなし（別カテゴリのみ）→ スキップ"""
+        post = _make_post(
+            service="crunchyroll", scraping_url=CRUNCHYROLL_URL,
+            lang="en", categories=[99],  # anime 以外のカテゴリ
+        )
+        skip, reason = should_skip(post, "crunchyroll", TODAY)
+        assert skip is True
+        assert "category_mismatch" in reason
+
+    def test_skip_if_no_categories(self):
+        """カテゴリ未設定 → スキップ"""
+        post = _make_post(
+            service="crunchyroll", scraping_url=CRUNCHYROLL_URL,
+            lang="en", categories=[],
+        )
+        skip, reason = should_skip(post, "crunchyroll", TODAY)
+        assert skip is True
+        assert "category_mismatch" in reason
+
+    def test_skip_if_categories_field_absent(self):
+        """categories フィールド自体がない → スキップ"""
+        post = _make_post(
+            service="crunchyroll", scraping_url=CRUNCHYROLL_URL,
+            lang="en",
+            # categories=None → post に "categories" キーを含まない
+        )
+        skip, reason = should_skip(post, "crunchyroll", TODAY)
+        assert skip is True
+        assert "category_mismatch" in reason
+
+    def test_no_skip_if_anime_among_multiple_categories(self):
+        """複数カテゴリのうち anime を含む → スキップしない"""
+        post = _make_post(
+            service="crunchyroll", scraping_url=CRUNCHYROLL_URL,
+            lang="en", categories=[5, ANIME_CATEGORY_ID, 20],
+        )
+        skip, _ = should_skip(post, "crunchyroll", TODAY)
+        assert skip is False
+
+    # --- 定数の整合性 ---
+
+    def test_required_category_ids_defined(self):
+        """SERVICE_REQUIRED_CATEGORY_IDS に crunchyroll が定義されている"""
+        assert "crunchyroll" in SERVICE_REQUIRED_CATEGORY_IDS
+
+    def test_required_category_ids_anime(self):
+        """crunchyroll の必須カテゴリは anime (term_id=3)"""
+        assert SERVICE_REQUIRED_CATEGORY_IDS["crunchyroll"] == frozenset({3})
 
 
 # ---------------------------------------------------------------------------
