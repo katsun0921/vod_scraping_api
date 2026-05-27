@@ -22,6 +22,7 @@ import logging
 from playwright.sync_api import sync_playwright
 
 from checkers import NOT_FOUND_INDICATORS
+from utils.browser import USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +73,7 @@ class CrunchyrollChecker:
                 context = browser.new_context(
                     # Crunchyroll は英語 UI で判定するため locale を en-US に設定
                     locale="en-US",
-                    user_agent=(
-                        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/124.0.0.0 Safari/537.36"
-                    ),
+                    user_agent=USER_AGENT,
                 )
                 page = context.new_page()
                 response = page.goto(url, timeout=30000)
