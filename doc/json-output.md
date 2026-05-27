@@ -69,7 +69,7 @@ GET /wp-json/wp/v2/posts/{id}?_fields=id,slug,acf,vod
 
     "is_exclusive": false,
     "exclusive_service": null,
-    "languages": ["ja"],
+    "lang": "ja",
     "scraping_disabled": false,
     "scraping_cooldown_until": "",
     "unavailable_check_count": 0
@@ -91,7 +91,7 @@ GET /wp-json/wp/v2/posts/{id}?_fields=id,slug,acf,vod
 | `{service}_streaming_started_at` | string | `"YYYY-MM-DD HH:MM:SS"` または `''`。初回 streaming 検知時のみセット |
 | `is_exclusive` | boolean | 独占配信フラグ |
 | `exclusive_service` | integer\|null | vod term_id |
-| `languages` | array | `["ja"]` / `["en"]` / `["ja","en"]` |
+| `lang` | string | `"ja"` / `"en"` |
 | `scraping_disabled` | boolean | 管理者による探索停止フラグ |
 | `scraping_cooldown_until` | string | `"YYYY-MM-DD"` または `''`。次回チェック予定日 |
 | `unavailable_check_count` | integer | 連続未配信カウント（クールダウン計算用） |

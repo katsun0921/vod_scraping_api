@@ -37,7 +37,7 @@ VOD_TERM_IDS: dict[str, int] = {
 # スクレイピング対象サービス一覧
 SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "apple_tv", "youtube"]
 
-# サービスごとの対応言語セット（post.acf.languages との照合に使用）
+# サービスごとの対応言語セット（post.acf.lang との照合に使用）
 # 言語コード: "ja" = 日本語, "en" = 英語
 SERVICE_SUPPORTED_LANGUAGES: dict[str, frozenset] = {
     "amazon_prime_video": frozenset({"ja", "en"}),
@@ -384,7 +384,7 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
       3. 独占配信かつ対象サービスが exclusive_service と不一致
       4. scraping_url が空（探索対象外）
       5. 直近30日以内に updated_at が更新済み
-      6. 言語ミスマッチ（languages が設定されておりサービス対応言語と交差しない）
+      6. 言語ミスマッチ（lang が設定されておりサービス対応言語に含まれない）
 
     Args:
         post   : WordPress REST API の投稿データ。
@@ -434,12 +434,12 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
         except ValueError:
             logger.warning("post_id=%d service=%s updated_at の形式が不正: %r", post.get("id"), service, updated_at_str)
 
-    # 6. 言語ミスマッチ（languages が未設定の場合はスキップしない）
-    post_languages = set(acf.get("languages") or [])
-    if post_languages:
+    # 6. 言語ミスマッチ（lang が未設定の場合はスキップしない）
+    post_lang = acf.get("lang") or ""
+    if post_lang:
         supported = SERVICE_SUPPORTED_LANGUAGES.get(service, frozenset({"ja", "en"}))
-        if not post_languages & supported:
-            return True, f"language_mismatch={','.join(sorted(post_languages))}"
+        if post_lang not in supported:
+            return True, f"language_mismatch={post_lang}"
 
     return False, ""
 
@@ -540,24 +540,30 @@ def patch_cooldown(post_id: int, acf_payload: dict) -> None:
     resp.raise_for_status()
 
 
-def patch_multi_service_fields(post_id: int, service_fields: dict[str, dict]) -> None:
+def patch_multi_service_fields(
+    post_id: int,
+    service_fields: dict[str, dict],
+    top_level_fields: dict | None = None,
+) -> None:
     """複数サービスの ACF サブフィールドを 1回の GET + 1回の PATCH でまとめて更新する。
 
     scraping_url の登録や unavailable ステータスの書き込みに使用する。
     1サービスずつ個別 PATCH するより GET/PATCH 回数を大幅に削減できる。
 
     Args:
-        post_id       : WordPress 投稿 ID。
-        service_fields: {service_key: {field: value, ...}} の辞書。
-                        例: {
-                            "netflix":  {"scraping_url": "https://..."},
-                            "hulu":     {"status": "unavailable", "updated_at": "2026-05-27 ..."},
-                        }
+        post_id          : WordPress 投稿 ID。
+        service_fields   : {service_key: {field: value, ...}} の辞書。
+                           例: {
+                               "netflix":  {"scraping_url": "https://..."},
+                               "hulu":     {"status": "unavailable", "updated_at": "2026-05-27 ..."},
+                           }
+        top_level_fields : ACF トップレベルフィールドの更新辞書（任意）。
+                           例: {"scraping_disabled": True}
 
     Raises:
         requests.HTTPError: PATCH 失敗時。
     """
-    if not service_fields:
+    if not service_fields and not top_level_fields:
         return
 
     url = f"{_base_url()}/posts/{post_id}"
@@ -581,6 +587,10 @@ def patch_multi_service_fields(post_id: int, service_fields: dict[str, dict]) ->
             if sub_key in service_base and service_base[sub_key] == "":
                 service_base[sub_key] = None
         acf_patch[service] = service_base
+
+    # トップレベル ACF フィールドを上書き（scraping_disabled 等）
+    if top_level_fields:
+        acf_patch.update(top_level_fields)
 
     resp = session.patch(url, json={"acf": acf_patch}, timeout=30)
     if not resp.ok:

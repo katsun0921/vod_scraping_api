@@ -4,6 +4,7 @@ justwatch_batch のユニットテスト。
 外部 API へのアクセスは一切行わない（requests をモックする）。
 """
 
+from datetime import date
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -57,9 +58,9 @@ class TestExtractUrlsFromNode:
     def test_known_services(self):
         node = {
             "offers": [
-                _make_offer("nfx", "https://www.netflix.com/jp/title/12345"),
-                _make_offer("amp", "https://www.amazon.co.jp/gp/video/detail/B09ABC"),
-                _make_offer("hlu", "https://www.hulu.jp/watch/99999"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/12345"),
+                _make_offer("amazonprime", "https://www.amazon.co.jp/gp/video/detail/B09ABC"),
+                _make_offer("hulu", "https://www.hulu.jp/watch/99999"),
             ]
         }
         urls = _extract_urls_from_node(node)
@@ -76,15 +77,15 @@ class TestExtractUrlsFromNode:
         """同一サービスが複数 offer → 最初の URL のみ"""
         node = {
             "offers": [
-                _make_offer("nfx", "https://www.netflix.com/jp/title/111"),
-                _make_offer("nfx", "https://www.netflix.com/jp/title/222"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/111"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/222"),
             ]
         }
         urls = _extract_urls_from_node(node)
         assert urls["netflix"] == "https://www.netflix.com/jp/title/111"
 
     def test_empty_url_ignored(self):
-        node = {"offers": [_make_offer("nfx", "")]}
+        node = {"offers": [_make_offer("netflix", "")]}
         urls = _extract_urls_from_node(node)
         assert "netflix" not in urls
 
@@ -157,8 +158,8 @@ class TestSearchUrls:
         node = {
             "content": {"title": "ジョン・ウィック", "originalTitle": "John Wick"},
             "offers": [
-                _make_offer("nfx", "https://www.netflix.com/jp/title/70126666"),
-                _make_offer("amp", "https://www.amazon.co.jp/gp/video/detail/B09ABC"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/70126666"),
+                _make_offer("amazonprime", "https://www.amazon.co.jp/gp/video/detail/B09ABC"),
             ],
         }
         mock_graphql.return_value = _make_graphql_response([node])
@@ -173,7 +174,7 @@ class TestSearchUrls:
         """title で結果なし → slug クエリで再試行"""
         node = {
             "content": {"title": "John Wick", "originalTitle": ""},
-            "offers": [_make_offer("nfx", "https://www.netflix.com/jp/title/111")],
+            "offers": [_make_offer("netflix", "https://www.netflix.com/jp/title/111")],
         }
         # 1回目（title）は空、2回目（slug）はヒット
         mock_graphql.side_effect = [
@@ -209,32 +210,28 @@ class TestSearchUrls:
             search_urls("ジョン・ウィック", "john-wick")
 
     @patch("utils.justwatch._post_graphql")
-    def test_all_8_services_extracted(self, mock_graphql):
-        """全8サービスが同時に取れるケース"""
+    def test_all_mapped_services_extracted(self, mock_graphql):
+        """マッピング済みサービスが同時に取れるケース（DMM TV / YouTube は JustWatch JP 未対応）"""
         node = {
             "content": {"title": "Test Movie", "originalTitle": ""},
             "offers": [
-                _make_offer("amp", "https://www.amazon.co.jp/gp/video/detail/B001"),
-                _make_offer("nfx", "https://www.netflix.com/jp/title/1"),
-                _make_offer("hlu", "https://www.hulu.jp/watch/1"),
-                _make_offer("unx", "https://video.unext.jp/title/SID1"),
-                _make_offer("dnp", "https://www.disneyplus.com/ja-jp/movies/test/1"),
-                _make_offer("dmt", "https://tv.dmm.com/vod/detail/?season=1"),
-                _make_offer("atp", "https://tv.apple.com/jp/movie/test/id1"),
-                _make_offer("yte", "https://www.youtube.com/watch?v=abc"),
+                _make_offer("amazonprime", "https://www.amazon.co.jp/gp/video/detail/B001"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/1"),
+                _make_offer("hulu", "https://www.hulu.jp/watch/1"),
+                _make_offer("unext", "https://video.unext.jp/title/SID1"),
+                _make_offer("disneyplus", "https://www.disneyplus.com/ja-jp/movies/test/1"),
+                _make_offer("appletvplus", "https://tv.apple.com/jp/movie/test/id1"),
             ],
         }
         mock_graphql.return_value = _make_graphql_response([node])
         result = search_urls("Test Movie", "test-movie")
-        assert len(result) == 8
+        assert len(result) == 6
         assert "amazon_prime_video" in result
         assert "netflix" in result
         assert "hulu" in result
         assert "unext" in result
         assert "disney_plus" in result
-        assert "dmm_tv" in result
         assert "apple_tv" in result
-        assert "youtube" in result
 
 
 # ---------------------------------------------------------------------------
@@ -338,10 +335,10 @@ class TestPatchMultiServiceFields:
 
 class TestJustwatchBatchRun:
 
-    def _make_post(self, post_id: int, slug: str, title: str, missing: list[str]) -> dict:
+    def _make_post(self, post_id: int, slug: str, title: str, missing: list[str], lang: str = "ja") -> dict:
         """missing に含まれるサービスは scraping_url 空、それ以外は設定済みにする。"""
         from utils.wordpress import SERVICES
-        acf: dict = {}
+        acf: dict = {"lang": lang}
         for svc in SERVICES:
             if svc in missing:
                 acf[svc] = {"scraping_url": ""}
@@ -455,6 +452,56 @@ class TestJustwatchBatchRun:
         assert result["errors"] == 1
         assert result["registered"] == 0
         assert result["unavailable"] == 0
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_lang_en_uses_us_country(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """lang=en の投稿は country=US / language=en で JustWatch を検索する。"""
+        mock_get_posts.return_value = [
+            self._make_post(1, "the-revenant", "The Revenant", ["netflix"], lang="en"),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        justwatch_batch.run()
+
+        mock_search.assert_called_once()
+        _, kwargs = mock_search.call_args
+        assert kwargs.get("country") == "US"
+        assert kwargs.get("language") == "en"
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_lang_ja_uses_jp_country(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """lang=ja の投稿は country=JP / language=ja で JustWatch を検索する。"""
+        mock_get_posts.return_value = [
+            self._make_post(1, "john-wick", "ジョン・ウィック", ["netflix"], lang="ja"),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        justwatch_batch.run()
+
+        mock_search.assert_called_once()
+        _, kwargs = mock_search.call_args
+        assert kwargs.get("country") == "JP"
+        assert kwargs.get("language") == "ja"
 
 
 class TestJustwatchBatchSlackNotify:
@@ -580,3 +627,92 @@ class TestJustwatchBatchSlackNotify:
         mock_post_result.assert_called_once()
         call_kwargs = mock_post_result.call_args.kwargs
         assert call_kwargs["error"] is True
+
+
+class TestJustwatchAutoDisable:
+    """release_year 10年超・全サービス URL 未発見で scraping_disabled=true になるテスト。"""
+
+    def _make_post(self, post_id, slug, title, missing, release_year=0):
+        from utils.wordpress import SERVICES
+        acf = {"release_year": release_year}
+        for svc in SERVICES:
+            if svc in missing:
+                acf[svc] = {"scraping_url": ""}
+            else:
+                acf[svc] = {"scraping_url": f"https://example.com/{svc}/1"}
+        return {"id": post_id, "slug": slug, "title": {"rendered": title}, "acf": acf}
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_auto_disable_when_old_and_no_urls(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """10年超・全サービス URL 未発見 → scraping_disabled=true で PATCH される。"""
+        old_year = date.today().year - 11
+        mock_get_posts.return_value = [
+            self._make_post(1, "old-movie", "古い映画", ["netflix", "hulu"], release_year=old_year),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        result = justwatch_batch.run()
+
+        assert result["disabled"] == 1
+        call_kwargs = mock_patch.call_args.kwargs
+        assert call_kwargs.get("top_level_fields") == {"scraping_disabled": True}
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_no_auto_disable_when_recent(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """10年未満の作品は URL 未発見でも scraping_disabled にならない。"""
+        recent_year = date.today().year - 5
+        mock_get_posts.return_value = [
+            self._make_post(1, "recent-movie", "新しい映画", ["netflix"], release_year=recent_year),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        result = justwatch_batch.run()
+
+        assert result["disabled"] == 0
+        call_kwargs = mock_patch.call_args.kwargs
+        assert call_kwargs.get("top_level_fields") is None
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_no_auto_disable_when_url_registered(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """10年超でも URL が1件でも登録されれば scraping_disabled にならない。"""
+        old_year = date.today().year - 11
+        mock_get_posts.return_value = [
+            self._make_post(1, "old-movie", "古い映画", ["netflix", "hulu"], release_year=old_year),
+        ]
+        mock_search.return_value = {"netflix": "https://www.netflix.com/jp/title/1"}
+
+        import justwatch_batch
+        result = justwatch_batch.run()
+
+        assert result["disabled"] == 0
+        call_kwargs = mock_patch.call_args.kwargs
+        assert call_kwargs.get("top_level_fields") is None
