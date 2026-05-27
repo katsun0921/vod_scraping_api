@@ -90,7 +90,13 @@
 - [x] サービスごとの対応言語マッピングをコードに追加
 - [x] `should_skip` に言語判定を追加
 
-### 月次 JustWatch 再問い合わせ（任意）
-- [ ] `scraping_url` 空のサービスに対する月次バッチ
-- [ ] URL 見つかれば自動登録 → 通常フロー復帰
-- [ ] GAS 側との接続方式を決定
+### 月次 JustWatch 再問い合わせ
+- [x] `scraping_url` 空のサービスに対する月次バッチ（`justwatch_batch.py`）
+  - [x] `utils/justwatch.py` — JustWatch 非公式 GraphQL API クライアント
+  - [x] title → slug の順で検索・最適ノード選択
+  - [x] URL 見つかれば `scraping_url` を登録 → 次回 checker で通常フロー復帰
+  - [x] URL 見つからなければ `status=unavailable` / `updated_at` を書き込む
+  - [x] `utils/wordpress.py` に `patch_service_fields()` / `get_posts_missing_url()` 追加
+  - [x] `.github/workflows/justwatch.yml` — 毎月1日 02:00 JST に Cloud Run で実行
+  - [x] `tests/test_justwatch.py` — ユニットテスト 21 件
+- [ ] 初回実行ログで登録率・unavailable 率を確認

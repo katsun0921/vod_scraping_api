@@ -50,7 +50,7 @@ SERVICE_SUPPORTED_LANGUAGES: dict[str, frozenset] = {
     "youtube":            frozenset({"ja", "en"}),
 }
 
-PER_PAGE = 20
+PER_PAGE = 100
 
 
 def _wp_auth_header() -> str:
@@ -101,11 +101,16 @@ def _base_url() -> str:
     return os.environ["WP_API_URL"].rstrip("/")
 
 
-def get_posts() -> list[dict]:
-    """全投稿を取得して返す。
+def get_posts(slug: Optional[str] = None, limit: Optional[int] = None) -> list[dict]:
+    """publish 状態の投稿を取得して返す。
 
     scraping_url が 1 件以上設定されている投稿のみ返す。
-    ページネーションで全件取得する（per_page=100）。
+    slug を指定した場合は該当する 1 件のみを取得する（全件ページネーションを省略）。
+    limit を指定した場合は最大 limit 件でフィルタ後の結果を打ち切る。
+
+    Args:
+        slug : 指定した場合、該当 slug の投稿のみ取得する。
+        limit: 返す最大件数。None の場合は全件返す。
 
     Returns:
         投稿データのリスト。各要素は WordPress REST API のレスポンス形式。
@@ -116,13 +121,21 @@ def get_posts() -> list[dict]:
     session = _session()
 
     while True:
+        params: dict = {
+            "status": "publish",
+            "_fields": "id,slug,title,acf,vod",
+        }
+        if slug:
+            # slug 指定時は 1 件取得で完結
+            params["slug"] = slug
+            params["per_page"] = 1
+        else:
+            params["per_page"] = PER_PAGE
+            params["page"] = page
+
         # 502 等の一時的エラーに備えてリトライ
         for attempt in range(3):
-            resp = session.get(
-                url,
-                params={"per_page": PER_PAGE, "page": page, "_fields": "id,slug,title,acf,vod"},
-                timeout=30,
-            )
+            resp = session.get(url, params=params, timeout=30)
             logger.info("GET posts page=%d status=%d (attempt=%d)", page, resp.status_code, attempt + 1)
             if resp.status_code < 500:
                 break
@@ -133,7 +146,8 @@ def get_posts() -> list[dict]:
         if not batch:
             break
         posts.extend(batch)
-        if len(batch) < PER_PAGE:
+        # slug 指定時 or ページ末尾に達したら終了
+        if slug or len(batch) < PER_PAGE:
             break
         page += 1
         logger.info("GET posts page=%d (%d件取得済み)", page - 1, len(posts))
@@ -149,7 +163,10 @@ def get_posts() -> list[dict]:
         if has_url:
             filtered.append(post)
 
-    logger.info("全投稿 %d 件中、scraping_url あり: %d 件", len(posts), len(filtered))
+    if limit is not None:
+        filtered = filtered[:limit]
+
+    logger.info("全投稿 %d 件中、scraping_url あり: %d 件（limit=%s）", len(posts), len(filtered), limit)
     return filtered
 
 
@@ -521,3 +538,121 @@ def patch_cooldown(post_id: int, acf_payload: dict) -> None:
             post_id, resp.status_code, resp.text[:300],
         )
     resp.raise_for_status()
+
+
+def patch_multi_service_fields(post_id: int, service_fields: dict[str, dict]) -> None:
+    """複数サービスの ACF サブフィールドを 1回の GET + 1回の PATCH でまとめて更新する。
+
+    scraping_url の登録や unavailable ステータスの書き込みに使用する。
+    1サービスずつ個別 PATCH するより GET/PATCH 回数を大幅に削減できる。
+
+    Args:
+        post_id       : WordPress 投稿 ID。
+        service_fields: {service_key: {field: value, ...}} の辞書。
+                        例: {
+                            "netflix":  {"scraping_url": "https://..."},
+                            "hulu":     {"status": "unavailable", "updated_at": "2026-05-27 ..."},
+                        }
+
+    Raises:
+        requests.HTTPError: PATCH 失敗時。
+    """
+    if not service_fields:
+        return
+
+    url = f"{_base_url()}/posts/{post_id}"
+    session = _session(wp_auth=True)
+
+    # 既存 ACF を 1回だけ取得
+    get_resp = session.get(url, params={"_fields": "acf"}, timeout=30)
+    get_resp.raise_for_status()
+    existing_acf: dict = (get_resp.json().get("acf") or {}).copy()
+
+    schema = _get_acf_schema()
+    required_keys = [k for k, v in schema.items() if isinstance(v, dict) and v.get("required")]
+    acf_patch: dict = {k: existing_acf[k] for k in required_keys if k in existing_acf}
+
+    # 全対象サービスを 1つの PATCH ペイロードに積む
+    for service, fields in service_fields.items():
+        service_base = dict(existing_acf.get(service) or {})
+        service_base.update(fields)
+        acf_patch[service] = service_base
+
+    resp = session.patch(url, json={"acf": acf_patch}, timeout=30)
+    if not resp.ok:
+        logger.error(
+            "PATCH multi service fields failed: post_id=%d services=%s status=%d body=%s",
+            post_id, list(service_fields.keys()), resp.status_code, resp.text[:300],
+        )
+    resp.raise_for_status()
+
+
+def get_posts_missing_url(
+    services: list[str] | None = None,
+    slug: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> list[dict]:
+    """scraping_url が 1 件以上 空のサービスを持つ publish 投稿を返す。
+
+    月次 JustWatch バッチ用。
+    slug を指定した場合は該当する 1 件のみを取得する。
+    limit を指定した場合は最大 limit 件でフィルタ後の結果を打ち切る。
+
+    Args:
+        services: 対象サービスリスト。None の場合は SERVICES 全体。
+        slug    : 指定した場合、該当 slug の投稿のみ取得する。
+        limit   : 返す最大件数。None の場合は全件返す。
+
+    Returns:
+        投稿データのリスト。
+    """
+    target_services = services or SERVICES
+    url = f"{_base_url()}/posts"
+    posts: list[dict] = []
+    page = 1
+    session = _session()
+
+    while True:
+        params: dict = {
+            "status": "publish",
+            "_fields": "id,slug,title,acf,vod",
+        }
+        if slug:
+            params["slug"] = slug
+            params["per_page"] = 1
+        else:
+            params["per_page"] = PER_PAGE
+            params["page"] = page
+
+        for attempt in range(3):
+            resp = session.get(url, params=params, timeout=30)
+            logger.info("GET posts(missing_url) page=%d status=%d (attempt=%d)", page, resp.status_code, attempt + 1)
+            if resp.status_code < 500:
+                break
+            logger.warning("GET posts(missing_url) page=%d server error, retrying in 5s...", page)
+            time.sleep(5)
+        resp.raise_for_status()
+        batch = resp.json()
+        if not batch:
+            break
+        posts.extend(batch)
+        if slug or len(batch) < PER_PAGE:
+            break
+        page += 1
+
+    # scraping_url が空のサービスを 1 件以上持つ投稿のみ返す
+    filtered = []
+    for post in posts:
+        acf = post.get("acf") or {}
+        has_missing = any(
+            not (acf.get(svc) or {}).get("scraping_url")
+            for svc in target_services
+        )
+        if has_missing:
+            filtered.append(post)
+
+    if limit is not None:
+        filtered = filtered[:limit]
+
+    logger.info("全投稿 %d 件中、scraping_url 未設定サービスあり: %d 件（limit=%s）", len(posts), len(filtered), limit)
+    return filtered
