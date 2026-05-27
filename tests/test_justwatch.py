@@ -4,6 +4,7 @@ justwatch_batch のユニットテスト。
 外部 API へのアクセスは一切行わない（requests をモックする）。
 """
 
+from datetime import date
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -580,3 +581,92 @@ class TestJustwatchBatchSlackNotify:
         mock_post_result.assert_called_once()
         call_kwargs = mock_post_result.call_args.kwargs
         assert call_kwargs["error"] is True
+
+
+class TestJustwatchAutoDisable:
+    """release_year 10年超・全サービス URL 未発見で scraping_disabled=true になるテスト。"""
+
+    def _make_post(self, post_id, slug, title, missing, release_year=0):
+        from utils.wordpress import SERVICES
+        acf = {"release_year": release_year}
+        for svc in SERVICES:
+            if svc in missing:
+                acf[svc] = {"scraping_url": ""}
+            else:
+                acf[svc] = {"scraping_url": f"https://example.com/{svc}/1"}
+        return {"id": post_id, "slug": slug, "title": {"rendered": title}, "acf": acf}
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_auto_disable_when_old_and_no_urls(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """10年超・全サービス URL 未発見 → scraping_disabled=true で PATCH される。"""
+        old_year = date.today().year - 11
+        mock_get_posts.return_value = [
+            self._make_post(1, "old-movie", "古い映画", ["netflix", "hulu"], release_year=old_year),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        result = justwatch_batch.run()
+
+        assert result["disabled"] == 1
+        call_kwargs = mock_patch.call_args.kwargs
+        assert call_kwargs.get("top_level_fields") == {"scraping_disabled": True}
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_no_auto_disable_when_recent(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """10年未満の作品は URL 未発見でも scraping_disabled にならない。"""
+        recent_year = date.today().year - 5
+        mock_get_posts.return_value = [
+            self._make_post(1, "recent-movie", "新しい映画", ["netflix"], release_year=recent_year),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        result = justwatch_batch.run()
+
+        assert result["disabled"] == 0
+        call_kwargs = mock_patch.call_args.kwargs
+        assert call_kwargs.get("top_level_fields") is None
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_no_auto_disable_when_url_registered(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """10年超でも URL が1件でも登録されれば scraping_disabled にならない。"""
+        old_year = date.today().year - 11
+        mock_get_posts.return_value = [
+            self._make_post(1, "old-movie", "古い映画", ["netflix", "hulu"], release_year=old_year),
+        ]
+        mock_search.return_value = {"netflix": "https://www.netflix.com/jp/title/1"}
+
+        import justwatch_batch
+        result = justwatch_batch.run()
+
+        assert result["disabled"] == 0
+        call_kwargs = mock_patch.call_args.kwargs
+        assert call_kwargs.get("top_level_fields") is None

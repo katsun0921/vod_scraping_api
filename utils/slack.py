@@ -78,15 +78,17 @@ def notify_justwatch_post_result(
     registered: dict[str, str],
     unavailable: list[str],
     error: bool = False,
+    auto_disabled: bool = False,
 ) -> None:
     """投稿1件あたりの JustWatch バッチ結果を Slack に通知する。
 
     Args:
-        title      : 作品タイトル。
-        slug       : WordPress スラッグ。
-        registered : {service_key: url} — 新規登録したサービスと URL。
-        unavailable: unavailable にしたサービスキーのリスト。
-        error      : PATCH 失敗など処理エラーが発生した場合 True。
+        title        : 作品タイトル。
+        slug         : WordPress スラッグ。
+        registered   : {service_key: url} — 新規登録したサービスと URL。
+        unavailable  : unavailable にしたサービスキーのリスト。
+        error        : PATCH 失敗など処理エラーが発生した場合 True。
+        auto_disabled: release_year 10年超のため scraping_disabled=true にした場合 True。
     """
     if error:
         icon = ":x:"
@@ -108,6 +110,9 @@ def notify_justwatch_post_result(
         labels = [_SERVICE_LABELS.get(s, s) for s in unavailable]
         lines.append(f"  • 配信なし: {', '.join(labels)}")
 
+    if auto_disabled:
+        lines.append("  • :no_entry: 公開10年超・全サービス配信なし → スクレイピング停止")
+
     _post({"text": "\n".join(lines)})
 
 
@@ -122,11 +127,13 @@ def notify_justwatch_summary(result: dict) -> None:
     skipped = result.get("skipped", 0)
     errors = result.get("errors", 0)
 
+    disabled = result.get("disabled", 0)
     icon = ":white_check_mark:" if errors == 0 else ":warning:"
     lines = [
         f"{icon} *JustWatch 月次バッチ完了*",
         f"  • URL 登録: *{registered}* サービス",
         f"  • 配信なし: *{unavailable}* サービス",
+        f"  • スクレイピング停止: *{disabled}* 件（公開10年超・全サービス配信なし）",
         f"  • スキップ: {skipped} 件",
         f"  • エラー: {errors} 件",
     ]
