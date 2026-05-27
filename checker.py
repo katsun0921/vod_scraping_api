@@ -9,6 +9,7 @@ Usage:
     python checker.py --dry-run    # 対象の確認のみ（更新なし）
     python checker.py --force      # cooldown / updated_at チェックを無視して全件処理
     python checker.py --slug john-wick  # 特定の slug のみ処理
+    python checker.py --limit 10   # 最大 10 件のみ処理
 """
 
 import argparse
@@ -63,6 +64,7 @@ MAX_CONSECUTIVE_ERRORS = 3
 _RELEASE_YEAR_FALLBACK_PHASE1 = 9999  # ASC ソートで空欄を最後尾にする
 _RELEASE_YEAR_FALLBACK_PHASE2 = 0     # DESC(-) ソートで空欄を最後尾にする
 _DATE_FAR_FUTURE = date(9999, 12, 31)
+
 
 
 def _all_updated_at_empty(post: dict) -> bool:
@@ -140,6 +142,7 @@ def _select_targets(candidates: list[dict], quota: int) -> tuple[list[dict], int
         p2_take = 0
 
     return targets, p1_take, p2_take
+
 
 
 def run(

@@ -12,6 +12,7 @@ Usage:
     python justwatch_batch.py              # 全投稿・全サービスを処理
     python justwatch_batch.py --dry-run    # 対象の確認のみ（更新なし）
     python justwatch_batch.py --slug john-wick  # 特定 slug のみ
+    python justwatch_batch.py --limit 10   # 最大 10 件のみ処理
 """
 
 import argparse
@@ -39,7 +40,11 @@ logger = logging.getLogger(__name__)
 _JW_WAIT_BETWEEN_POSTS = 3.0
 
 
-def run(dry_run: bool = False, slug: Optional[str] = None) -> dict:
+def run(
+    dry_run: bool = False,
+    slug: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> dict:
     """JustWatch 月次バッチを実行する。
 
     1投稿につき JustWatch 検索 1回 + WordPress GET 1回 + PATCH 1回で完結する。
@@ -47,6 +52,7 @@ def run(dry_run: bool = False, slug: Optional[str] = None) -> dict:
     Args:
         dry_run: True の場合、対象の確認のみ行い更新しない。
         slug   : 指定した場合、該当 slug の投稿のみ処理する。
+        limit  : 指定した場合、最大 limit 件のみ処理する。
 
     Returns:
         {
@@ -56,7 +62,7 @@ def run(dry_run: bool = False, slug: Optional[str] = None) -> dict:
             "errors": int,       # エラーが発生した投稿数
         }
     """
-    posts = get_posts_missing_url(slug=slug)
+    posts = get_posts_missing_url(slug=slug, limit=limit)
     registered = 0
     unavailable = 0
     skipped = 0
@@ -140,9 +146,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="JustWatch 月次バッチ")
     parser.add_argument("--dry-run", action="store_true", help="対象の確認のみ（更新なし）")
     parser.add_argument("--slug", type=str, help="特定の slug のみ処理")
+    parser.add_argument("--limit", type=int, default=None, help="処理する最大件数")
     args = parser.parse_args()
 
-    result = run(dry_run=args.dry_run, slug=args.slug)
+    result = run(dry_run=args.dry_run, slug=args.slug, limit=args.limit)
     print(result)
 
 

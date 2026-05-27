@@ -101,14 +101,16 @@ def _base_url() -> str:
     return os.environ["WP_API_URL"].rstrip("/")
 
 
-def get_posts(slug: Optional[str] = None) -> list[dict]:
+def get_posts(slug: Optional[str] = None, limit: Optional[int] = None) -> list[dict]:
     """publish 状態の投稿を取得して返す。
 
     scraping_url が 1 件以上設定されている投稿のみ返す。
     slug を指定した場合は該当する 1 件のみを取得する（全件ページネーションを省略）。
+    limit を指定した場合は最大 limit 件でフィルタ後の結果を打ち切る。
 
     Args:
-        slug: 指定した場合、該当 slug の投稿のみ取得する。
+        slug : 指定した場合、該当 slug の投稿のみ取得する。
+        limit: 返す最大件数。None の場合は全件返す。
 
     Returns:
         投稿データのリスト。各要素は WordPress REST API のレスポンス形式。
@@ -161,7 +163,10 @@ def get_posts(slug: Optional[str] = None) -> list[dict]:
         if has_url:
             filtered.append(post)
 
-    logger.info("全投稿 %d 件中、scraping_url あり: %d 件", len(posts), len(filtered))
+    if limit is not None:
+        filtered = filtered[:limit]
+
+    logger.info("全投稿 %d 件中、scraping_url あり: %d 件（limit=%s）", len(posts), len(filtered), limit)
     return filtered
 
 
@@ -585,15 +590,18 @@ def patch_multi_service_fields(post_id: int, service_fields: dict[str, dict]) ->
 def get_posts_missing_url(
     services: list[str] | None = None,
     slug: Optional[str] = None,
+    limit: Optional[int] = None,
 ) -> list[dict]:
     """scraping_url が 1 件以上 空のサービスを持つ publish 投稿を返す。
 
     月次 JustWatch バッチ用。
     slug を指定した場合は該当する 1 件のみを取得する。
+    limit を指定した場合は最大 limit 件でフィルタ後の結果を打ち切る。
 
     Args:
         services: 対象サービスリスト。None の場合は SERVICES 全体。
         slug    : 指定した場合、該当 slug の投稿のみ取得する。
+        limit   : 返す最大件数。None の場合は全件返す。
 
     Returns:
         投稿データのリスト。
@@ -643,5 +651,8 @@ def get_posts_missing_url(
         if has_missing:
             filtered.append(post)
 
-    logger.info("全投稿 %d 件中、scraping_url 未設定サービスあり: %d 件", len(posts), len(filtered))
+    if limit is not None:
+        filtered = filtered[:limit]
+
+    logger.info("全投稿 %d 件中、scraping_url 未設定サービスあり: %d 件（limit=%s）", len(posts), len(filtered), limit)
     return filtered
