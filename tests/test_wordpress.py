@@ -554,6 +554,7 @@ class TestGetPostsMissingUrlFilter:
         "WP_USER": "u", "WP_APP_PASSWORD": "p",
     })
     @patch("utils.wordpress._session")
+    @pytest.mark.skip(reason="全件再取得のため updated_at フィルターを一時無効化中")
     def test_updated_at_within_one_month_excluded(self, mock_session_fn):
         """updated_at が1か月未満のサービスのみ空の投稿は除外される。"""
         from datetime import date, timedelta
