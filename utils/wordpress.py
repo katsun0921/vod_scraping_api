@@ -540,24 +540,30 @@ def patch_cooldown(post_id: int, acf_payload: dict) -> None:
     resp.raise_for_status()
 
 
-def patch_multi_service_fields(post_id: int, service_fields: dict[str, dict]) -> None:
+def patch_multi_service_fields(
+    post_id: int,
+    service_fields: dict[str, dict],
+    top_level_fields: dict | None = None,
+) -> None:
     """複数サービスの ACF サブフィールドを 1回の GET + 1回の PATCH でまとめて更新する。
 
     scraping_url の登録や unavailable ステータスの書き込みに使用する。
     1サービスずつ個別 PATCH するより GET/PATCH 回数を大幅に削減できる。
 
     Args:
-        post_id       : WordPress 投稿 ID。
-        service_fields: {service_key: {field: value, ...}} の辞書。
-                        例: {
-                            "netflix":  {"scraping_url": "https://..."},
-                            "hulu":     {"status": "unavailable", "updated_at": "2026-05-27 ..."},
-                        }
+        post_id          : WordPress 投稿 ID。
+        service_fields   : {service_key: {field: value, ...}} の辞書。
+                           例: {
+                               "netflix":  {"scraping_url": "https://..."},
+                               "hulu":     {"status": "unavailable", "updated_at": "2026-05-27 ..."},
+                           }
+        top_level_fields : ACF トップレベルフィールドの更新辞書（任意）。
+                           例: {"scraping_disabled": True}
 
     Raises:
         requests.HTTPError: PATCH 失敗時。
     """
-    if not service_fields:
+    if not service_fields and not top_level_fields:
         return
 
     url = f"{_base_url()}/posts/{post_id}"
@@ -581,6 +587,10 @@ def patch_multi_service_fields(post_id: int, service_fields: dict[str, dict]) ->
             if sub_key in service_base and service_base[sub_key] == "":
                 service_base[sub_key] = None
         acf_patch[service] = service_base
+
+    # トップレベル ACF フィールドを上書き（scraping_disabled 等）
+    if top_level_fields:
+        acf_patch.update(top_level_fields)
 
     resp = session.patch(url, json={"acf": acf_patch}, timeout=30)
     if not resp.ok:

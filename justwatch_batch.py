@@ -19,7 +19,7 @@ import argparse
 import logging
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
 
 from utils.justwatch import search_urls
@@ -44,6 +44,9 @@ logger = logging.getLogger(__name__)
 # JustWatch API へのリクエスト間隔（秒）
 _JW_WAIT_BETWEEN_POSTS = 3.0
 
+# この年数以上経過した作品で全サービス URL 未発見の場合にスクレイピングを停止する
+_AUTO_DISABLE_YEARS = 10
+
 
 def run(
     dry_run: bool = False,
@@ -63,6 +66,7 @@ def run(
         {
             "registered": int,   # URL を新規登録したサービス数（延べ）
             "unavailable": int,  # unavailable を書き込んだサービス数（延べ）
+            "disabled": int,     # scraping_disabled=true にした投稿数
             "skipped": int,      # スキップした投稿数
             "errors": int,       # エラーが発生した投稿数
         }
@@ -70,8 +74,10 @@ def run(
     posts = get_posts_missing_url(slug=slug, limit=limit)
     registered = 0
     unavailable = 0
+    disabled = 0
     skipped = 0
     errors = 0
+    current_year = date.today().year
 
     if not dry_run:
         notify_justwatch_start(total=len(posts), limit=limit)
@@ -127,22 +133,41 @@ def run(
                 )
                 unavailable += 1
 
+        # release_year から10年以上経過 かつ 全空サービスで URL 未発見 → scraping_disabled=true
+        top_level_fields: dict | None = None
+        post_auto_disabled = False
+        if not any("scraping_url" in f for f in service_fields.values()):
+            try:
+                release_year = int(acf.get("release_year") or 0)
+            except (ValueError, TypeError):
+                release_year = 0
+            if release_year and (current_year - release_year) >= _AUTO_DISABLE_YEARS:
+                top_level_fields = {"scraping_disabled": True}
+                post_auto_disabled = True
+                logger.info(
+                    "AUTO_DISABLE [%s] release_year=%d (%d年経過) → scraping_disabled=true",
+                    post_slug, release_year, current_year - release_year,
+                )
+
         # 1投稿につき 1回の PATCH で完結
         post_registered: dict[str, str] = {}
         post_unavailable: list[str] = []
         post_error = False
         try:
-            patch_multi_service_fields(post_id, service_fields)
+            patch_multi_service_fields(post_id, service_fields, top_level_fields=top_level_fields)
             # 通知用に登録・unavailable を分類
             for svc, fields in service_fields.items():
                 if "scraping_url" in fields:
                     post_registered[svc] = fields["scraping_url"]
                 else:
                     post_unavailable.append(svc)
+            if post_auto_disabled:
+                disabled += 1
         except Exception as e:
             logger.error("ERROR [%s] PATCH 失敗: %s", post_slug, e)
             errors += 1
             post_error = True
+            post_auto_disabled = False
             # カウント済みの registered / unavailable を差し引く
             registered -= sum(1 for f in service_fields.values() if "scraping_url" in f)
             unavailable -= sum(1 for f in service_fields.values() if "status" in f)
@@ -153,6 +178,7 @@ def run(
             registered=post_registered,
             unavailable=post_unavailable,
             error=post_error,
+            auto_disabled=post_auto_disabled,
         )
 
         time.sleep(_JW_WAIT_BETWEEN_POSTS)
@@ -160,6 +186,7 @@ def run(
     result = {
         "registered": registered,
         "unavailable": unavailable,
+        "disabled": disabled,
         "skipped": skipped,
         "errors": errors,
     }
