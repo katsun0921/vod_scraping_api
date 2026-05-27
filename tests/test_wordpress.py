@@ -449,3 +449,114 @@ class TestUpdateCooldown:
         update_cooldown(post, TODAY, payload)
         assert "scraping_cooldown_until" in payload
         assert "unavailable_check_count" in payload
+
+
+# ---------------------------------------------------------------------------
+# get_posts_missing_url の scraping_disabled / cooldown フィルタテスト
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock, patch
+
+
+def _make_full_post(
+    post_id: int,
+    slug: str,
+    *,
+    scraping_disabled: bool = False,
+    cooldown_until: str = "",
+    missing_services: list | None = None,
+) -> dict:
+    """get_posts_missing_url 用のテスト投稿を生成する。
+
+    missing_services に含まれるサービスは scraping_url 空、それ以外は設定済み。
+    """
+    from utils.wordpress import SERVICES
+    missing_services = missing_services or []
+    acf: dict = {
+        "scraping_disabled": scraping_disabled,
+        "scraping_cooldown_until": cooldown_until,
+    }
+    for svc in SERVICES:
+        if svc in missing_services:
+            acf[svc] = {"scraping_url": ""}
+        else:
+            acf[svc] = {"scraping_url": f"https://example.com/{svc}/1"}
+    return {"id": post_id, "slug": slug, "title": {"rendered": slug}, "acf": acf}
+
+
+class TestGetPostsMissingUrlFilter:
+    """get_posts_missing_url の scraping_disabled / cooldown フィルタのテスト。"""
+
+    def _mock_session_get(self, posts: list[dict]):
+        """requests.Session.get をモックして posts を返す。"""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.ok = True
+        mock_resp.json.return_value = posts
+        mock_resp.raise_for_status = MagicMock()
+        mock_session = MagicMock()
+        mock_session.get.return_value = mock_resp
+        return mock_session
+
+    @patch("utils.wordpress.os.environ", {
+        "WP_API_URL": "https://example.com/wp-json/wp/v2",
+        "WP_USER": "u", "WP_APP_PASSWORD": "p",
+    })
+    @patch("utils.wordpress._session")
+    def test_scraping_disabled_excluded(self, mock_session_fn):
+        """scraping_disabled=True の投稿は除外される。"""
+        posts = [
+            _make_full_post(1, "movie-a", scraping_disabled=True, missing_services=["netflix"]),
+            _make_full_post(2, "movie-b", missing_services=["netflix"]),
+        ]
+        mock_session_fn.return_value = self._mock_session_get(posts)
+
+        from utils.wordpress import get_posts_missing_url
+        result = get_posts_missing_url()
+
+        slugs = [p["slug"] for p in result]
+        assert "movie-a" not in slugs
+        assert "movie-b" in slugs
+
+    @patch("utils.wordpress.os.environ", {
+        "WP_API_URL": "https://example.com/wp-json/wp/v2",
+        "WP_USER": "u", "WP_APP_PASSWORD": "p",
+    })
+    @patch("utils.wordpress._session")
+    def test_cooldown_active_excluded(self, mock_session_fn):
+        """cooldown_until が今日以降の投稿は除外される。"""
+        from datetime import date, timedelta
+        future = (date.today() + timedelta(days=10)).isoformat()
+        past = (date.today() - timedelta(days=1)).isoformat()
+        posts = [
+            _make_full_post(1, "movie-cooldown", cooldown_until=future, missing_services=["netflix"]),
+            _make_full_post(2, "movie-ok", cooldown_until=past, missing_services=["netflix"]),
+        ]
+        mock_session_fn.return_value = self._mock_session_get(posts)
+
+        from utils.wordpress import get_posts_missing_url
+        result = get_posts_missing_url()
+
+        slugs = [p["slug"] for p in result]
+        assert "movie-cooldown" not in slugs
+        assert "movie-ok" in slugs
+
+    @patch("utils.wordpress.os.environ", {
+        "WP_API_URL": "https://example.com/wp-json/wp/v2",
+        "WP_USER": "u", "WP_APP_PASSWORD": "p",
+    })
+    @patch("utils.wordpress._session")
+    def test_no_missing_url_excluded(self, mock_session_fn):
+        """全サービスの scraping_url が設定済みの投稿は除外される。"""
+        posts = [
+            _make_full_post(1, "movie-full", missing_services=[]),  # 全サービス設定済み
+            _make_full_post(2, "movie-missing", missing_services=["netflix"]),
+        ]
+        mock_session_fn.return_value = self._mock_session_get(posts)
+
+        from utils.wordpress import get_posts_missing_url
+        result = get_posts_missing_url()
+
+        slugs = [p["slug"] for p in result]
+        assert "movie-full" not in slugs
+        assert "movie-missing" in slugs
