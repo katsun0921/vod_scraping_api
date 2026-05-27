@@ -143,6 +143,13 @@ def run(
 
 def main() -> None:
     """CLI エントリーポイント。"""
+    # ローカル実行時は .env から環境変数を読み込む（Cloud Run では不要）
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     parser = argparse.ArgumentParser(description="JustWatch 月次バッチ")
     parser.add_argument("--dry-run", action="store_true", help="対象の確認のみ（更新なし）")
     parser.add_argument("--slug", type=str, help="特定の slug のみ処理")
