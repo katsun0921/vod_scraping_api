@@ -716,3 +716,79 @@ def get_posts_missing_url(
 
     logger.info("全投稿 %d 件中、scraping_url 未設定サービスあり: %d 件（limit=%s）", len(posts), len(filtered), limit)
     return filtered
+
+
+def get_all_posts_for_patch(
+    slug: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> list[dict]:
+    """月次パッチ用: 全 publish 投稿を取得する（scraping_url 有無問わず）。
+
+    通常の get_posts() は scraping_url が1件以上ある投稿のみを返すが、
+    この関数は scraping_url がない投稿も含めて全件返す。
+    月次パッチでは JustWatch による URL 探索も行うため、URL なし投稿も対象にする。
+
+    除外条件:
+      - scraping_disabled=true の投稿（管理者が明示的に停止）
+
+    月次パッチでは cooldown を無視するため、cooldown フィルタは適用しない。
+    バッチ番号フィルタ（post_id % 4）は呼び出し元で適用する。
+
+    Args:
+        slug : 指定した場合、該当 slug の投稿のみ取得する。
+        limit: 返す最大件数。None の場合は全件返す。
+
+    Returns:
+        投稿データのリスト（id, slug, title, acf, vod, categories を含む）。
+    """
+    url = f"{_base_url()}/posts"
+    posts: list[dict] = []
+    page = 1
+    session = _session()
+
+    while True:
+        params: dict = {
+            "status": "publish",
+            "_fields": "id,slug,title,acf,vod,categories",
+        }
+        if slug:
+            params["slug"] = slug
+            params["per_page"] = 1
+        else:
+            params["per_page"] = PER_PAGE
+            params["page"] = page
+
+        for attempt in range(3):
+            resp = session.get(url, params=params, timeout=30)
+            logger.info(
+                "GET posts(patch) page=%d status=%d (attempt=%d)",
+                page, resp.status_code, attempt + 1,
+            )
+            if resp.status_code < 500:
+                break
+            logger.warning("GET posts(patch) page=%d server error, retrying in 5s...", page)
+            time.sleep(5)
+        resp.raise_for_status()
+        batch = resp.json()
+        if not batch:
+            break
+        posts.extend(batch)
+        if slug or len(batch) < PER_PAGE:
+            break
+        page += 1
+        logger.info("GET posts(patch) page=%d (%d件取得済み)", page - 1, len(posts))
+
+    # scraping_disabled=true の投稿を除外
+    filtered = [
+        p for p in posts
+        if not (p.get("acf") or {}).get("scraping_disabled")
+    ]
+
+    if limit is not None:
+        filtered = filtered[:limit]
+
+    logger.info(
+        "全投稿 %d 件中、月次パッチ対象: %d 件（scraping_disabled 除外済み, limit=%s）",
+        len(posts), len(filtered), limit,
+    )
+    return filtered
