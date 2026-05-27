@@ -32,11 +32,11 @@ Cloud Scheduler 推奨設定（毎週月曜 02:00 JST）
   POST /weekly-patch  ← batch は実行日から自動判定
 
 Usage:
-    python weekly_patch.py              # 今週のバッチを日付から自動判定
+    python weekly_patch.py              # 今週のバッチ内全件を処理（投稿数増加に自動追従）
     python weekly_patch.py --batch 0    # バッチ0（第1週）を強制実行
     python weekly_patch.py --force      # 7日以内の更新済みもスキップしない
     python weekly_patch.py --dry-run    # 対象の確認のみ（更新なし）
-    python weekly_patch.py --limit 50   # 最大50件のみ処理
+    python weekly_patch.py --limit 50   # 上限50件に制限（デバッグ用）
     python weekly_patch.py --slug john-wick  # 特定 slug のみ
 """
 
@@ -98,8 +98,10 @@ _PLAYWRIGHT_SERVICES = frozenset({"unext", "dmm_tv", "crunchyroll"})
 # バッチ数（週数）
 BATCH_COUNT = 4
 
-# デフォルト処理件数（1バッチあたり）
-DEFAULT_BATCH_SIZE = 100
+# デフォルトはバッジ内全件処理（limit=None）
+# 投稿数が増えても 1ヶ月で全件カバーする運用に追従するため、
+# 件数キャップを設けない。--limit を明示すると上限を設定できる（デバッグ用）。
+DEFAULT_BATCH_SIZE: Optional[int] = None
 
 # JustWatch リクエスト間隔（秒）
 _JW_WAIT_SECONDS = 3.0
@@ -250,7 +252,7 @@ def _select_targets(candidates: list[dict], quota: int) -> tuple[list[dict], int
 def _get_batch_targets(
     batch: int,
     slug: Optional[str],
-    limit: int,
+    limit: Optional[int],
     force: bool,
 ) -> tuple[list[dict], dict]:
     """バッチ番号に対応する処理対象投稿リストを返す。
@@ -258,7 +260,7 @@ def _get_batch_targets(
     Args:
         batch: バッチ番号（0-3）。
         slug : 指定した場合、該当 slug のみ（バッジフィルタ不適用）。
-        limit: 最大件数。
+        limit: 最大件数。None の場合はバッジ内全件を処理する。
         force: True のとき cooldown フィルタをスキップして全件候補とする。
 
     Returns:
@@ -269,7 +271,7 @@ def _get_batch_targets(
 
     if slug:
         # slug 指定時はバッジフィルタ・クォータ不要
-        return all_posts[:limit], {}
+        return (all_posts if limit is None else all_posts[:limit]), {}
 
     # バッジ別件数を集計（レポート用）
     badge_stats: dict[int, int] = {i: 0 for i in range(BATCH_COUNT)}
@@ -280,15 +282,18 @@ def _get_batch_targets(
     # バッジフィルタ: この週に属する投稿のみ
     batch_posts = [p for p in all_posts if get_post_badge(p) == batch]
 
-    # force=True のときはバッチ全件をクォータとする
-    quota = len(batch_posts) if force else limit
+    # クォータ決定: limit=None または force=True → バッジ内全件
+    if limit is None or force:
+        quota = len(batch_posts)
+    else:
+        quota = limit
     targets, p1, p2 = _select_targets(batch_posts, quota)
 
     logger.info(
         "バッジ分布: batch0=%d batch1=%d batch2=%d batch3=%d"
-        " → 今週(batch%d)=%d件 phase1=%d phase2=%d limit=%d",
+        " → 今週(batch%d)=%d件 phase1=%d phase2=%d limit=%s",
         badge_stats[0], badge_stats[1], badge_stats[2], badge_stats[3],
-        batch, len(batch_posts), p1, p2, limit,
+        batch, len(batch_posts), p1, p2, "all" if limit is None else limit,
     )
 
     return targets, {f"batch{k}": v for k, v in badge_stats.items()}
@@ -300,7 +305,7 @@ def _get_batch_targets(
 
 def run(
     batch: Optional[int] = None,
-    limit: int = DEFAULT_BATCH_SIZE,
+    limit: Optional[int] = DEFAULT_BATCH_SIZE,
     dry_run: bool = False,
     force: bool = False,
     slug: Optional[str] = None,
@@ -308,6 +313,7 @@ def run(
     """週次パッチを実行する。
 
     バッチ番号が None の場合は今日の日付から自動判定する。
+    limit が None の場合はバッジ内全件を処理する（投稿数増加に自動追従）。
 
     処理フロー（投稿ごと）:
       1. サービスを「URL あり」と「URL なし」に分類
@@ -321,7 +327,7 @@ def run(
 
     Args:
         batch  : バッチ番号 0-3。None の場合は日付から自動判定。
-        limit  : 最大処理件数（デフォルト: 100）。force=True の場合は無視。
+        limit  : 最大処理件数。None でバッジ内全件（デフォルト）。force=True なら無視。
         dry_run: True の場合、対象の確認のみ（更新なし）。
         force  : True の場合、直近更新チェックをスキップして強制処理。
         slug   : 指定した場合、該当 slug のみ処理する。
@@ -357,8 +363,8 @@ def run(
     cycle = today.strftime("%Y-%m")
 
     logger.info(
-        "週次パッチ開始: batch=%d cycle=%s limit=%d dry_run=%s force=%s",
-        batch, cycle, limit, dry_run, force,
+        "週次パッチ開始: batch=%d cycle=%s limit=%s dry_run=%s force=%s",
+        batch, cycle, ("all" if limit is None else limit), dry_run, force,
     )
 
     # ── 対象投稿を取得 ──────────────────────────────────────────
@@ -750,7 +756,7 @@ def main() -> None:
         "--limit",
         type=int,
         default=DEFAULT_BATCH_SIZE,
-        help=f"最大処理件数（デフォルト: {DEFAULT_BATCH_SIZE}）。--force 時は無視",
+        help="最大処理件数。省略時はバッジ内全件（投稿数増加に自動追従）。--force 時は無視",
     )
     parser.add_argument(
         "--force",

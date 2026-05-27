@@ -59,7 +59,7 @@ def weekly_patch():
 
     リクエストボディ（JSON）:
         batch   (int 0-3) : バッチ番号。省略時は日付から自動判定。
-        limit   (int)     : 最大処理件数（デフォルト: 100）。force=true 時は無視。
+        limit   (int)     : 最大処理件数。省略時はバッジ内全件（投稿数増加に自動追従）。
         force   (bool)    : 直近更新チェックをスキップして強制処理。
         dry_run (bool)    : 対象確認のみ（更新なし）。
         slug    (str)     : 特定 slug のみ処理する。
@@ -75,11 +75,15 @@ def weekly_patch():
         except (ValueError, TypeError):
             return jsonify({"error": f"batch must be an integer 0-{BATCH_COUNT - 1}"}), 400
 
-    limit = body.get("limit", DEFAULT_BATCH_SIZE)
-    try:
-        limit = int(limit)
-    except (ValueError, TypeError):
-        limit = DEFAULT_BATCH_SIZE
+    # limit が未指定 → None（バッジ内全件処理）
+    raw_limit = body.get("limit", DEFAULT_BATCH_SIZE)
+    if raw_limit is None:
+        limit = None
+    else:
+        try:
+            limit = int(raw_limit)
+        except (ValueError, TypeError):
+            limit = DEFAULT_BATCH_SIZE
 
     force = bool(body.get("force", False))
     dry_run = bool(body.get("dry_run", False))
