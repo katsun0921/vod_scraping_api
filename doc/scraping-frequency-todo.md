@@ -86,7 +86,7 @@
 - [x] `should_skip` に独占判定を追加（対象サービスが exclusive_service と不一致なら true）
 
 ### 言語別スキップ
-- [x] `languages` フィールドを ACF に追加（ja / en の checkbox）
+- [x] `lang` フィールドを ACF に追加（ja / en の select）
 - [x] サービスごとの対応言語マッピングをコードに追加
 - [x] `should_skip` に言語判定を追加
 

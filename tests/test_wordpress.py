@@ -24,7 +24,7 @@ def _make_post(
     status: str = "",
     release_year: int = 0,
     unavailable_check_count: int = 0,
-    languages: list | None = None,
+    lang: str | None = None,
     is_exclusive: bool = False,
     exclusive_service: str = "",
 ) -> dict:
@@ -42,8 +42,8 @@ def _make_post(
             "updated_at": updated_at,
         },
     }
-    if languages is not None:
-        acf["languages"] = languages
+    if lang is not None:
+        acf["lang"] = lang
     return {"id": 1, "slug": "test-movie", "acf": acf}
 
 
@@ -216,47 +216,35 @@ class TestShouldSkip:
 
     # --- 5. 言語ミスマッチ ---
 
-    def test_skip_if_ja_only_post_and_apple_tv(self):
-        """ja のみの作品 → apple_tv（en のみ対応）はスキップ"""
-        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", languages=["ja"])
+    def test_skip_if_ja_post_and_apple_tv(self):
+        """lang=ja の作品 → apple_tv（en のみ対応）はスキップ"""
+        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", lang="ja")
         skip, reason = should_skip(post, "apple_tv", TODAY)
         assert skip is True
         assert reason == "language_mismatch=ja"
 
-    def test_skip_if_en_only_post_and_dmm_tv(self):
-        """en のみの作品 → dmm_tv（ja のみ対応）はスキップ"""
-        post = _make_post(service="dmm_tv", scraping_url="https://tv.dmm.com/vod/detail/?season=123", languages=["en"])
+    def test_skip_if_en_post_and_dmm_tv(self):
+        """lang=en の作品 → dmm_tv（ja のみ対応）はスキップ"""
+        post = _make_post(service="dmm_tv", scraping_url="https://tv.dmm.com/vod/detail/?season=123", lang="en")
         skip, reason = should_skip(post, "dmm_tv", TODAY)
         assert skip is True
         assert reason == "language_mismatch=en"
 
-    def test_no_skip_if_ja_en_both(self):
-        """ja + en の両方が設定されていれば全サービスをスキップしない"""
-        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", languages=["ja", "en"])
-        skip, _ = should_skip(post, "apple_tv", TODAY)
-        assert skip is False
-
-    def test_no_skip_if_languages_empty(self):
-        """languages が空リストのときはスキップしない"""
-        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", languages=[])
-        skip, _ = should_skip(post, "apple_tv", TODAY)
-        assert skip is False
-
-    def test_no_skip_if_languages_not_set(self):
-        """languages フィールド未設定（None）のときはスキップしない"""
-        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", languages=None)
+    def test_no_skip_if_lang_not_set(self):
+        """lang フィールド未設定のときはスキップしない"""
+        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", lang=None)
         skip, _ = should_skip(post, "apple_tv", TODAY)
         assert skip is False
 
     def test_no_skip_en_post_on_netflix(self):
-        """en のみの作品でも netflix（ja + en 対応）はスキップしない"""
-        post = _make_post(languages=["en"])
+        """lang=en の作品でも netflix（ja + en 対応）はスキップしない"""
+        post = _make_post(lang="en")
         skip, _ = should_skip(post, "netflix", TODAY)
         assert skip is False
 
     def test_no_skip_ja_post_on_netflix(self):
-        """ja のみの作品でも netflix（ja + en 対応）はスキップしない"""
-        post = _make_post(languages=["ja"])
+        """lang=ja の作品でも netflix（ja + en 対応）はスキップしない"""
+        post = _make_post(lang="ja")
         skip, _ = should_skip(post, "netflix", TODAY)
         assert skip is False
 
@@ -268,7 +256,7 @@ class TestShouldSkip:
             service="apple_tv",
             scraping_url="https://tv.apple.com/jp/movie/test/id1",
             updated_at=old,
-            languages=["ja"],
+            lang="ja",
         )
         skip, reason = should_skip(post, "apple_tv", TODAY)
         assert skip is True
