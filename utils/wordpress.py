@@ -576,6 +576,10 @@ def patch_multi_service_fields(post_id: int, service_fields: dict[str, dict]) ->
     for service, fields in service_fields.items():
         service_base = dict(existing_acf.get(service) or {})
         service_base.update(fields)
+        # number|null フィールドが空文字列の場合は None (JSON null) に変換
+        for sub_key in _NUMBER_OR_NULL_FIELDS:
+            if sub_key in service_base and service_base[sub_key] == "":
+                service_base[sub_key] = None
         acf_patch[service] = service_base
 
     resp = session.patch(url, json={"acf": acf_patch}, timeout=30)

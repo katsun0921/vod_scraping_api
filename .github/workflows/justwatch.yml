@@ -15,6 +15,10 @@ on:
         type: boolean
         required: false
         default: false
+      limit:
+        description: "最大処理件数（空欄で制限なし）"
+        required: false
+        default: ""
 
 jobs:
   justwatch-batch:
@@ -52,5 +56,8 @@ jobs:
           fi
           if [ -n "${{ inputs.slug }}" ]; then
             ARGS="$ARGS --slug ${{ inputs.slug }}"
+          fi
+          if [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
           fi
           python justwatch_batch.py $ARGS

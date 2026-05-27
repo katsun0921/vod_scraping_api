@@ -23,6 +23,11 @@ from datetime import datetime
 from typing import Optional
 
 from utils.justwatch import search_urls
+from utils.slack import (
+    notify_justwatch_post_result,
+    notify_justwatch_start,
+    notify_justwatch_summary,
+)
 from utils.wordpress import (
     SERVICES,
     get_posts_missing_url,
@@ -67,6 +72,9 @@ def run(
     unavailable = 0
     skipped = 0
     errors = 0
+
+    if not dry_run:
+        notify_justwatch_start(total=len(posts), limit=limit)
 
     for post in posts:
         post_id = post["id"]
@@ -120,14 +128,32 @@ def run(
                 unavailable += 1
 
         # 1投稿につき 1回の PATCH で完結
+        post_registered: dict[str, str] = {}
+        post_unavailable: list[str] = []
+        post_error = False
         try:
             patch_multi_service_fields(post_id, service_fields)
+            # 通知用に登録・unavailable を分類
+            for svc, fields in service_fields.items():
+                if "scraping_url" in fields:
+                    post_registered[svc] = fields["scraping_url"]
+                else:
+                    post_unavailable.append(svc)
         except Exception as e:
             logger.error("ERROR [%s] PATCH 失敗: %s", post_slug, e)
             errors += 1
+            post_error = True
             # カウント済みの registered / unavailable を差し引く
             registered -= sum(1 for f in service_fields.values() if "scraping_url" in f)
             unavailable -= sum(1 for f in service_fields.values() if "status" in f)
+
+        notify_justwatch_post_result(
+            title=post_title,
+            slug=post_slug,
+            registered=post_registered,
+            unavailable=post_unavailable,
+            error=post_error,
+        )
 
         time.sleep(_JW_WAIT_BETWEEN_POSTS)
 
@@ -138,11 +164,20 @@ def run(
         "errors": errors,
     }
     logger.info("JustWatch バッチ完了: %s", result)
+    if not dry_run:
+        notify_justwatch_summary(result)
     return result
 
 
 def main() -> None:
     """CLI エントリーポイント。"""
+    # ローカル実行時は .env から環境変数を読み込む（Cloud Run では不要）
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     parser = argparse.ArgumentParser(description="JustWatch 月次バッチ")
     parser.add_argument("--dry-run", action="store_true", help="対象の確認のみ（更新なし）")
     parser.add_argument("--slug", type=str, help="特定の slug のみ処理")

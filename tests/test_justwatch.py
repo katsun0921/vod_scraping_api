@@ -349,12 +349,16 @@ class TestJustwatchBatchRun:
                 acf[svc] = {"scraping_url": f"https://example.com/{svc}/1"}
         return {"id": post_id, "slug": slug, "title": {"rendered": title}, "acf": acf}
 
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
     @patch("justwatch_batch.time.sleep")
     @patch("justwatch_batch.patch_multi_service_fields")
     @patch("justwatch_batch.search_urls")
     @patch("justwatch_batch.get_posts_missing_url")
     def test_registered_and_unavailable_counted(
-        self, mock_get_posts, mock_search, mock_patch, mock_sleep
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
     ):
         """URL あり → registered / URL なし → unavailable がそれぞれカウントされる。"""
         mock_get_posts.return_value = [
@@ -379,12 +383,16 @@ class TestJustwatchBatchRun:
         assert "scraping_url" in service_fields["netflix"]
         assert service_fields["hulu"]["status"] == "unavailable"
 
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
     @patch("justwatch_batch.time.sleep")
     @patch("justwatch_batch.patch_multi_service_fields")
     @patch("justwatch_batch.search_urls")
     @patch("justwatch_batch.get_posts_missing_url")
     def test_jw_error_skips_post(
-        self, mock_get_posts, mock_search, mock_patch, mock_sleep
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
     ):
         """JustWatch エラー時は PATCH せずエラーカウントを増やす。"""
         mock_get_posts.return_value = [
@@ -398,12 +406,16 @@ class TestJustwatchBatchRun:
         assert result["errors"] == 1
         mock_patch.assert_not_called()
 
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
     @patch("justwatch_batch.time.sleep")
     @patch("justwatch_batch.patch_multi_service_fields")
     @patch("justwatch_batch.search_urls")
     @patch("justwatch_batch.get_posts_missing_url")
     def test_dry_run_skips_all(
-        self, mock_get_posts, mock_search, mock_patch, mock_sleep
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
     ):
         """dry_run=True では search も PATCH も呼ばれない。"""
         mock_get_posts.return_value = [
@@ -417,12 +429,16 @@ class TestJustwatchBatchRun:
         mock_search.assert_not_called()
         mock_patch.assert_not_called()
 
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
     @patch("justwatch_batch.time.sleep")
     @patch("justwatch_batch.patch_multi_service_fields")
     @patch("justwatch_batch.search_urls")
     @patch("justwatch_batch.get_posts_missing_url")
     def test_patch_error_rolls_back_count(
-        self, mock_get_posts, mock_search, mock_patch, mock_sleep
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
     ):
         """PATCH 失敗時は registered / unavailable を差し引いてエラーカウントを増やす。"""
         mock_get_posts.return_value = [
@@ -439,3 +455,128 @@ class TestJustwatchBatchRun:
         assert result["errors"] == 1
         assert result["registered"] == 0
         assert result["unavailable"] == 0
+
+
+class TestJustwatchBatchSlackNotify:
+    """Slack 通知が正しいタイミング・内容で呼ばれることを確認する。"""
+
+    def _make_post(self, post_id: int, slug: str, title: str, missing: list[str]) -> dict:
+        from utils.wordpress import SERVICES
+        acf: dict = {}
+        for svc in SERVICES:
+            if svc in missing:
+                acf[svc] = {"scraping_url": ""}
+            else:
+                acf[svc] = {"scraping_url": f"https://example.com/{svc}/1"}
+        return {"id": post_id, "slug": slug, "title": {"rendered": title}, "acf": acf}
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_start_and_summary_called(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """dry_run=False では開始・完了通知が 1回ずつ呼ばれる。"""
+        mock_get_posts.return_value = [
+            self._make_post(1, "john-wick", "ジョン・ウィック", ["netflix"]),
+        ]
+        mock_search.return_value = {}
+
+        import justwatch_batch
+        justwatch_batch.run()
+
+        mock_start.assert_called_once_with(total=1, limit=None)
+        mock_summary.assert_called_once()
+        summary_arg = mock_summary.call_args[0][0]
+        assert "registered" in summary_arg
+        assert "unavailable" in summary_arg
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_dry_run_no_slack(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """dry_run=True では Slack 通知が一切呼ばれない。"""
+        mock_get_posts.return_value = [
+            self._make_post(1, "john-wick", "ジョン・ウィック", ["netflix"]),
+        ]
+
+        import justwatch_batch
+        justwatch_batch.run(dry_run=True)
+
+        mock_start.assert_not_called()
+        mock_summary.assert_not_called()
+        mock_post_result.assert_not_called()
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_post_result_registered(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """URL 登録時は registered に URL が渡される。"""
+        mock_get_posts.return_value = [
+            self._make_post(1, "john-wick", "ジョン・ウィック", ["netflix", "hulu"]),
+        ]
+        mock_search.return_value = {
+            "netflix": "https://www.netflix.com/jp/title/1",
+        }
+
+        import justwatch_batch
+        justwatch_batch.run()
+
+        mock_post_result.assert_called_once()
+        kwargs = mock_post_result.call_args[1] if mock_post_result.call_args[1] else {}
+        args = mock_post_result.call_args[0]
+        # キーワード引数 or 位置引数で呼ばれる
+        call_kwargs = mock_post_result.call_args.kwargs if hasattr(mock_post_result.call_args, 'kwargs') else {}
+        # positional fallback
+        if not call_kwargs:
+            call_kwargs = {
+                "title": args[0], "slug": args[1],
+                "registered": args[2], "unavailable": args[3], "error": args[4],
+            }
+        assert call_kwargs["registered"] == {"netflix": "https://www.netflix.com/jp/title/1"}
+        assert "hulu" in call_kwargs["unavailable"]
+        assert call_kwargs["error"] is False
+
+    @patch("justwatch_batch.notify_justwatch_post_result")
+    @patch("justwatch_batch.notify_justwatch_summary")
+    @patch("justwatch_batch.notify_justwatch_start")
+    @patch("justwatch_batch.time.sleep")
+    @patch("justwatch_batch.patch_multi_service_fields")
+    @patch("justwatch_batch.search_urls")
+    @patch("justwatch_batch.get_posts_missing_url")
+    def test_post_result_error_flag(
+        self, mock_get_posts, mock_search, mock_patch, mock_sleep,
+        mock_start, mock_summary, mock_post_result,
+    ):
+        """PATCH 失敗時は error=True で通知される。"""
+        mock_get_posts.return_value = [
+            self._make_post(1, "john-wick", "ジョン・ウィック", ["netflix"]),
+        ]
+        mock_search.return_value = {}
+        mock_patch.side_effect = Exception("connection error")
+
+        import justwatch_batch
+        justwatch_batch.run()
+
+        mock_post_result.assert_called_once()
+        call_kwargs = mock_post_result.call_args.kwargs
+        assert call_kwargs["error"] is True

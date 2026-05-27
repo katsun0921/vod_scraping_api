@@ -326,6 +326,13 @@ def run(
 
 def main() -> None:
     """CLIエントリーポイント。"""
+    # ローカル実行時は .env から環境変数を読み込む（Cloud Run では不要）
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
     parser = argparse.ArgumentParser(description="VOD配信状況チェッカー")
     parser.add_argument("--dry-run", action="store_true", help="対象の確認のみ（更新なし）")
     parser.add_argument("--force", action="store_true", help="cooldown / updated_at を無視して全件処理")
