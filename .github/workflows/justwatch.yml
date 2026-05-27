@@ -37,9 +37,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          cd vod_scraping_api
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
       - name: Run JustWatch batch
         env:
@@ -48,8 +46,8 @@ jobs:
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           WP_BASIC_USER: ${{ secrets.WP_BASIC_USER }}
           WP_BASIC_PASSWORD: ${{ secrets.WP_BASIC_PASSWORD }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          cd vod_scraping_api
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
