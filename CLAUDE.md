@@ -60,8 +60,10 @@ vod_scraping_api/
 | DMM TV | `dmm_tv` | `https://tv.dmm.com/vod/detail/?season={id}` | Playwright |
 | Apple TV | `apple_tv` | `https://tv.apple.com/{region}/movie/{slug}/{id}` | requests + BS4 |
 | YouTube | `youtube` | `https://www.youtube.com/watch?v={video_id}` | requests + BS4 |
+| Crunchyroll | `crunchyroll` | `https://www.crunchyroll.com/series/{ID}/{slug}` | Playwright |
 
 > Amazon: Cloud Run 環境では `/gp/video/detail/{id}` 形式を使用すること（`/dp/{asin}` はブロックされる場合あり）
+> Crunchyroll: アニメカテゴリ（category slug: `anime`）の en 作品のみ対象
 
 ## ステータス値
 

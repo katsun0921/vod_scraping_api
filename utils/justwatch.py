@@ -45,6 +45,7 @@ _JW_PROVIDER_MAP: dict[str, str] = {
     "disneyplus":               "disney_plus",
     "appletvplus":              "apple_tv",             # Apple TV+（見放題）
     "itunes":                   "apple_tv",             # Apple TV Store（レンタル/購入）
+    "crunchyroll":              "crunchyroll",          # Crunchyroll（アニメ専門）
     # DMM TV は JustWatch JP 未対応のため除外
     # YouTube 一般映画は JustWatch JP 未対応のため除外
 }
@@ -60,6 +61,7 @@ _SERVICE_BASE_URLS: dict[str, str] = {
     "dmm_tv":             "https://tv.dmm.com/vod/detail/?season=",
     "apple_tv":           "https://tv.apple.com/jp/movie/",
     "youtube":            "https://www.youtube.com/watch?v=",
+    "crunchyroll":        "https://www.crunchyroll.com/",
 }
 
 _SEARCH_QUERY = """

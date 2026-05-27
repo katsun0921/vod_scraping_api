@@ -216,12 +216,12 @@ class TestShouldSkip:
 
     # --- 5. 言語ミスマッチ ---
 
-    def test_skip_if_ja_post_and_apple_tv(self):
-        """lang=ja の作品 → apple_tv（en のみ対応）はスキップ"""
-        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", lang="ja")
-        skip, reason = should_skip(post, "apple_tv", TODAY)
+    def test_skip_if_en_post_and_unext(self):
+        """lang=en の作品 → unext（ja のみ対応）はスキップ"""
+        post = _make_post(service="unext", scraping_url="https://video.unext.jp/title/SID123", lang="en")
+        skip, reason = should_skip(post, "unext", TODAY)
         assert skip is True
-        assert reason == "language_mismatch=ja"
+        assert reason == "language_mismatch=en"
 
     def test_skip_if_en_post_and_dmm_tv(self):
         """lang=en の作品 → dmm_tv（ja のみ対応）はスキップ"""
@@ -232,8 +232,8 @@ class TestShouldSkip:
 
     def test_no_skip_if_lang_not_set(self):
         """lang フィールド未設定のときはスキップしない"""
-        post = _make_post(service="apple_tv", scraping_url="https://tv.apple.com/jp/movie/test/id1", lang=None)
-        skip, _ = should_skip(post, "apple_tv", TODAY)
+        post = _make_post(service="unext", scraping_url="https://video.unext.jp/title/SID123", lang=None)
+        skip, _ = should_skip(post, "unext", TODAY)
         assert skip is False
 
     def test_no_skip_en_post_on_netflix(self):
@@ -253,12 +253,12 @@ class TestShouldSkip:
         # updated_at が古く（スキップ対象外）、言語ミスマッチ
         old = (TODAY - timedelta(days=60)).isoformat()
         post = _make_post(
-            service="apple_tv",
-            scraping_url="https://tv.apple.com/jp/movie/test/id1",
+            service="unext",
+            scraping_url="https://video.unext.jp/title/SID123",
             updated_at=old,
-            lang="ja",
+            lang="en",
         )
-        skip, reason = should_skip(post, "apple_tv", TODAY)
+        skip, reason = should_skip(post, "unext", TODAY)
         assert skip is True
         assert "language_mismatch" in reason
 
@@ -275,8 +275,9 @@ class TestServiceSupportedLanguages:
     def test_dmm_tv_ja_only(self):
         assert SERVICE_SUPPORTED_LANGUAGES["dmm_tv"] == frozenset({"ja"})
 
-    def test_apple_tv_en_only(self):
-        assert SERVICE_SUPPORTED_LANGUAGES["apple_tv"] == frozenset({"en"})
+    def test_apple_tv_ja_and_en(self):
+        """apple_tv は ja/en 両対応"""
+        assert SERVICE_SUPPORTED_LANGUAGES["apple_tv"] == frozenset({"ja", "en"})
 
     def test_unext_ja_only(self):
         assert SERVICE_SUPPORTED_LANGUAGES["unext"] == frozenset({"ja"})

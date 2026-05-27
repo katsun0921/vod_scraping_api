@@ -32,10 +32,11 @@ VOD_TERM_IDS: dict[str, int] = {
     "dmm_tv": 838,
     "apple_tv": 1114,
     "youtube": 973,
+    "crunchyroll": 3937,
 }
 
 # スクレイピング対象サービス一覧
-SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "apple_tv", "youtube"]
+SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "apple_tv", "youtube", "crunchyroll"]
 
 # サービスごとの対応言語セット（post.acf.lang との照合に使用）
 # 言語コード: "ja" = 日本語, "en" = 英語
@@ -48,6 +49,13 @@ SERVICE_SUPPORTED_LANGUAGES: dict[str, frozenset] = {
     "dmm_tv":             frozenset({"ja"}),
     "apple_tv":           frozenset({"ja", "en"}),
     "youtube":            frozenset({"ja", "en"}),
+    "crunchyroll":        frozenset({"en"}),         # 英語作品（主に海外向けアニメ配信）
+}
+
+# サービスごとのカテゴリ制約（post の WordPress category term_id との照合に使用）
+# 設定されている場合、投稿が指定 term_id のいずれかに属していないとスキップする
+SERVICE_REQUIRED_CATEGORY_IDS: dict[str, frozenset] = {
+    "crunchyroll": frozenset({3}),  # アニメ（anime）カテゴリのみ対象 term_id=3
 }
 
 PER_PAGE = 100
@@ -123,7 +131,7 @@ def get_posts(slug: Optional[str] = None, limit: Optional[int] = None) -> list[d
     while True:
         params: dict = {
             "status": "publish",
-            "_fields": "id,slug,title,acf,vod",
+            "_fields": "id,slug,title,acf,vod,categories",
         }
         if slug:
             # slug 指定時は 1 件取得で完結
@@ -385,9 +393,10 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
       4. scraping_url が空（探索対象外）
       5. 直近30日以内に updated_at が更新済み
       6. 言語ミスマッチ（lang が設定されておりサービス対応言語に含まれない）
+      7. カテゴリ制約（SERVICE_REQUIRED_CATEGORY_IDS に定義されたサービスは指定 category term_id 以外をスキップ）
 
     Args:
-        post   : WordPress REST API の投稿データ。
+        post   : WordPress REST API の投稿データ（categories フィールドを含む）。
         service: サービス名（例: "netflix"）。
         today  : 判定基準日（date オブジェクト）。
 
@@ -440,6 +449,14 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
         supported = SERVICE_SUPPORTED_LANGUAGES.get(service, frozenset({"ja", "en"}))
         if post_lang not in supported:
             return True, f"language_mismatch={post_lang}"
+
+    # 7. カテゴリ制約（SERVICE_REQUIRED_CATEGORY_IDS に定義されたサービスのみ）
+    required_cat_ids = SERVICE_REQUIRED_CATEGORY_IDS.get(service)
+    if required_cat_ids:
+        post_category_ids: set[int] = set(post.get("categories") or [])
+        if not post_category_ids & required_cat_ids:
+            # カテゴリ未設定、または必要カテゴリを含まない投稿はスキップ
+            return True, f"category_mismatch(required_ids={','.join(str(i) for i in sorted(required_cat_ids))})"
 
     return False, ""
 
@@ -629,7 +646,7 @@ def get_posts_missing_url(
     while True:
         params: dict = {
             "status": "publish",
-            "_fields": "id,slug,title,acf,vod",
+            "_fields": "id,slug,title,acf,vod,categories",
         }
         if slug:
             params["slug"] = slug
