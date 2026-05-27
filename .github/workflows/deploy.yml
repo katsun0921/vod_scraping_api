@@ -50,7 +50,7 @@ jobs:
             --execution-environment gen2 \
             --no-allow-unauthenticated \
             --memory 512Mi \
-            --timeout 540 \
+            --timeout 3600 \
             --max-instances 1 \
             --concurrency 1 \
             --set-env-vars "\

@@ -56,18 +56,18 @@ def notify_new_streaming(title: str, service: str, url: str) -> None:
 
 
 # ──────────────────────────────────────────────
-# JustWatch 月次バッチ用通知
+# JustWatch 週次バッチ用通知
 # ──────────────────────────────────────────────
 
 def notify_justwatch_start(total: int, limit: Optional[int] = None) -> None:
-    """JustWatch 月次バッチ開始を通知する。
+    """JustWatch 週次バッチ開始を通知する。
 
     Args:
         total: 処理対象の投稿数。
         limit: limit 指定がある場合はその値。
     """
     limit_text = f"（limit={limit}）" if limit is not None else ""
-    text = f":mag: *JustWatch 月次バッチ開始*{limit_text}\n処理対象: *{total}* 件"
+    text = f":mag: *JustWatch 週次バッチ開始*{limit_text}\n処理対象: *{total}* 件"
     _post({"text": text})
     logger.info("Slack 通知送信: JustWatch バッチ開始 total=%d", total)
 
@@ -117,7 +117,7 @@ def notify_justwatch_post_result(
 
 
 def notify_justwatch_summary(result: dict) -> None:
-    """JustWatch 月次バッチ完了サマリーを Slack に通知する。
+    """JustWatch 週次バッチ完了サマリーを Slack に通知する。
 
     Args:
         result: {"registered": int, "unavailable": int, "skipped": int, "errors": int}
@@ -130,7 +130,7 @@ def notify_justwatch_summary(result: dict) -> None:
     disabled = result.get("disabled", 0)
     icon = ":white_check_mark:" if errors == 0 else ":warning:"
     lines = [
-        f"{icon} *JustWatch 月次バッチ完了*",
+        f"{icon} *JustWatch 週次バッチ完了*",
         f"  • URL 登録: *{registered}* サービス",
         f"  • 配信なし: *{unavailable}* サービス",
         f"  • スクレイピング停止: *{disabled}* 件（公開10年超・全サービス配信なし）",
