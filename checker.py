@@ -27,6 +27,7 @@ from checkers.hulu import HuluChecker
 from checkers.netflix import NetflixChecker
 from checkers.unext import UnextChecker
 from checkers.youtube import YoutubeChecker
+# from checkers.crunchyroll import CrunchyrollChecker  # TODO: checkers/crunchyroll.py 実装後にアンコメント
 from utils.rate_limit import RateLimiter
 from utils.slack import notify_new_streaming
 from utils.wordpress import (
@@ -57,6 +58,7 @@ _CHECKER_MAP: dict[str, type] = {
     "dmm_tv":             DmmTvChecker,
     "apple_tv":           AppleTvChecker,
     "youtube":            YoutubeChecker,
+    # "crunchyroll":      CrunchyrollChecker,  # TODO: checkers/crunchyroll.py 実装後にアンコメント
 }
 
 MAX_CONSECUTIVE_ERRORS = 3

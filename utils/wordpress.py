@@ -32,10 +32,11 @@ VOD_TERM_IDS: dict[str, int] = {
     "dmm_tv": 838,
     "apple_tv": 1114,
     "youtube": 973,
+    "crunchyroll": 0,  # TODO: WordPress 管理画面で term_id を確認後に更新
 }
 
 # スクレイピング対象サービス一覧
-SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "apple_tv", "youtube"]
+SERVICES = ["amazon_prime_video", "netflix", "hulu", "unext", "disney_plus", "dmm_tv", "apple_tv", "youtube", "crunchyroll"]
 
 # サービスごとの対応言語セット（post.acf.lang との照合に使用）
 # 言語コード: "ja" = 日本語, "en" = 英語
@@ -48,9 +49,46 @@ SERVICE_SUPPORTED_LANGUAGES: dict[str, frozenset] = {
     "dmm_tv":             frozenset({"ja"}),
     "apple_tv":           frozenset({"ja", "en"}),
     "youtube":            frozenset({"ja", "en"}),
+    "crunchyroll":        frozenset({"en"}),         # 英語作品（主に海外向けアニメ配信）
+}
+
+# サービスごとのカテゴリ制約（post の WordPress category スラッグとの照合に使用）
+# 設定されている場合、投稿が指定カテゴリのいずれかに属していないとスキップする
+SERVICE_REQUIRED_CATEGORIES: dict[str, frozenset] = {
+    "crunchyroll": frozenset({"anime"}),  # アニメカテゴリのみ対象
 }
 
 PER_PAGE = 100
+
+# category term_id → slug のキャッシュ（should_skip でのカテゴリ判定に使用）
+_category_slug_cache: dict[int, str] = {}
+
+
+def _get_category_slugs(term_ids: list[int]) -> set[str]:
+    """category term_id リストから slug セットを返す。
+
+    未キャッシュの term_id は WordPress REST API で一括取得してキャッシュする。
+
+    Args:
+        term_ids: category term_id のリスト。
+
+    Returns:
+        slug の set。
+    """
+    missing = [tid for tid in term_ids if tid not in _category_slug_cache]
+    if missing:
+        session = _session()
+        resp = session.get(
+            f"{_base_url()}/categories",
+            params={"include": ",".join(str(t) for t in missing), "per_page": len(missing)},
+            timeout=30,
+        )
+        if resp.ok:
+            for cat in resp.json():
+                _category_slug_cache[cat["id"]] = cat["slug"]
+        else:
+            logger.warning("GET categories 失敗: status=%d", resp.status_code)
+    return {_category_slug_cache[tid] for tid in term_ids if tid in _category_slug_cache}
 
 
 def _wp_auth_header() -> str:
@@ -123,7 +161,7 @@ def get_posts(slug: Optional[str] = None, limit: Optional[int] = None) -> list[d
     while True:
         params: dict = {
             "status": "publish",
-            "_fields": "id,slug,title,acf,vod",
+            "_fields": "id,slug,title,acf,vod,categories",
         }
         if slug:
             # slug 指定時は 1 件取得で完結
@@ -385,9 +423,10 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
       4. scraping_url が空（探索対象外）
       5. 直近30日以内に updated_at が更新済み
       6. 言語ミスマッチ（lang が設定されておりサービス対応言語に含まれない）
+      7. カテゴリ制約（SERVICE_REQUIRED_CATEGORIES に定義されたサービスは指定カテゴリ以外をスキップ）
 
     Args:
-        post   : WordPress REST API の投稿データ。
+        post   : WordPress REST API の投稿データ（categories フィールドを含む）。
         service: サービス名（例: "netflix"）。
         today  : 判定基準日（date オブジェクト）。
 
@@ -440,6 +479,18 @@ def should_skip(post: dict, service: str, today: date) -> tuple[bool, str]:
         supported = SERVICE_SUPPORTED_LANGUAGES.get(service, frozenset({"ja", "en"}))
         if post_lang not in supported:
             return True, f"language_mismatch={post_lang}"
+
+    # 7. カテゴリ制約（SERVICE_REQUIRED_CATEGORIES に定義されたサービスのみ）
+    required_cats = SERVICE_REQUIRED_CATEGORIES.get(service)
+    if required_cats:
+        post_category_ids: list[int] = post.get("categories") or []
+        if post_category_ids:
+            post_cat_slugs = _get_category_slugs(post_category_ids)
+            if not post_cat_slugs & required_cats:
+                return True, f"category_mismatch(required={','.join(sorted(required_cats))})"
+        else:
+            # カテゴリ未設定の投稿は制約サービスをスキップ
+            return True, f"category_mismatch(required={','.join(sorted(required_cats))},post_has_no_categories)"
 
     return False, ""
 
@@ -629,7 +680,7 @@ def get_posts_missing_url(
     while True:
         params: dict = {
             "status": "publish",
-            "_fields": "id,slug,title,acf,vod",
+            "_fields": "id,slug,title,acf,vod,categories",
         }
         if slug:
             params["slug"] = slug
