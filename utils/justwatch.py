@@ -21,12 +21,10 @@ logger = logging.getLogger(__name__)
 
 _JUSTWATCH_API_URL = "https://apis.justwatch.com/graphql"
 
+from utils.browser import USER_AGENT
+
 _HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
+    "User-Agent": USER_AGENT,
     "Content-Type": "application/json",
     "Accept": "application/json",
     "Origin": "https://www.justwatch.com",
