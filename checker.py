@@ -142,18 +142,24 @@ def _select_targets(candidates: list[dict], quota: int) -> tuple[list[dict], int
     return targets, p1_take, p2_take
 
 
-def run(dry_run: bool = False, force: bool = False, slug: Optional[str] = None) -> dict:
+def run(
+    dry_run: bool = False,
+    force: bool = False,
+    slug: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> dict:
     """WordPress 投稿の VOD 配信状況チェックを実行する。
 
     Args:
         dry_run: True の場合、対象の確認のみ行い更新しない。
         force  : True の場合、cooldown / updated_at チェックを無視して全件処理する。
         slug   : 指定した場合、該当 slug の投稿のみ処理する。
+        limit  : 指定した場合、最大 limit 件のみ処理する。
 
     Returns:
         {"processed": int, "skipped": int, "errors": int} の辞書。
     """
-    posts = get_posts()
+    posts = get_posts(slug=slug, limit=limit)
     processed = 0
     skipped = 0
     errors = 0
@@ -162,12 +168,6 @@ def run(dry_run: bool = False, force: bool = False, slug: Optional[str] = None) 
     current_service: Optional[str] = None
     today = date.today()
     quota = len(posts) if force else int(os.environ.get("DAILY_QUOTA", "30"))
-
-    # slug フィルタ
-    if slug:
-        before = len(posts)
-        posts = [p for p in posts if p.get("slug") == slug]
-        skipped += before - len(posts)
 
     # 投稿レベルのスキップ判定（scraping_disabled / cooldown）
     candidates: list[dict] = []
@@ -327,9 +327,10 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="対象の確認のみ（更新なし）")
     parser.add_argument("--force", action="store_true", help="cooldown / updated_at を無視して全件処理")
     parser.add_argument("--slug", type=str, help="特定のslugのみ処理")
+    parser.add_argument("--limit", type=int, default=None, help="処理する最大件数")
     args = parser.parse_args()
 
-    result = run(dry_run=args.dry_run, force=args.force, slug=args.slug)
+    result = run(dry_run=args.dry_run, force=args.force, slug=args.slug, limit=args.limit)
     print(result)
 
 

@@ -1,0 +1,56 @@
+name: JustWatch Monthly Batch
+
+on:
+  schedule:
+    # 毎月1日 02:00 JST（17:00 UTC）に実行
+    - cron: "0 17 1 * *"
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "特定 slug のみ処理（空欄で全件）"
+        required: false
+        default: ""
+      dry_run:
+        description: "dry-run（更新なし）"
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  justwatch-batch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # Workload Identity Federation に必要
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          cd vod_scraping_api
+          pip install -r requirements.txt
+
+      - name: Run JustWatch batch
+        env:
+          WP_API_URL: ${{ secrets.WP_API_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_BASIC_USER: ${{ secrets.WP_BASIC_USER }}
+          WP_BASIC_PASSWORD: ${{ secrets.WP_BASIC_PASSWORD }}
+        run: |
+          cd vod_scraping_api
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ inputs.slug }}" ]; then
+            ARGS="$ARGS --slug ${{ inputs.slug }}"
+          fi
+          python justwatch_batch.py $ARGS
