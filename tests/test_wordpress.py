@@ -560,3 +560,75 @@ class TestGetPostsMissingUrlFilter:
         slugs = [p["slug"] for p in result]
         assert "movie-full" not in slugs
         assert "movie-missing" in slugs
+
+    @patch("utils.wordpress.os.environ", {
+        "WP_API_URL": "https://example.com/wp-json/wp/v2",
+        "WP_USER": "u", "WP_APP_PASSWORD": "p",
+    })
+    @patch("utils.wordpress._session")
+    def test_updated_at_within_one_month_excluded(self, mock_session_fn):
+        """updated_at が1か月未満のサービスのみ空の投稿は除外される。"""
+        from datetime import date, timedelta
+        recent = (date.today() - timedelta(days=10)).isoformat()
+        from utils.wordpress import SERVICES
+        # netflix のみ scraping_url 空・updated_at が10日前
+        acf: dict = {"scraping_disabled": False, "scraping_cooldown_until": ""}
+        for svc in SERVICES:
+            if svc == "netflix":
+                acf[svc] = {"scraping_url": "", "updated_at": recent}
+            else:
+                acf[svc] = {"scraping_url": f"https://example.com/{svc}/1"}
+        posts = [{"id": 1, "slug": "movie-recent", "title": {"rendered": "movie-recent"}, "acf": acf}]
+        mock_session_fn.return_value = self._mock_session_get(posts)
+
+        from utils.wordpress import get_posts_missing_url
+        result = get_posts_missing_url()
+
+        assert result == []  # 1か月未満なので除外
+
+    @patch("utils.wordpress.os.environ", {
+        "WP_API_URL": "https://example.com/wp-json/wp/v2",
+        "WP_USER": "u", "WP_APP_PASSWORD": "p",
+    })
+    @patch("utils.wordpress._session")
+    def test_updated_at_over_one_month_included(self, mock_session_fn):
+        """updated_at が1か月以上前のサービスがある投稿は対象に含まれる。"""
+        from datetime import date, timedelta
+        old = (date.today() - timedelta(days=40)).isoformat()
+        from utils.wordpress import SERVICES
+        acf: dict = {"scraping_disabled": False, "scraping_cooldown_until": ""}
+        for svc in SERVICES:
+            if svc == "netflix":
+                acf[svc] = {"scraping_url": "", "updated_at": old}
+            else:
+                acf[svc] = {"scraping_url": f"https://example.com/{svc}/1"}
+        posts = [{"id": 1, "slug": "movie-old", "title": {"rendered": "movie-old"}, "acf": acf}]
+        mock_session_fn.return_value = self._mock_session_get(posts)
+
+        from utils.wordpress import get_posts_missing_url
+        result = get_posts_missing_url()
+
+        assert len(result) == 1
+        assert result[0]["slug"] == "movie-old"
+
+    @patch("utils.wordpress.os.environ", {
+        "WP_API_URL": "https://example.com/wp-json/wp/v2",
+        "WP_USER": "u", "WP_APP_PASSWORD": "p",
+    })
+    @patch("utils.wordpress._session")
+    def test_updated_at_empty_included(self, mock_session_fn):
+        """updated_at が未設定（初回）のサービスがある投稿は対象に含まれる。"""
+        from utils.wordpress import SERVICES
+        acf: dict = {"scraping_disabled": False, "scraping_cooldown_until": ""}
+        for svc in SERVICES:
+            if svc == "netflix":
+                acf[svc] = {"scraping_url": "", "updated_at": ""}
+            else:
+                acf[svc] = {"scraping_url": f"https://example.com/{svc}/1"}
+        posts = [{"id": 1, "slug": "movie-new", "title": {"rendered": "movie-new"}, "acf": acf}]
+        mock_session_fn.return_value = self._mock_session_get(posts)
+
+        from utils.wordpress import get_posts_missing_url
+        result = get_posts_missing_url()
+
+        assert len(result) == 1
