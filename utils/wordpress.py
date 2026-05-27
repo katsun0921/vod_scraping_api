@@ -644,10 +644,27 @@ def get_posts_missing_url(
             break
         page += 1
 
-    # scraping_url が空のサービスを 1 件以上持つ投稿のみ返す
+    # scraping_disabled / cooldown のポストを除外し、scraping_url が空のサービスを 1 件以上持つ投稿のみ返す
+    today = date.today()
     filtered = []
     for post in posts:
         acf = post.get("acf") or {}
+
+        # scraping_disabled=true はスキップ
+        if acf.get("scraping_disabled"):
+            logger.debug("SKIP [%s] scraping_disabled=true", post.get("slug"))
+            continue
+
+        # クールダウン中はスキップ
+        cooldown_str = acf.get("scraping_cooldown_until") or ""
+        if cooldown_str:
+            try:
+                if date.fromisoformat(cooldown_str) >= today:
+                    logger.debug("SKIP [%s] cooldown_until=%s", post.get("slug"), cooldown_str)
+                    continue
+            except ValueError:
+                pass
+
         has_missing = any(
             not (acf.get(svc) or {}).get("scraping_url")
             for svc in target_services
