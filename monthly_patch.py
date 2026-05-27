@@ -1,4 +1,4 @@
-"""月次パッチ統合ランナー。
+"""月次パッチ統合ランナー（旧 checker.py + justwatch_batch.py を統合）。
 
 各 VOD 投稿に対して以下を1パスで実行する:
   - scraping_url が設定済みのサービス → 既存チェッカーでステータス確認
@@ -27,18 +27,14 @@
   推定処理時間       : 100件 × 約25〜40分/回 × 4回 ≈ 2時間/月
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Cloud Scheduler 推奨設定
+Cloud Scheduler 推奨設定（毎週月曜 02:00 JST）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  毎週月曜 02:00 AM JST:
-    POST /monthly-patch  ← batch は実行日から自動判定
-
-  手動でバッチ指定する場合:
-    POST /monthly-patch {"batch": 0}  # 第1週
-    POST /monthly-patch {"batch": 1}  # 第2週
+  POST /monthly-patch  ← batch は実行日から自動判定
 
 Usage:
     python monthly_patch.py              # 今週のバッチを日付から自動判定
     python monthly_patch.py --batch 0    # バッチ0（第1週）を強制実行
+    python monthly_patch.py --force      # 7日以内の更新済みもスキップしない
     python monthly_patch.py --dry-run    # 対象の確認のみ（更新なし）
     python monthly_patch.py --limit 50   # 最大50件のみ処理
     python monthly_patch.py --slug john-wick  # 特定 slug のみ
@@ -109,11 +105,18 @@ DEFAULT_BATCH_SIZE = 100
 _JW_WAIT_SECONDS = 3.0
 
 # 月次パッチで直近何日以内に更新済みのサービスをスキップするか
-# （毎日の checker.py は30日、月次パッチは7日に短縮して再確認を増やす）
+# force=True のときはこのチェックをスキップする
 _PATCH_SKIP_WITHIN_DAYS = 7
 
 # 最大連続エラー数（この回数連続してエラーが発生したら処理中断）
 MAX_CONSECUTIVE_ERRORS = 3
+
+# リリース年がない場合のフォールバック値（ソートキー用）
+_RELEASE_YEAR_FALLBACK_PHASE1 = 9999  # ASC ソートで空欄を最後尾にする
+_RELEASE_YEAR_FALLBACK_PHASE2 = 0     # DESC(-) ソートで空欄を最後尾にする
+
+# updated_at が空の場合のフォールバック（ASC ソートで空欄を最後尾にする）
+_DATE_FAR_FUTURE = date(9999, 12, 31)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -156,12 +159,23 @@ def get_post_badge(post: dict) -> int:
 
 
 # ──────────────────────────────────────────────────────────────
-# 対象投稿の選定
+# 優先度ソート（旧 checker.py から移植）
 # ──────────────────────────────────────────────────────────────
 
+def _all_updated_at_empty(post: dict) -> bool:
+    """全サービスの updated_at が空欄なら True（未スクレイピング post の判定）。"""
+    acf = post.get("acf") or {}
+    return all(not (acf.get(svc) or {}).get("updated_at") for svc in SERVICES)
+
+
+def _has_any_streaming(post: dict) -> bool:
+    """1つでも配信中のサービスがあれば True。"""
+    acf = post.get("acf") or {}
+    return any((acf.get(svc) or {}).get("status") == "streaming" for svc in SERVICES)
+
+
 def _min_updated_at(post: dict) -> date:
-    """全サービス中で最も古い updated_at を返す（ソート用）。なければ遠未来を返す。"""
-    _DATE_FAR_FUTURE = date(9999, 12, 31)
+    """全サービス中で最も古い updated_at を返す。なければ _DATE_FAR_FUTURE。"""
     acf = post.get("acf") or {}
     dates = []
     for svc in SERVICES:
@@ -174,26 +188,70 @@ def _min_updated_at(post: dict) -> date:
     return min(dates) if dates else _DATE_FAR_FUTURE
 
 
-def _sort_key_monthly(post: dict) -> tuple:
-    """月次パッチのソートキー。
-
-    優先順:
-      1. 一度も処理されていない投稿（全サービス updated_at 空）
-      2. updated_at が最も古い投稿
-    """
+def _sort_key_phase1(post: dict) -> tuple:
+    """フェーズ1ソートキー: release_year ASC（空欄=9999最後尾）, min_updated_at ASC。"""
     acf = post.get("acf") or {}
-    has_any_updated = any(
-        (acf.get(svc) or {}).get("updated_at")
-        for svc in SERVICES
-    )
-    never_processed = 0 if not has_any_updated else 1
-    return (never_processed, _min_updated_at(post))
+    try:
+        year = int(acf.get("release_year") or 0) or _RELEASE_YEAR_FALLBACK_PHASE1
+    except (ValueError, TypeError):
+        year = _RELEASE_YEAR_FALLBACK_PHASE1
+    return (year, _min_updated_at(post))
 
+
+def _sort_key_phase2(post: dict) -> tuple:
+    """フェーズ2ソートキー: 配信中先頭, release_year DESC（空欄=最後尾）, min_updated_at ASC。"""
+    acf = post.get("acf") or {}
+    streaming_last = 0 if _has_any_streaming(post) else 1
+    try:
+        year = int(acf.get("release_year") or 0) or _RELEASE_YEAR_FALLBACK_PHASE2
+    except (ValueError, TypeError):
+        year = _RELEASE_YEAR_FALLBACK_PHASE2
+    return (streaming_last, -year, _min_updated_at(post))
+
+
+def _select_targets(candidates: list[dict], quota: int) -> tuple[list[dict], int, int]:
+    """クォータ内で処理する post を優先順に選ぶ。
+
+    フェーズ1（未スクレイピング post）を先に消化し、枠が余ればフェーズ2（通常優先）で補完。
+
+    Args:
+        candidates: 選択対象の投稿リスト。
+        quota     : 最大選択件数。
+
+    Returns:
+        (targets, phase1_count, phase2_count) のタプル。
+    """
+    phase1 = sorted(
+        [p for p in candidates if _all_updated_at_empty(p)],
+        key=_sort_key_phase1,
+    )
+    p1_take = min(len(phase1), quota)
+    targets: list[dict] = list(phase1[:p1_take])
+
+    remaining = quota - p1_take
+    if remaining > 0:
+        p1_ids = {p["id"] for p in targets}
+        phase2 = sorted(
+            [p for p in candidates if p["id"] not in p1_ids],
+            key=_sort_key_phase2,
+        )
+        p2_take = min(len(phase2), remaining)
+        targets.extend(phase2[:p2_take])
+    else:
+        p2_take = 0
+
+    return targets, p1_take, p2_take
+
+
+# ──────────────────────────────────────────────────────────────
+# 対象投稿の選定
+# ──────────────────────────────────────────────────────────────
 
 def _get_batch_targets(
     batch: int,
     slug: Optional[str],
     limit: int,
+    force: bool,
 ) -> tuple[list[dict], dict]:
     """バッチ番号に対応する処理対象投稿リストを返す。
 
@@ -201,6 +259,7 @@ def _get_batch_targets(
         batch: バッチ番号（0-3）。
         slug : 指定した場合、該当 slug のみ（バッジフィルタ不適用）。
         limit: 最大件数。
+        force: True のとき cooldown フィルタをスキップして全件候補とする。
 
     Returns:
         (targets, badge_stats) のタプル。
@@ -209,10 +268,10 @@ def _get_batch_targets(
     all_posts = get_all_posts_for_patch(slug=slug)
 
     if slug:
-        # slug 指定時はバッジフィルタ不要
+        # slug 指定時はバッジフィルタ・クォータ不要
         return all_posts[:limit], {}
 
-    # バッジ別に件数を集計（レポート用）
+    # バッジ別件数を集計（レポート用）
     badge_stats: dict[int, int] = {i: 0 for i in range(BATCH_COUNT)}
     for p in all_posts:
         b = get_post_badge(p)
@@ -221,14 +280,15 @@ def _get_batch_targets(
     # バッジフィルタ: この週に属する投稿のみ
     batch_posts = [p for p in all_posts if get_post_badge(p) == batch]
 
-    # 優先度ソート: 未処理優先 → updated_at が古い順
-    sorted_posts = sorted(batch_posts, key=_sort_key_monthly)
-    targets = sorted_posts[:limit]
+    # force=True のときはバッチ全件をクォータとする
+    quota = len(batch_posts) if force else limit
+    targets, p1, p2 = _select_targets(batch_posts, quota)
 
     logger.info(
-        "バッジ分布: batch0=%d batch1=%d batch2=%d batch3=%d → 今週(batch%d)=%d件（limit=%d）",
+        "バッジ分布: batch0=%d batch1=%d batch2=%d batch3=%d"
+        " → 今週(batch%d)=%d件 phase1=%d phase2=%d limit=%d",
         badge_stats[0], badge_stats[1], badge_stats[2], badge_stats[3],
-        batch, len(batch_posts), limit,
+        batch, len(batch_posts), p1, p2, limit,
     )
 
     return targets, {f"batch{k}": v for k, v in badge_stats.items()}
@@ -242,6 +302,7 @@ def run(
     batch: Optional[int] = None,
     limit: int = DEFAULT_BATCH_SIZE,
     dry_run: bool = False,
+    force: bool = False,
     slug: Optional[str] = None,
 ) -> dict:
     """月次パッチを実行する。
@@ -254,24 +315,26 @@ def run(
       3. URL あり（新規登録含む）→ 各チェッカーでステータス確認
       4. 全結果を WordPress に更新
 
-    月次パッチは通常の cooldown を無視し、直近 PATCH_SKIP_WITHIN_DAYS 日以内の
-    サービスのみスキップする（より高頻度な再確認を実現する）。
+    force=True のとき:
+      - 直近 _PATCH_SKIP_WITHIN_DAYS 日以内の更新済みチェックをスキップしない
+      - バッチ内の全件を処理する（limit を超えても全件）
 
     Args:
         batch  : バッチ番号 0-3。None の場合は日付から自動判定。
-        limit  : 最大処理件数（デフォルト: 100）。
+        limit  : 最大処理件数（デフォルト: 100）。force=True の場合は無視。
         dry_run: True の場合、対象の確認のみ（更新なし）。
+        force  : True の場合、直近更新チェックをスキップして強制処理。
         slug   : 指定した場合、該当 slug のみ処理する。
 
     Returns:
-        月次パッチの実行結果と予算レポートの辞書。詳細は下記。
+        月次パッチの実行結果と予算レポートの辞書。
 
     Example return value::
 
         {
             "batch": 0,
             "cycle": "2026-05",
-            "badge_distribution": {"batch0": 120, "batch1": 115, "batch2": 118, "batch3": 122},
+            "badge_distribution": {"batch0": 120, "batch1": 115, ...},
             "posts": {"total": 100, "processed": 94, "skipped": 3, "errors": 3},
             "services": {
                 "url_checked": 280,
@@ -294,13 +357,13 @@ def run(
     cycle = today.strftime("%Y-%m")
 
     logger.info(
-        "月次パッチ開始: batch=%d cycle=%s limit=%d dry_run=%s",
-        batch, cycle, limit, dry_run,
+        "月次パッチ開始: batch=%d cycle=%s limit=%d dry_run=%s force=%s",
+        batch, cycle, limit, dry_run, force,
     )
 
     # ── 対象投稿を取得 ──────────────────────────────────────────
     targets, badge_distribution = _get_batch_targets(
-        batch=batch, slug=slug, limit=limit
+        batch=batch, slug=slug, limit=limit, force=force,
     )
     logger.info("対象投稿数: %d件（batch=%d）", len(targets), batch)
 
@@ -364,7 +427,7 @@ def run(
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # ── Phase 1: URL なし → JustWatch 検索 ─────────────────
-        new_url_map: dict[str, str] = {}      # {service: url} 新規発見分
+        new_url_map: dict[str, str] = {}
         jw_service_fields: dict[str, dict] = {}
 
         if missing_services:
@@ -385,7 +448,7 @@ def run(
                     url = found_urls.get(svc, "")
                     if url:
                         new_url_map[svc] = url
-                        url_services.append(svc)   # URL 確定 → 次フェーズでチェック
+                        url_services.append(svc)   # URL 確定 → Phase 2 でチェック
                         urls_registered += 1
                         jw_service_fields[svc] = {"scraping_url": url}
                         logger.info("JW_FOUND [%s][%s] url=%s", post_slug, svc, url)
@@ -428,7 +491,8 @@ def run(
                 )
                 if post_lang not in supported:
                     logger.debug(
-                        "SKIP  [%s][%s] language_mismatch=%s", post_slug, service, post_lang
+                        "SKIP  [%s][%s] language_mismatch=%s",
+                        post_slug, service, post_lang,
                     )
                     skipped += 1
                     continue
@@ -452,21 +516,23 @@ def run(
             if not scraping_url:
                 continue
 
-            # 月次パッチ: 直近 _PATCH_SKIP_WITHIN_DAYS 日以内に更新済みのサービスはスキップ
-            svc_data = acf.get(service) or {}
-            updated_at_str = (svc_data.get("updated_at") or "")[:10]
-            if updated_at_str:
-                try:
-                    updated_date = date.fromisoformat(updated_at_str)
-                    if (today - updated_date).days < _PATCH_SKIP_WITHIN_DAYS:
-                        logger.info(
-                            "SKIP  [%s][%s] updated_within_%dd=%s",
-                            post_slug, service, _PATCH_SKIP_WITHIN_DAYS, updated_at_str,
-                        )
-                        skipped += 1
-                        continue
-                except ValueError:
-                    pass
+            # 直近 _PATCH_SKIP_WITHIN_DAYS 日以内に更新済みのサービスはスキップ
+            # force=True のときはスキップしない
+            if not force:
+                svc_data = acf.get(service) or {}
+                updated_at_str = (svc_data.get("updated_at") or "")[:10]
+                if updated_at_str:
+                    try:
+                        updated_date = date.fromisoformat(updated_at_str)
+                        if (today - updated_date).days < _PATCH_SKIP_WITHIN_DAYS:
+                            logger.info(
+                                "SKIP  [%s][%s] updated_within_%dd=%s",
+                                post_slug, service, _PATCH_SKIP_WITHIN_DAYS, updated_at_str,
+                            )
+                            skipped += 1
+                            continue
+                    except ValueError:
+                        pass
 
             # サービス切り替え時の追加待機
             if current_service is not None and current_service != service:
@@ -501,7 +567,7 @@ def run(
                     updated_at=now_str,
                     current_vod_term_ids=vod_term_ids,
                 )
-                wp_api_calls += 3  # GET(ACF) + PATCH(ACF) + PATCH(taxonomy)
+                wp_api_calls += 3  # GET(ACF) + PATCH(ACF) + PATCH(vod)
                 status_updated += 1
 
                 if is_new_streaming:
@@ -576,7 +642,6 @@ def run(
 
         if not post_had_error:
             processed += 1
-        # post_had_error の場合は errors は既にインクリメント済み
 
     return _build_result(
         batch, cycle, badge_distribution, len(targets),
@@ -603,12 +668,14 @@ def _build_result(
     scraping_calls: int,
     playwright_calls: int,
 ) -> dict:
-    """実行結果辞書を組み立てる。予算の推定処理時間も計算する。"""
-    # 処理時間見積もり（秒）
-    #   requests ベース : 3秒/call（平均）
-    #   Playwright ベース: 15秒/call（平均）
-    #   JustWatch API   : 3秒/call
-    #   WordPress API   : 0.5秒/call
+    """実行結果辞書を組み立てる。予算の推定処理時間も計算する。
+
+    推定時間の内訳:
+        requests ベース : 3秒/call（平均）
+        Playwright ベース: 15秒/call（平均）
+        JustWatch API   : 3秒/call
+        WordPress API   : 0.5秒/call
+    """
     estimated_seconds = (
         scraping_calls * 3
         + playwright_calls * 15
@@ -683,7 +750,12 @@ def main() -> None:
         "--limit",
         type=int,
         default=DEFAULT_BATCH_SIZE,
-        help=f"最大処理件数（デフォルト: {DEFAULT_BATCH_SIZE}）",
+        help=f"最大処理件数（デフォルト: {DEFAULT_BATCH_SIZE}）。--force 時は無視",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="直近更新チェックをスキップして強制処理",
     )
     parser.add_argument(
         "--dry-run",
@@ -702,6 +774,7 @@ def main() -> None:
         batch=args.batch,
         limit=args.limit,
         dry_run=args.dry_run,
+        force=args.force,
         slug=args.slug,
     )
     import json
