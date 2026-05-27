@@ -200,23 +200,11 @@ def update_cooldown(post, today):
 | URL 発見 | `scraping_url` に URL を登録（`registered` カウント） |
 | URL 未発見 | `status=unavailable` + `updated_at=現在日時`（`unavailable` カウント） |
 
-### 自動スクレイピング停止（`scraping_disabled=true`）
-
-以下の条件を**すべて満たす**場合、PATCH 時に `scraping_disabled=true` を書き込む。
-
-| 条件 | 内容 |
-|---|---|
-| 全空サービスで URL が未発見 | JustWatch 検索で1件も `scraping_url` が登録されなかった |
-| `release_year` から10年以上経過 | `今年 - release_year >= 10` |
-
-→ 次回以降の月次バッチ・日次スクレイピングの両方でスキップされる。  
-→ Slack にも `:no_entry: 公開10年超・全サービス配信なし → スクレイピング停止` と通知される。
-
 ### Slack 通知
 
 - **開始時**: 処理対象件数・limit を通知
-- **投稿ごと**: title / slug・登録 URL または unavailable サービス一覧・自動停止フラグを通知
-- **完了時**: registered / unavailable / disabled / skipped / errors のサマリーを通知
+- **投稿ごと**: title / slug・登録 URL または unavailable サービス一覧を通知
+- **完了時**: registered / unavailable / skipped / errors のサマリーを通知
 - `dry_run=True` のときは通知しない
 
 ### 1投稿あたりのリクエスト数
