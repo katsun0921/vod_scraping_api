@@ -1,31 +1,40 @@
-name: JustWatch Monthly Batch
+name: Weekly VOD Patch
 
 on:
   schedule:
-    # 毎月1日 02:00 JST（17:00 UTC）に実行
-    - cron: "0 17 1 * *"
+    # 毎週月曜 02:00 JST（日曜 17:00 UTC）に実行
+    - cron: "0 17 * * 0"
   workflow_dispatch:
     inputs:
+      batch:
+        description: "バッチ番号 0-3（空欄で実行日から自動判定）"
+        required: false
+        default: ""
+      force:
+        description: "7日以内の更新済みもスキップしない"
+        type: boolean
+        required: false
+        default: false
+      dry_run:
+        description: "dry-run（対象確認のみ、更新なし）"
+        type: boolean
+        required: false
+        default: false
       slug:
         description: "特定 slug のみ処理（空欄で全件）"
         required: false
         default: ""
-      dry_run:
-        description: "dry-run（更新なし）"
-        type: boolean
-        required: false
-        default: false
       limit:
-        description: "最大処理件数（空欄で制限なし）"
+        description: "最大処理件数（空欄でバッジ内全件）"
         required: false
         default: ""
 
 jobs:
-  justwatch-batch:
+  weekly-patch:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     permissions:
       contents: read
-      id-token: write  # Workload Identity Federation に必要
 
     steps:
       - name: Checkout
@@ -39,7 +48,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run JustWatch batch
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Run weekly patch
         env:
           WP_API_URL: ${{ secrets.WP_API_URL }}
           WP_USER: ${{ secrets.WP_USER }}
@@ -49,6 +61,12 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           ARGS=""
+          if [ -n "${{ inputs.batch }}" ]; then
+            ARGS="$ARGS --batch ${{ inputs.batch }}"
+          fi
+          if [ "${{ inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="$ARGS --dry-run"
           fi
@@ -58,4 +76,4 @@ jobs:
           if [ -n "${{ inputs.limit }}" ]; then
             ARGS="$ARGS --limit ${{ inputs.limit }}"
           fi
-          python justwatch_batch.py $ARGS
+          python weekly_patch.py $ARGS
