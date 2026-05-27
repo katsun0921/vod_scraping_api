@@ -46,7 +46,7 @@ SERVICE_SUPPORTED_LANGUAGES: dict[str, frozenset] = {
     "unext":              frozenset({"ja"}),
     "disney_plus":        frozenset({"ja", "en"}),
     "dmm_tv":             frozenset({"ja"}),
-    "apple_tv":           frozenset({"en"}),
+    "apple_tv":           frozenset({"ja", "en"}),
     "youtube":            frozenset({"ja", "en"}),
 }
 
