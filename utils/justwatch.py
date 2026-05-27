@@ -32,15 +32,21 @@ _HEADERS = {
 }
 
 # JustWatch の technical_name → 当システムのサービスキー
+# 確認済み technicalName（GET /packages?country=JP より）
 _JW_PROVIDER_MAP: dict[str, str] = {
-    "amp":        "amazon_prime_video",   # Amazon Prime Video
-    "nfx":        "netflix",
-    "hlu":        "hulu",
-    "unx":        "unext",
-    "dnp":        "disney_plus",
-    "dmt":        "dmm_tv",
-    "atp":        "apple_tv",
-    "yte":        "youtube",
+    "amazonprime":              "amazon_prime_video",   # Amazon Prime Video（見放題）
+    "amazon":                   "amazon_prime_video",   # Amazon Video（レンタル/購入）
+    "amazonprimevideowithads":  "amazon_prime_video",   # Amazon Prime Video（広告あり）
+    "netflix":                  "netflix",
+    "netflixbasicwithads":      "netflix",              # Netflix Standard with Ads
+    "hulu":                     "hulu",
+    "unext":                    "unext",
+    "unexthbomax":              "unext",                # HBO Max on U-Next
+    "disneyplus":               "disney_plus",
+    "appletvplus":              "apple_tv",             # Apple TV+（見放題）
+    "itunes":                   "apple_tv",             # Apple TV Store（レンタル/購入）
+    # DMM TV は JustWatch JP 未対応のため除外
+    # YouTube 一般映画は JustWatch JP 未対応のため除外
 }
 
 # サービスキー → JustWatch の URL テンプレート（{id} は standardWebURL から取得）

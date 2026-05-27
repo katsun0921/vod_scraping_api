@@ -58,9 +58,9 @@ class TestExtractUrlsFromNode:
     def test_known_services(self):
         node = {
             "offers": [
-                _make_offer("nfx", "https://www.netflix.com/jp/title/12345"),
-                _make_offer("amp", "https://www.amazon.co.jp/gp/video/detail/B09ABC"),
-                _make_offer("hlu", "https://www.hulu.jp/watch/99999"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/12345"),
+                _make_offer("amazonprime", "https://www.amazon.co.jp/gp/video/detail/B09ABC"),
+                _make_offer("hulu", "https://www.hulu.jp/watch/99999"),
             ]
         }
         urls = _extract_urls_from_node(node)
@@ -77,15 +77,15 @@ class TestExtractUrlsFromNode:
         """同一サービスが複数 offer → 最初の URL のみ"""
         node = {
             "offers": [
-                _make_offer("nfx", "https://www.netflix.com/jp/title/111"),
-                _make_offer("nfx", "https://www.netflix.com/jp/title/222"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/111"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/222"),
             ]
         }
         urls = _extract_urls_from_node(node)
         assert urls["netflix"] == "https://www.netflix.com/jp/title/111"
 
     def test_empty_url_ignored(self):
-        node = {"offers": [_make_offer("nfx", "")]}
+        node = {"offers": [_make_offer("netflix", "")]}
         urls = _extract_urls_from_node(node)
         assert "netflix" not in urls
 
@@ -158,8 +158,8 @@ class TestSearchUrls:
         node = {
             "content": {"title": "ジョン・ウィック", "originalTitle": "John Wick"},
             "offers": [
-                _make_offer("nfx", "https://www.netflix.com/jp/title/70126666"),
-                _make_offer("amp", "https://www.amazon.co.jp/gp/video/detail/B09ABC"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/70126666"),
+                _make_offer("amazonprime", "https://www.amazon.co.jp/gp/video/detail/B09ABC"),
             ],
         }
         mock_graphql.return_value = _make_graphql_response([node])
@@ -174,7 +174,7 @@ class TestSearchUrls:
         """title で結果なし → slug クエリで再試行"""
         node = {
             "content": {"title": "John Wick", "originalTitle": ""},
-            "offers": [_make_offer("nfx", "https://www.netflix.com/jp/title/111")],
+            "offers": [_make_offer("netflix", "https://www.netflix.com/jp/title/111")],
         }
         # 1回目（title）は空、2回目（slug）はヒット
         mock_graphql.side_effect = [
@@ -210,32 +210,28 @@ class TestSearchUrls:
             search_urls("ジョン・ウィック", "john-wick")
 
     @patch("utils.justwatch._post_graphql")
-    def test_all_8_services_extracted(self, mock_graphql):
-        """全8サービスが同時に取れるケース"""
+    def test_all_mapped_services_extracted(self, mock_graphql):
+        """マッピング済みサービスが同時に取れるケース（DMM TV / YouTube は JustWatch JP 未対応）"""
         node = {
             "content": {"title": "Test Movie", "originalTitle": ""},
             "offers": [
-                _make_offer("amp", "https://www.amazon.co.jp/gp/video/detail/B001"),
-                _make_offer("nfx", "https://www.netflix.com/jp/title/1"),
-                _make_offer("hlu", "https://www.hulu.jp/watch/1"),
-                _make_offer("unx", "https://video.unext.jp/title/SID1"),
-                _make_offer("dnp", "https://www.disneyplus.com/ja-jp/movies/test/1"),
-                _make_offer("dmt", "https://tv.dmm.com/vod/detail/?season=1"),
-                _make_offer("atp", "https://tv.apple.com/jp/movie/test/id1"),
-                _make_offer("yte", "https://www.youtube.com/watch?v=abc"),
+                _make_offer("amazonprime", "https://www.amazon.co.jp/gp/video/detail/B001"),
+                _make_offer("netflix", "https://www.netflix.com/jp/title/1"),
+                _make_offer("hulu", "https://www.hulu.jp/watch/1"),
+                _make_offer("unext", "https://video.unext.jp/title/SID1"),
+                _make_offer("disneyplus", "https://www.disneyplus.com/ja-jp/movies/test/1"),
+                _make_offer("appletvplus", "https://tv.apple.com/jp/movie/test/id1"),
             ],
         }
         mock_graphql.return_value = _make_graphql_response([node])
         result = search_urls("Test Movie", "test-movie")
-        assert len(result) == 8
+        assert len(result) == 6
         assert "amazon_prime_video" in result
         assert "netflix" in result
         assert "hulu" in result
         assert "unext" in result
         assert "disney_plus" in result
-        assert "dmm_tv" in result
         assert "apple_tv" in result
-        assert "youtube" in result
 
 
 # ---------------------------------------------------------------------------
