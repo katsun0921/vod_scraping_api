@@ -77,10 +77,17 @@ VOD ラインナップ機能の実装タスク一覧。
 - [ ] 実 HTML で DOM セレクタを確定（ページ HTML の提供が必要）
   - [ ] フィクスチャ保存: `tests/fixtures/amazon_lineup_{cycle}.html`
 
-### Phase 3b: Netflix コレクター（JustWatch フォールバック）
+### Phase 3b: Netflix コレクター（公式 best-effort → JustWatch フォールバック）
 
-- [x] Netflix の個別公式ソースを調査 → クリーンな月次一覧なしと判断
-- [ ] `utils/justwatch.py` に「provider 別の新着取得」クエリを追加
+> 採用方針: まず公式 `about.netflix.com/ja/new-to-watch` の実 HTML を判定し、
+> 取れ高が乏しければ JustWatch に切り替える（追加費用なし・既存依存の範囲内）。
+
+- [x] Netflix の個別公式ソースを調査 → クリーンな月次一覧なし（PR ハイライト中心）と判断
+- [ ] **判定ステップ**: `new-to-watch` の実 HTML を解析し取得可否・網羅性を評価
+  - [ ] パース可能な HTML か（JS のみで描画されないか）を確認
+  - [ ] 映画タイトル・配信日が取れるか、網羅性は許容範囲か
+  - [ ] → 乏しければ下記 JustWatch フォールバックへ
+- [ ] （フォールバック）`utils/justwatch.py` に「provider 別の新着取得」クエリを追加
   - [ ] Netflix の technicalName でフィルタ、`objectTypes: [MOVIE]`
   - [ ] 配信開始日で当月分に絞る（差分判定と併用）
 - [ ] `collectors/netflix.py` を作成
