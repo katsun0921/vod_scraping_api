@@ -58,21 +58,35 @@ VOD ラインナップ機能の実装タスク一覧。
 
 ---
 
-## Phase 3: Netflix / Amazon コレクター
+## Phase 3: Amazon / Netflix コレクター
 
-- [ ] Netflix 洋画新着ページの公開 URL を実機で確認
-  - [ ] ログイン不要で取得可能かを検証
-  - [ ] 可能なら `__NEXT_DATA__` / JSON-LD を優先解析
-  - [ ] 不可なら代替策を決定（JustWatch API への切り替えなど）
-- [ ] `collectors/netflix.py` を作成
-  - [ ] `NetflixCollector(BaseCollector)` を実装
-  - [ ] requests + BS4 → 不可なら Playwright にフォールバック
-  - [ ] robot 検出・取得失敗時に `RuntimeError` を raise
-- [ ] Amazon Prime Video 洋画新着ページの公開 URL を実機で確認
-  - [ ] robot 検出パターンを既存 `checkers/amazon.py` の `ROBOT_INDICATORS` と照合
+> 調査結果（2026-05）: Amazon は公式の月次ソースが存在、Netflix は無し。
+> - **Amazon**: 公式ニュースルームに月次記事あり → 静的スクレイピング（U-NEXT と同方式）
+> - **Netflix**: クリーンな公式月次一覧なし → **JustWatch API にフォールバック**
+
+### Phase 3a: Amazon コレクター（公式ニュースルーム）
+
+- [x] Amazon 公式月次ソースを確認・確定
+  - [x] `aboutamazon.jp/news/entertainment/amazon-prime-video-new-content-{month}-{year}`
+  - [x] URL パターンの継続性を確認（january-2025 〜 june-2026）
+- [ ] `build_amazon_lineup_url(cycle)` を実装（cycle "2026-06" → "june-2026" 変換）
 - [ ] `collectors/amazon.py` を作成
-  - [ ] `AmazonCollector(BaseCollector)` を実装（Playwright 推奨）
-  - [ ] robot 検出時は `RuntimeError` を raise（当該サービスをスキップ）
+  - [ ] `AmazonCollector(BaseCollector)` を実装（requests + BS4）
+  - [ ] 映画カテゴリ（洋画・邦画）を抽出、lang をカテゴリ別に振り分け
+  - [ ] 403/404/5xx・取得失敗時に `RuntimeError` を raise
+- [ ] 実 HTML で DOM セレクタを確定（ページ HTML の提供が必要）
+  - [ ] フィクスチャ保存: `tests/fixtures/amazon_lineup_{cycle}.html`
+
+### Phase 3b: Netflix コレクター（JustWatch フォールバック）
+
+- [x] Netflix の個別公式ソースを調査 → クリーンな月次一覧なしと判断
+- [ ] `utils/justwatch.py` に「provider 別の新着取得」クエリを追加
+  - [ ] Netflix の technicalName でフィルタ、`objectTypes: [MOVIE]`
+  - [ ] 配信開始日で当月分に絞る（差分判定と併用）
+- [ ] `collectors/netflix.py` を作成
+  - [ ] `NetflixCollector(BaseCollector)` を実装（JustWatch 経由）
+  - [ ] 取得失敗時に `RuntimeError` を raise
+- [ ] （任意）Amazon も JustWatch で補完取得できるか検討
 
 ---
 

@@ -117,8 +117,8 @@ vod_scraping_api/
 | サービス | 収集の入口（候補） | 取得方式 | 注意点 |
 |---|---|---|---|
 | **U-NEXT** | 公式プレスルーム月次特集ページ `press-room/{YYYY-MM}-unext-lineup` の「注目ラインナップ > 洋画・邦画」 | **requests + BS4**（静的 HTML） | 確認済み。`<h4>洋画</h4>`/`<h4>邦画</h4>` 配下の `<p>`（日付＋`<br>`区切りタイトル）。SPA 不要。bot 保護で 403 の場合のみ Playwright 検討 |
-| **Netflix** | 「映画 > 英語作品」一覧 | requests + BS4 →（不可なら Playwright） | ログイン前提・地域別が多い。`__NEXT_DATA__` / JSON-LD を優先解析 |
-| **Amazon Prime Video** | 「Prime > 映画 > 新着」 | **Playwright** 推奨 | **robot 検出**あり（`checkers/amazon.py` の `ROBOT_INDICATORS` 参照）。検出時は `RuntimeError` で当該サービスをスキップ |
+| **Amazon Prime Video** | 公式ニュースルーム月次記事 `aboutamazon.jp/news/entertainment/amazon-prime-video-new-content-{month}-{year}` | **requests + BS4**（静的記事） | 公式月次ソースあり（調査済）。月は英語名（`june`）→ cycle から変換が必要。実 HTML でセレクタ確定 |
+| **Netflix** | 公式の月次映画一覧は**なし**（`about.netflix.com/ja/new-to-watch` は新作ハイライトで月次構造化されず） | **JustWatch API**（フォールバック） | 個別ソースが無いため JustWatch の provider 別新着を使用。`utils/justwatch.py` を「新着取得」クエリで拡張 |
 
 > ⚠️ **要事前調査（PoC）**: 3 サービスとも公開 URL・DOM 構造はログイン状態や地域で変動する。
 > 実装前に各ページを実機確認し、セレクタを確定する。1 サービス（U-NEXT）から着手する。
