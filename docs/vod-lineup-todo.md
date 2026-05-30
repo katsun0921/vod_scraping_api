@@ -32,17 +32,24 @@ VOD ラインナップ機能の実装タスク一覧。
 
 ## Phase 2: U-NEXT コレクター（PoC）
 
-> U-NEXT から着手し、DOM セレクタ・スクロール戦略を確定する。
+> 収集元を **U-NEXT 公式プレスルームの月次特集ページ**に確定。
+> URL が月次で予測可能（`https://www.unext.co.jp/press-room/{YYYY-MM}-unext-lineup`）で、
+> 静的 HTML のため当初想定の SPA + Playwright より大幅にシンプルになった。
 
-- [ ] U-NEXT 洋画新着ページの公開 URL を実機で確認・確定
-- [ ] Playwright でページを開き、タイトルを取得できるセレクタを特定
-  - [ ] 無限スクロールの対策方法を決定（スクロール回数 or ページネーション URL）
-  - [ ] external_id（作品 ID）の取得方法を確定
-- [ ] `collectors/unext.py` を作成
-  - [ ] `UnextCollector(BaseCollector)` を実装
-  - [ ] `collect() -> list[LineupItem]` を実装（Playwright 使用）
-  - [ ] robot 検出・取得失敗時に `RuntimeError` を raise
-- [ ] ローカルで動作確認（`dry_run` 相当で取得件数・タイトルをログ出力）
+- [x] U-NEXT 洋画ラインナップの公開 URL を確認・確定
+  - [x] プレスルーム月次特集ページ（`{cycle}-unext-lineup`）に確定
+  - [x] `build_lineup_url(cycle)` で cycle → URL を組み立て
+- [x] `collectors/unext.py` を作成
+  - [x] `UnextCollector(BaseCollector)` を実装
+  - [x] `collect() -> list[LineupItem]` を実装（requests + BS4）
+  - [x] 403/404/5xx・取得失敗時に `RuntimeError` を raise（bot 保護時は Playwright フォールバック検討）
+  - [x] SID が無いためタイトルを external_id に採用（差分はタイトル単位）
+- [ ] **実 HTML で DOM セレクタを確定**（現状はヒューリスティック実装・要差し替え）
+  - [ ] 洋画セクションの見出し文言・タイトル要素（li/td/a 等）を実構造で確定
+  - [ ] 配信日・原題が取得できるか確認（取得できればフィールド拡充）
+  - [ ] ブロッカー: この実行環境は `www.unext.co.jp` が許可リスト外で実取得不可
+        → 許可リスト追加 or 実 HTML 提供が必要
+- [ ] ローカルで動作確認（取得件数・タイトルをログ出力）
 
 ---
 
