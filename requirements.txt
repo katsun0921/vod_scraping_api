@@ -5,3 +5,4 @@ python-dotenv==1.0.1
 gunicorn==22.0.0
 flask==3.0.3
 playwright==1.60.0
+google-cloud-storage==2.18.2

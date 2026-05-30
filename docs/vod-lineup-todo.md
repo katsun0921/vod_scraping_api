@@ -8,23 +8,25 @@ VOD ラインナップ機能の実装タスク一覧。
 
 ## Phase 1: 基盤・データモデル
 
-- [ ] `collectors/__init__.py` を作成
-  - [ ] `LineupItem` dataclass を定義（title / original_title / url / external_id / release_year / lang / content_type / collected_at）
-  - [ ] 共通定数（対象サービス一覧など）を定義
-- [ ] `collectors/base.py` を作成
-  - [ ] `BaseCollector` 抽象クラスを定義
-  - [ ] `collect() -> list[LineupItem]` インターフェースを定義
-- [ ] `utils/gcs.py` を作成
-  - [ ] `upload_lineup(cycle, items)` — 月別 JSON を GCS に上書きアップロード
-  - [ ] `download_overrides(cycle)` — `overrides/{cycle}.json` を取得（なければ空を返す）
-  - [ ] `update_index(cycle)` — `index.json` に今月の cycle を追加
-  - [ ] 環境変数 `GCS_LINEUP_BUCKET` を参照（ハードコード禁止）
-- [ ] `utils/snapshot.py` を作成
-  - [ ] `load_snapshot(service)` — 前回の external_id セットを GCS から読み込む
-  - [ ] `save_snapshot(service, ids)` — 今回の external_id セットを GCS に保存
-  - [ ] `diff(prev, curr)` — 新規追加分を返す
-- [ ] `requirements.txt` に `google-cloud-storage` を追加
-- [ ] `.env.example` に `GCS_LINEUP_BUCKET` を追加
+- [x] `collectors/__init__.py` を作成
+  - [x] `LineupItem` dataclass を定義（title / original_title / url / external_id / release_year / lang / content_type / collected_at）
+  - [x] 共通定数（対象サービス一覧 `LINEUP_SERVICES` / `SERVICE_LABELS`）を定義
+- [x] `collectors/base.py` を作成
+  - [x] `BaseCollector` 抽象クラスを定義
+  - [x] `collect() -> list[LineupItem]` インターフェースを定義
+- [x] `utils/gcs.py` を作成
+  - [x] `upload_lineup(cycle, titles_by_service, updated_at)` — 月別 JSON を GCS に上書きアップロード
+  - [x] `download_overrides(cycle)` — `overrides/{cycle}.json` を取得（なければ空を返す）
+  - [x] `update_index(cycle)` — `index.json` に今月の cycle を追加
+  - [x] 汎用 `download_json` / `upload_json` ヘルパーを実装
+  - [x] 環境変数 `GCS_LINEUP_BUCKET` を参照（ハードコード禁止）
+  - [x] google-cloud-storage は遅延 import（未インストールでもモジュール読込可）
+- [x] `utils/snapshot.py` を作成
+  - [x] `load_snapshot(service)` — 前回の external_id セットを GCS から読み込む
+  - [x] `save_snapshot(service, ids)` — 今回の external_id セットを GCS に保存
+  - [x] `diff(prev, curr)` — 新規追加分を返す
+- [x] `requirements.txt` に `google-cloud-storage` を追加
+- [x] `.env.example` に `GCS_LINEUP_BUCKET` を追加（Slack Webhook も併せて追記）
 
 ---
 
