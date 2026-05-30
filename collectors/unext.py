@@ -30,11 +30,17 @@ logger = logging.getLogger(__name__)
 # プレスルーム月次ラインナップ URL テンプレート
 _LINEUP_URL_TEMPLATE = "https://www.unext.co.jp/press-room/{cycle}-unext-lineup"
 
-# 洋画セクションを示す見出しキーワード（実ページの見出し文言に合わせて調整する）
+# 洋画セクションを示す見出し文言（プレスルーム「注目ラインナップ」の h4 見出し）
 _FOREIGN_MOVIE_HEADINGS = ["洋画", "海外映画"]
 
-# タイトルから配信日などの付随表記を除去するための補助パターン（必要に応じて調整）
-_DATE_SUFFIX_PATTERN = re.compile(r"\s*[（(]\s*\d{1,2}\s*月\s*\d{1,2}\s*日.*$")
+# カテゴリ見出しに使われるタグ（このタグに到達したらセクション終端）
+_HEADING_TAGS = ["h2", "h3", "h4"]
+
+# 日付ラベル行の判定（例: "6月1日（月）" / "配信中"）。タイトルではないので除外する。
+_DATE_LINE_PATTERN = re.compile(r"^\s*(配信中|\d{1,2}\s*月\s*\d{1,2}\s*日)")
+
+# タイトル末尾の注記（【独占】【独占先行】等）を除去するパターン
+_ANNOTATION_PATTERN = re.compile(r"【[^】]*】")
 
 
 def build_lineup_url(cycle: str) -> str:
@@ -118,9 +124,14 @@ class UnextCollector(BaseCollector):
     def _parse(self, html: str) -> list[LineupItem]:
         """特集ページ HTML から洋画タイトルを抽出する。
 
-        ⚠️ 実ページの DOM 構造に依存するため、セレクタは実 HTML で確定する必要がある。
-        現状は「洋画見出しに続くリスト項目を拾う」ヒューリスティックな実装で、
-        実 HTML 確認後に確定セレクタへ差し替える（docs/vod-lineup-todo.md Phase 2）。
+        プレスルーム「注目ラインナップ」の構造:
+            <h4>洋画</h4>
+            <p>6月1日（月） <br>タイトルA<br>タイトルB</p>
+            <p>配信中 <br>タイトルC</p>
+            <h4>邦画</h4>   ← 次カテゴリでセクション終端
+
+        各 <p> は「日付ラベル + <br> 区切りのタイトル群」。日付ラベル行は除外し、
+        タイトル末尾の注記（【独占】等）を取り除く。
 
         Args:
             html: 特集ページの HTML。
@@ -152,32 +163,45 @@ class UnextCollector(BaseCollector):
         return items
 
     def _extract_foreign_movie_titles(self, soup: BeautifulSoup) -> list[str]:
-        """洋画セクション配下のタイトル文字列を抽出する（ヒューリスティック）。
+        """「注目ラインナップ」の洋画 h4 見出し配下からタイトルを抽出する。
 
-        実 HTML 確認後に確定セレクタへ差し替える。
-        見出し（h2〜h4 等）に「洋画」を含む要素を探し、その直後の
-        リスト/テーブルからタイトルを拾う想定。
+        洋画見出し（h4）から次のカテゴリ見出し（h2〜h4）までの範囲の <p> を走査し、
+        各 <p> 内の <br> 区切りテキストからタイトル行を拾う（日付ラベル行は除外）。
         """
+        heading = self._find_foreign_movie_heading(soup)
+        if heading is None:
+            return []
+
         titles: list[str] = []
-        for heading in soup.find_all(re.compile(r"^h[1-6]$")):
-            heading_text = heading.get_text(strip=True)
-            if not any(kw in heading_text for kw in _FOREIGN_MOVIE_HEADINGS):
+        for el in heading.find_all_next():
+            if el.name in _HEADING_TAGS:
+                break  # 次カテゴリ見出しに到達 → 洋画セクション終端
+            if el.name != "p":
                 continue
-            # 見出しに続く要素から、次の見出しが現れるまでの範囲を収集する
-            for el in heading.find_all_next(limit=500):
-                if el.name and re.fullmatch(r"h[1-6]", el.name):
-                    break  # 次セクションの見出しに到達したら打ち切る
-                if el.name in ("li", "td", "a"):
-                    text = el.get_text(strip=True)
-                    if text:
-                        titles.append(text)
-            break  # 最初の洋画見出しのみ対象（実構造に応じて調整）
+            # <br> をテキスト区切りとして取り出し、行ごとに処理する
+            for line in el.get_text("\n").split("\n"):
+                line = line.strip()
+                if not line or _DATE_LINE_PATTERN.match(line):
+                    continue  # 空行・日付ラベル行はタイトルではない
+                titles.append(line)
         return titles
+
+    def _find_foreign_movie_heading(self, soup: BeautifulSoup):
+        """洋画カテゴリの見出し要素（h4）を返す。見つからなければ None。
+
+        「注目ラインナップ」セクションの h4 見出しのみを対象とし、
+        本文中の ``<p><strong>洋画</strong></p>`` 等は対象外とする。
+        """
+        for heading in soup.find_all(_HEADING_TAGS):
+            text = heading.get_text(strip=True)
+            if any(text == kw for kw in _FOREIGN_MOVIE_HEADINGS):
+                return heading
+        return None
 
     @staticmethod
     def _clean_title(raw: str) -> str:
-        """タイトル文字列から配信日などの付随表記を除去する。"""
-        return _DATE_SUFFIX_PATTERN.sub("", raw).strip()
+        """タイトル文字列から注記（【独占】等）を除去して整形する。"""
+        return _ANNOTATION_PATTERN.sub("", raw).strip()
 
     @staticmethod
     def _make_external_id(title: str) -> str:

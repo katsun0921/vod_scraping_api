@@ -116,7 +116,7 @@ vod_scraping_api/
 
 | サービス | 収集の入口（候補） | 取得方式 | 注意点 |
 |---|---|---|---|
-| **U-NEXT** | 「洋画 > 新着」ジャンル一覧 | **Playwright**（SPA / React） | JS レンダリング必須。無限スクロール対策が必要 |
+| **U-NEXT** | 公式プレスルーム月次特集ページ `press-room/{YYYY-MM}-unext-lineup` の「注目ラインナップ > 洋画」 | **requests + BS4**（静的 HTML） | 確認済み。`<h4>洋画</h4>` 配下の `<p>`（日付＋`<br>`区切りタイトル）。SPA 不要。bot 保護で 403 の場合のみ Playwright 検討 |
 | **Netflix** | 「映画 > 英語作品」一覧 | requests + BS4 →（不可なら Playwright） | ログイン前提・地域別が多い。`__NEXT_DATA__` / JSON-LD を優先解析 |
 | **Amazon Prime Video** | 「Prime > 映画 > 新着」 | **Playwright** 推奨 | **robot 検出**あり（`checkers/amazon.py` の `ROBOT_INDICATORS` 参照）。検出時は `RuntimeError` で当該サービスをスキップ |
 
