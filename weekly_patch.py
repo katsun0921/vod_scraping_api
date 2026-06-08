@@ -58,7 +58,7 @@ from checkers.unext import UnextChecker
 from checkers.youtube import YoutubeChecker
 from utils.justwatch import search_urls
 from utils.rate_limit import RateLimiter
-from utils.slack import notify_new_streaming
+from utils.slack import notify_new_streaming_post
 from utils.wordpress import (
     SERVICES,
     SERVICE_REQUIRED_CATEGORY_IDS,
@@ -429,6 +429,7 @@ def run(
 
         post_had_error = False
         post_checked = False
+        new_streaming_services: list[tuple[str, str]] = []
         vod_term_ids = get_vod_term_ids(post)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -577,7 +578,7 @@ def run(
                 status_updated += 1
 
                 if is_new_streaming:
-                    notify_new_streaming(post_title, service, scraping_url)
+                    new_streaming_services.append((service, scraping_url))
 
                 # vod_term_ids をローカルで更新（次サービスの処理に反映）
                 term_id = VOD_TERM_IDS.get(service, 0)
@@ -633,6 +634,11 @@ def run(
                         url_checked, jw_searched, urls_registered, status_updated,
                         wp_api_calls, jw_api_calls, scraping_calls, playwright_calls,
                     )
+
+        # ── 新規配信通知（作品ごとにまとめて送信）──────────────────
+        if new_streaming_services:
+            post_link = post.get("link", "")
+            notify_new_streaming_post(post_title, post_link, new_streaming_services)
 
         # ── Phase 3: クールダウン更新（URL チェックを1件でもした場合）──
         if post_checked:

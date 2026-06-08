@@ -55,6 +55,32 @@ def notify_new_streaming(title: str, service: str, url: str) -> None:
     logger.info("Slack 通知送信: title=%s service=%s", title, service_label)
 
 
+def notify_new_streaming_post(
+    title: str,
+    post_url: str,
+    services: list[tuple[str, str]],
+) -> None:
+    """作品の新規配信検知を Slack に通知する（複数サービスをまとめる）。
+
+    Args:
+        title    : 作品タイトル。
+        post_url : WordPress 投稿の公開 URL。
+        services : [(service_key, scraping_url), ...] の新規配信サービスリスト。
+    """
+    lines = [f":clapper: 新規配信検知: *{title}*"]
+    for service, scraping_url in services:
+        service_label = _SERVICE_LABELS.get(service, service)
+        lines.append(f"  • {service_label}: {scraping_url}")
+    if post_url:
+        lines.append(post_url)
+    _post({"text": "\n".join(lines)})
+    logger.info(
+        "Slack 通知送信: title=%s services=%s",
+        title,
+        [svc for svc, _ in services],
+    )
+
+
 # ──────────────────────────────────────────────
 # JustWatch 週次バッチ用通知
 # ──────────────────────────────────────────────

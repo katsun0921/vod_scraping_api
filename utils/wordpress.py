@@ -749,7 +749,7 @@ def get_all_posts_for_patch(
     while True:
         params: dict = {
             "status": "publish",
-            "_fields": "id,slug,title,acf,vod,categories",
+            "_fields": "id,slug,title,acf,vod,categories,link",
         }
         if slug:
             params["slug"] = slug
