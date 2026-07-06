@@ -58,7 +58,7 @@ from checkers.unext import UnextChecker
 from checkers.youtube import YoutubeChecker
 from utils.justwatch import search_urls
 from utils.rate_limit import RateLimiter
-from utils.slack import notify_new_streaming_post
+from utils.slack import notify_weekly_new_streaming_summary
 from utils.wordpress import (
     SERVICES,
     SERVICE_REQUIRED_CATEGORY_IDS,
@@ -392,6 +392,9 @@ def run(
     rate_limiter = RateLimiter()
     current_service: Optional[str] = None
 
+    # 新着配信の収集用（実行完了後に一覧をまとめて Slack 通知する）
+    new_streaming_items: list[dict] = []
+
     # ── 各投稿を処理 ───────────────────────────────────────────
     for post in targets:
         post_id = post["id"]
@@ -429,7 +432,6 @@ def run(
 
         post_had_error = False
         post_checked = False
-        new_streaming_services: list[tuple[str, str]] = []
         vod_term_ids = get_vod_term_ids(post)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -578,7 +580,12 @@ def run(
                 status_updated += 1
 
                 if is_new_streaming:
-                    new_streaming_services.append((service, scraping_url))
+                    new_streaming_items.append({
+                        "service": service,
+                        "lang": post_lang,
+                        "title": post_title,
+                        "url": post.get("link", ""),
+                    })
 
                 # vod_term_ids をローカルで更新（次サービスの処理に反映）
                 term_id = VOD_TERM_IDS.get(service, 0)
@@ -612,6 +619,7 @@ def run(
                     logger.error(
                         "連続エラー %d 回に達したため処理を中断します", MAX_CONSECUTIVE_ERRORS
                     )
+                    notify_weekly_new_streaming_summary(new_streaming_items)
                     return _build_result(
                         batch, cycle, badge_distribution, len(targets),
                         processed, skipped, errors,
@@ -628,17 +636,13 @@ def run(
                     logger.error(
                         "連続エラー %d 回に達したため処理を中断します", MAX_CONSECUTIVE_ERRORS
                     )
+                    notify_weekly_new_streaming_summary(new_streaming_items)
                     return _build_result(
                         batch, cycle, badge_distribution, len(targets),
                         processed, skipped, errors,
                         url_checked, jw_searched, urls_registered, status_updated,
                         wp_api_calls, jw_api_calls, scraping_calls, playwright_calls,
                     )
-
-        # ── 新規配信通知（作品ごとにまとめて送信）──────────────────
-        if new_streaming_services:
-            post_link = post.get("link", "")
-            notify_new_streaming_post(post_title, post_link, new_streaming_services)
 
         # ── Phase 3: クールダウン更新（URL チェックを1件でもした場合）──
         if post_checked:
@@ -654,6 +658,9 @@ def run(
 
         if not post_had_error:
             processed += 1
+
+    # ── 今週の新着一覧を Slack にまとめて通知 ───────────────────────
+    notify_weekly_new_streaming_summary(new_streaming_items)
 
     return _build_result(
         batch, cycle, badge_distribution, len(targets),
