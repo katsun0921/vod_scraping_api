@@ -58,7 +58,7 @@ def notify_weekly_new_streaming_summary(items: list[dict]) -> None:
             service: サービスキー名（例: "netflix"）
             lang   : 投稿の言語コード（"ja" / "en"）
             title  : 作品タイトル
-            url    : WordPress 投稿の公開 URL（空文字可）
+            url    : フロントエンド表示 URL（空文字可。解決失敗時は WP link）
     """
     if not items:
         logger.info("Slack 通知スキップ: 今週の新着配信なし")
