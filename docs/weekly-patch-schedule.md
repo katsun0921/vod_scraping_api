@@ -73,13 +73,19 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 │    - Playwright ベース: U-NEXT / DMM TV / Crunchyroll           │
 │ 2. 結果を update_post() で WP に書き込み                        │
 │ 3. vod タクソノミーを更新                                       │
-│ 4. 新規 streaming 検知 → Slack 通知                            │
+│ 4. 新規 streaming 検知 → new_streaming_items に蓄積             │
+│    （Slack 通知はバッチ完了後に一覧としてまとめて送信）           │
 └──────────────────────────────────────────────────────────────┘
          ↓
 ┌─ Phase 3: クールダウン更新───────────────────────────────────────┐
 │ URL チェックを1件でも実施した場合のみ:                            │
 │ - streaming ありなら 30日後にリセット                            │
 │ - 全未配信なら指数バックオフ + 年齢補正                          │
+└──────────────────────────────────────────────────────────────┘
+         ↓
+┌─ バッチ完了後 ───────────────────────────────────────────────────┐
+│ 蓄積した new_streaming_items を Slack に1通で通知                │
+│ （詳細フォーマットは docs/weekly-patch-notifications.md 参照）    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -259,8 +265,10 @@ python weekly_patch.py --slug john-wick
 ## ファイル構成
 
 ```
-weekly_patch.py          # 週次パッチ統合ランナー（新規）
-main.py                   # POST /weekly-patch エンドポイント追加
-utils/wordpress.py        # get_all_posts_for_patch() 追加
-docs/weekly-patch-schedule.md  # 本ドキュメント
+weekly_patch.py                    # 週次パッチ統合ランナー（新規）
+main.py                            # POST /weekly-patch エンドポイント追加
+utils/wordpress.py                 # get_all_posts_for_patch() / get_category_slug_map() 追加
+utils/slack.py                     # 新着配信サマリー通知（notify_weekly_new_streaming_summary）
+docs/weekly-patch-schedule.md      # 本ドキュメント
+docs/weekly-patch-notifications.md # Slack 通知フォーマットの詳細
 ```

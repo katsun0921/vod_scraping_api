@@ -159,7 +159,8 @@ NOT_FOUND_INDICATORS = [
 5. vod taxonomy を同期
    - streaming → term_id を追加
    - streaming 以外 → term_id を削除
-6. streaming_started_at を新規セットした場合、Slack 通知（実装予定）
+6. streaming_started_at を新規セットした場合、戻り値で呼び出し元に新規配信を通知
+   （呼び出し元の週次パッチが新着一覧をまとめて Slack 通知。詳細は `docs/weekly-patch-notifications.md` 参照）
 ```
 
 ### スキーマ正規化
