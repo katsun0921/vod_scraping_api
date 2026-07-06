@@ -7,24 +7,30 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 スケジューリングバッジ方式
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  各投稿に post_id % 4 でバッチ番号（0-3）を固定割り当てする。
-  同一投稿は毎月同じ週（第1〜4月曜）に処理される。
+  各投稿に post_id % BATCH_COUNT でバッチ番号（0-7）を固定割り当てする。
+  同一投稿は BATCH_COUNT 週（=2ヶ月）ごとに1回処理される。
+  バッチ番号は「基準日からの経過週数 % BATCH_COUNT」で決まるため、
+  月の日数差（28〜31日）に依存せず、週次実行を続ける限り必ず一巡する。
   ACFフィールドの追加は不要で、WordPress側の変更なしに機能する。
 
-  batch 0 (post_id % 4 == 0) → 毎月第1月曜
-  batch 1 (post_id % 4 == 1) → 毎月第2月曜
-  batch 2 (post_id % 4 == 2) → 毎月第3月曜
-  batch 3 (post_id % 4 == 3) → 毎月第4月曜
+  batch 0 (post_id % 8 == 0) → 経過週数 % 8 == 0 の週
+  batch 1 (post_id % 8 == 1) → 経過週数 % 8 == 1 の週
+  ...
+  batch 7 (post_id % 8 == 7) → 経過週数 % 8 == 7 の週
+
+  ※ 以前は BATCH_COUNT=4（1ヶ月で1周）だったが、投稿増加に伴う
+    1回あたりの処理時間が Cloud Run / GitHub Actions のタイムアウトを
+    超過するようになったため、BATCH_COUNT=8（2ヶ月で1周）に変更した。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-週次予算（100件/バッチ × 4バッチ = 400件/月）
+週次予算（~60件/バッチ × 8バッチ = ~500件/2ヶ月）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  JustWatch GraphQL  : 最大 400件 × 1〜2回 = 400〜800 calls/月
-  URL スクレイピング : 400件 × 平均3サービス ≈ 1,200 calls/月
+  JustWatch GraphQL  : 最大 500件 × 1〜2回 = 500〜1,000 calls/2ヶ月
+  URL スクレイピング : 500件 × 平均3サービス ≈ 1,500 calls/2ヶ月
     ├ requests ベース: ~3秒/call
     └ Playwright ベース (U-NEXT / DMM / Crunchyroll): ~15秒/call
-  WordPress API      : 400件 × 平均7回 ≈ 2,800 calls/月
-  推定処理時間       : 100件 × 約25〜40分/回 × 4回 ≈ 2時間/月
+  WordPress API      : 500件 × 平均7回 ≈ 3,500 calls/2ヶ月
+  推定処理時間       : 60件 × 約15〜20分/回 × 8回 ≈ 2〜2.5時間/2ヶ月
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Cloud Scheduler 推奨設定（毎週月曜 02:00 JST）
@@ -33,7 +39,7 @@ Cloud Scheduler 推奨設定（毎週月曜 02:00 JST）
 
 Usage:
     python weekly_patch.py              # 今週のバッチ内全件を処理（投稿数増加に自動追従）
-    python weekly_patch.py --batch 0    # バッチ0（第1週）を強制実行
+    python weekly_patch.py --batch 0    # バッチ0を強制実行
     python weekly_patch.py --force      # 7日以内の更新済みもスキップしない
     python weekly_patch.py --dry-run    # 対象の確認のみ（更新なし）
     python weekly_patch.py --limit 50   # 上限50件に制限（デバッグ用）
@@ -96,11 +102,16 @@ _CHECKER_MAP: dict[str, type] = {
 # Playwright を使用するサービス（処理時間が大きいため予算計算で区別する）
 _PLAYWRIGHT_SERVICES = frozenset({"unext", "dmm_tv", "crunchyroll"})
 
-# バッチ数（週数）
-BATCH_COUNT = 4
+# バッチ数（週数）。BATCH_COUNT 週（=2ヶ月）で全投稿を1周する。
+BATCH_COUNT = 8
+
+# バッチ番号算出の基準日（既知の月曜日）。
+# 「基準日からの経過週数 % BATCH_COUNT」でバッチ番号を求めるため、
+# 月の日数差（28〜31日）に影響されず、週次実行を続ける限り必ず一巡する。
+_BATCH_EPOCH_MONDAY = date(2024, 1, 1)
 
 # デフォルトはバッジ内全件処理（limit=None）
-# 投稿数が増えても 1ヶ月で全件カバーする運用に追従するため、
+# 投稿数が増えても 2ヶ月で全件カバーする運用に追従するため、
 # 件数キャップを設けない。--limit を明示すると上限を設定できる（デバッグ用）。
 DEFAULT_BATCH_SIZE: Optional[int] = None
 
@@ -167,36 +178,35 @@ def _build_front_url(
 # ──────────────────────────────────────────────────────────────
 
 def get_batch_for_date(d: Optional[date] = None) -> int:
-    """指定日が月の第何バッチ（0-3）かを返す。
+    """指定日が何週目のバッチ（0〜BATCH_COUNT-1）かを返す。
 
-    月の日付を7で割った商をバッチ番号とする。
-      1〜7  日 → batch 0（第1週）
-      8〜14 日 → batch 1（第2週）
-      15〜21日 → batch 2（第3週）
-      22〜31日 → batch 3（第4週）
+    _BATCH_EPOCH_MONDAY からの経過週数を BATCH_COUNT で割った余りをバッチ番号とする。
+    月の日数差（28〜31日）や閏年に依存しないため、週次実行（毎週月曜）を
+    続ける限り、BATCH_COUNT 週（=2ヶ月）で必ず全バッチを一巡する。
 
     Args:
         d: 基準日。None の場合は今日。
 
     Returns:
-        バッチ番号（0-3）。
+        バッチ番号（0〜BATCH_COUNT-1）。
     """
     if d is None:
         d = date.today()
-    return min((d.day - 1) // 7, BATCH_COUNT - 1)
+    weeks_elapsed = (d - _BATCH_EPOCH_MONDAY).days // 7
+    return weeks_elapsed % BATCH_COUNT
 
 
 def get_post_badge(post: dict) -> int:
-    """投稿のスケジューリングバッジ（バッチ番号 0-3）を返す。
+    """投稿のスケジューリングバッジ（バッチ番号 0〜BATCH_COUNT-1）を返す。
 
     post_id % BATCH_COUNT による静的ハッシュ割り当て。
-    同一投稿は毎月必ず同じ週に処理される。
+    同一投稿は BATCH_COUNT 週（=2ヶ月）ごとに必ず同じ週に処理される。
 
     Args:
         post: WordPress 投稿データ。
 
     Returns:
-        バッチ番号（0-3）。
+        バッチ番号（0〜BATCH_COUNT-1）。
     """
     return post.get("id", 0) % BATCH_COUNT
 
@@ -299,7 +309,7 @@ def _get_batch_targets(
     """バッチ番号に対応する処理対象投稿リストを返す。
 
     Args:
-        batch: バッチ番号（0-3）。
+        batch: バッチ番号（0〜BATCH_COUNT-1）。
         slug : 指定した場合、該当 slug のみ（バッジフィルタ不適用）。
         limit: 最大件数。None の場合はバッジ内全件を処理する。
         force: True のとき cooldown フィルタをスキップして全件候補とする。
@@ -330,11 +340,10 @@ def _get_batch_targets(
         quota = limit
     targets, p1, p2 = _select_targets(batch_posts, quota)
 
+    distribution_str = " ".join(f"batch{k}={v}" for k, v in sorted(badge_stats.items()))
     logger.info(
-        "バッジ分布: batch0=%d batch1=%d batch2=%d batch3=%d"
-        " → 今週(batch%d)=%d件 phase1=%d phase2=%d limit=%s",
-        badge_stats[0], badge_stats[1], badge_stats[2], badge_stats[3],
-        batch, len(batch_posts), p1, p2, "all" if limit is None else limit,
+        "バッジ分布: %s → 今週(batch%d)=%d件 phase1=%d phase2=%d limit=%s",
+        distribution_str, batch, len(batch_posts), p1, p2, "all" if limit is None else limit,
     )
 
     return targets, {f"batch{k}": v for k, v in badge_stats.items()}
@@ -367,7 +376,7 @@ def run(
       - バッチ内の全件を処理する（limit を超えても全件）
 
     Args:
-        batch  : バッチ番号 0-3。None の場合は日付から自動判定。
+        batch  : バッチ番号 0〜BATCH_COUNT-1。None の場合は日付から自動判定。
         limit  : 最大処理件数。None でバッジ内全件（デフォルト）。force=True なら無視。
         dry_run: True の場合、対象の確認のみ（更新なし）。
         force  : True の場合、直近更新チェックをスキップして強制処理。
@@ -798,15 +807,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="週次パッチ統合ランナー（URLチェック + JustWatch検索）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
 バッジ方式（スケジューリング）:
-  各投稿は post_id %% 4 でバッチ番号(0-3)に固定割り当て。
-  毎週月曜に実行し、その週に対応するバッチを処理する。
-
-  第1週 → batch 0
-  第2週 → batch 1
-  第3週 → batch 2
-  第4週 → batch 3
+  各投稿は post_id %% {BATCH_COUNT} でバッチ番号(0-{BATCH_COUNT - 1})に固定割り当て。
+  毎週月曜に実行し、基準日からの経過週数 %% {BATCH_COUNT} に対応するバッチを処理する。
+  {BATCH_COUNT}週（=2ヶ月）で全バッチを一巡する。
         """,
     )
     parser.add_argument(
@@ -814,7 +819,7 @@ def main() -> None:
         type=int,
         choices=range(BATCH_COUNT),
         default=None,
-        help="バッチ番号(0-3)。省略時は今日の日付から自動判定",
+        help=f"バッチ番号(0-{BATCH_COUNT - 1})。省略時は今日の日付から自動判定",
     )
     parser.add_argument(
         "--limit",
