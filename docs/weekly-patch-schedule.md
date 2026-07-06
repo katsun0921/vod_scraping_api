@@ -2,42 +2,59 @@
 
 ## 概要
 
-週次パッチは、VOD 投稿全件を月1サイクルで体系的に確認・更新する仕組み。
+週次パッチは、VOD 投稿全件を体系的に確認・更新する仕組み。
 通常の日次スクレイピング（`checker.py`）とは独立して動作し、以下を1パスで統合処理する。
 
 - **URL あり投稿** → 既存チェッカーでステータス確認
 - **URL なし投稿** → JustWatch API で URL を検索 → 登録 or unavailable 設定
+
+> **2026-07 変更**: `BATCH_COUNT` を 4（1ヶ月で1周）から 8（2ヶ月で1周）に変更した。
+> 投稿数の増加に伴い1回あたりの処理時間が GitHub Actions のジョブタイムアウト
+> （`timeout-minutes: 120`）を超過し、バッチ内の後半の投稿が処理されずに
+> キャンセルされる事象が複数回発生したため、1回あたりの処理件数を半減させた。
+> 原因・影響・対応の詳細は [weekly-patch-timeout-incident.md](./weekly-patch-timeout-incident.md) 参照。
 
 ---
 
 ## スケジュール構造
 
 ```
-1ヶ月 = 4バッチ × 100件/バッチ = 最大 400件/月
+BATCH_COUNT 週（= 2ヶ月）で全投稿を1周する。
+バッチ番号は「基準日からの経過週数 % BATCH_COUNT」で決まるため、
+月の日数差（28〜31日）に依存せず、週次実行を続ける限り必ず一巡する。
 ```
 
-| 週 | バッチ | 実行日 | 対象投稿 |
-|----|--------|--------|----------|
-| 第1週 | batch 0 | 毎月1〜7日の月曜 | post_id % 4 == 0 |
-| 第2週 | batch 1 | 毎月8〜14日の月曜 | post_id % 4 == 1 |
-| 第3週 | batch 2 | 毎月15〜21日の月曜 | post_id % 4 == 2 |
-| 第4週 | batch 3 | 毎月22〜28日の月曜 | post_id % 4 == 3 |
+| 経過週数 % 8 | バッチ | 対象投稿 |
+|----|--------|----------|
+| 0 | batch 0 | post_id % 8 == 0 |
+| 1 | batch 1 | post_id % 8 == 1 |
+| 2 | batch 2 | post_id % 8 == 2 |
+| 3 | batch 3 | post_id % 8 == 3 |
+| 4 | batch 4 | post_id % 8 == 4 |
+| 5 | batch 5 | post_id % 8 == 5 |
+| 6 | batch 6 | post_id % 8 == 6 |
+| 7 | batch 7 | post_id % 8 == 7 |
+
+> 以前（BATCH_COUNT=4）は「月の日付 // 7」で月内の第1〜4週にバッチを対応させていたが、
+> 月によっては同じバッチが月内に2回実行される歪みがあった。現在は
+> `_BATCH_EPOCH_MONDAY`（2024-01-01、既知の月曜日）からの経過週数を使うため、
+> 月境界に関係なく常に均等に1バッチずつ進む。
 
 ---
 
 ## スケジューリングバッジ
 
-各投稿には `post_id % 4` により **バッジ番号（0-3）** が静的に割り当てられる。
+各投稿には `post_id % BATCH_COUNT`（BATCH_COUNT=8）により **バッジ番号（0-7）** が静的に割り当てられる。
 
 ```
-post_id = 101 → 101 % 4 = 1 → batch 1（毎月第2週処理）
-post_id = 204 → 204 % 4 = 0 → batch 0（毎月第1週処理）
-post_id = 307 → 307 % 4 = 3 → batch 3（毎月第4週処理）
+post_id = 101 → 101 % 8 = 5 → batch 5
+post_id = 204 → 204 % 8 = 4 → batch 4
+post_id = 307 → 307 % 8 = 3 → batch 3
 ```
 
 **バッジの特徴:**
 - ACF フィールド追加不要（WordPress 側の変更なし）
-- 同一投稿は毎月必ず同じ週に処理される（安定したスケジューリング）
+- 同一投稿は BATCH_COUNT 週（=2ヶ月）ごとに必ず同じ週に処理される
 - 投稿の追加・削除があっても他バッチへの影響なし
 
 ### バッジ分布レポート
@@ -46,10 +63,8 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 
 ```json
 "badge_distribution": {
-  "batch0": 120,
-  "batch1": 115,
-  "batch2": 118,
-  "batch3": 122
+  "batch0": 62, "batch1": 61, "batch2": 61, "batch3": 61,
+  "batch4": 61, "batch5": 61, "batch6": 61, "batch7": 61
 }
 ```
 
@@ -95,32 +110,40 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 |------|----------------|-----------------------|
 | クールダウン | 厳守 | **無視**（直近7日以内のみスキップ） |
 | URL なし投稿 | スキップ | **JustWatch で探索** |
-| 対象件数 | 30件/日 (DAILY_QUOTA) | **100件/週** |
+| 対象件数 | 30件/日 (DAILY_QUOTA) | **バッジ内全件（~61件/週、投稿数489件時点）** |
 | 優先度 | 日次クォータ内で優先 | バッジ × updated_at 古い順 |
 
 ---
 
 ## 週次予算
 
-### 1バッチ（100件）の予算
+### 1バッチ（~61件、投稿数489件時点）の予算
 
 | 操作 | 件数 | 単位コスト | 合計 |
 |------|------|-----------|------|
-| WP GET/PATCH | ~700回 | 0.5秒/回 | ~5.8分 |
-| JustWatch GraphQL | ~100回 | 3秒/回 | ~5分 |
-| URL スクレイピング（requests） | ~210回 | 3秒/回 | ~10.5分 |
-| URL スクレイピング（Playwright） | ~60回 | 15秒/回 | ~15分 |
-| **合計** | | | **約36〜40分** |
+| WP GET/PATCH | ~430回 | 0.5秒/回 | ~3.6分 |
+| JustWatch GraphQL | ~61回 | 3秒/回 | ~3分 |
+| URL スクレイピング（requests） | ~130回 | 3秒/回 | ~6.5分 |
+| URL スクレイピング（Playwright） | ~37回 | 15秒/回 | ~9分 |
+| サービス切り替え待機（10秒） | ~160回 | 10秒/回 | ~27分 |
+| **合計** | | | **約50〜60分** |
 
-### 週次合計（4バッチ）
+> サービス切り替え待機が全体の半分近くを占める。投稿ごとに対象サービスの
+> 組み合わせが変わるため、ほぼ全チェックで切り替え扱いになりやすい。
+> BATCH_COUNT=4 だった頃はこの合計が2時間を超え、GitHub Actions の
+> `timeout-minutes: 120` を超過して後半の投稿がキャンセルされていた
+> （実測: 2026-06-21 batch2 109件中103件着手・101件完了で打ち切り、
+> 2026-07-05 batch0 134件中104件着手・102件完了で打ち切り）。
+
+### 2ヶ月合計（8バッチ）
 
 | 指標 | 推定値 |
 |------|--------|
-| 処理投稿数 | 400件 |
-| JustWatch API 呼び出し | 400〜800回 |
-| URL スクレイピング | 1,200〜2,400回 |
-| WordPress API 呼び出し | 2,800〜4,000回 |
-| Cloud Run 処理時間 | 約2〜3時間/月 |
+| 処理投稿数 | ~489件（2ヶ月で全件） |
+| JustWatch API 呼び出し | ~489〜978回 |
+| URL スクレイピング | ~1,336〜2,672回 |
+| WordPress API 呼び出し | ~3,430〜4,900回 |
+| GitHub Actions 処理時間 | 約7〜8時間/2ヶ月 |
 
 ### レスポンスの `budget` フィールド
 
@@ -146,8 +169,8 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 
 | パラメータ | 型 | デフォルト | 説明 |
 |-----------|------|------------|------|
-| `batch` | int (0-3) | 自動判定 | バッチ番号。省略時は今日の日付から第1〜4週を判定 |
-| `limit` | int | 100 | 最大処理件数 |
+| `batch` | int (0-7) | 自動判定 | バッチ番号。省略時は今日の日付から経過週数を判定 |
+| `limit` | int | 指定なしで全件 | 最大処理件数 |
 | `dry_run` | bool | false | 対象確認のみ（更新なし） |
 | `slug` | string | - | 特定 slug のみ処理 |
 
@@ -156,31 +179,29 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
 ```json
 {
   "batch": 0,
-  "cycle": "2026-05",
+  "cycle": "2026-07",
   "badge_distribution": {
-    "batch0": 120,
-    "batch1": 115,
-    "batch2": 118,
-    "batch3": 122
+    "batch0": 62, "batch1": 61, "batch2": 61, "batch3": 61,
+    "batch4": 61, "batch5": 61, "batch6": 61, "batch7": 61
   },
   "posts": {
-    "total": 100,
-    "processed": 94,
+    "total": 62,
+    "processed": 58,
     "skipped": 3,
-    "errors": 3
+    "errors": 1
   },
   "services": {
-    "url_checked": 280,
-    "jw_searched": 94,
-    "urls_registered": 18,
-    "status_updated": 262
+    "url_checked": 175,
+    "jw_searched": 58,
+    "urls_registered": 11,
+    "status_updated": 163
   },
   "budget": {
-    "wp_api_calls": 820,
-    "jw_api_calls": 94,
-    "scraping_calls": 215,
-    "playwright_calls": 65,
-    "estimated_minutes": 38.5
+    "wp_api_calls": 510,
+    "jw_api_calls": 58,
+    "scraping_calls": 133,
+    "playwright_calls": 40,
+    "estimated_minutes": 55.2
   }
 }
 ```
@@ -206,16 +227,16 @@ API レスポンスの `badge_distribution` フィールドに各バッチの投
       serviceAccountEmail: <SA_EMAIL>
 ```
 
-`batch` を省略すると実行日の月内週番号（1-4週 → 0-3）から自動判定される。
+`batch` を省略すると実行日の基準日からの経過週数 % 8（0-7）から自動判定される。
 
 ### オプション: バッチを明示指定
 
 ```bash
-# 第1週バッチを手動実行
+# batch 0 を手動実行
 curl -X POST https://<CLOUD_RUN_URL>/weekly-patch \
   -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
   -H "Content-Type: application/json" \
-  -d '{"batch": 0, "limit": 100}'
+  -d '{"batch": 0}'
 
 # ドライラン（対象確認のみ）
 curl -X POST https://<CLOUD_RUN_URL>/weekly-patch \
@@ -232,7 +253,7 @@ curl -X POST https://<CLOUD_RUN_URL>/weekly-patch \
 # 今週のバッチを自動判定して実行
 python weekly_patch.py
 
-# バッチ0（第1週）を強制実行
+# バッチ0を強制実行
 python weekly_patch.py --batch 0
 
 # 対象確認のみ（更新なし）

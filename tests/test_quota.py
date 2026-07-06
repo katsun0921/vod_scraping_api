@@ -6,6 +6,7 @@
 from datetime import date
 
 from weekly_patch import (
+    BATCH_COUNT,
     _DATE_FAR_FUTURE,
     _all_updated_at_empty,
     _has_any_streaming,
@@ -13,6 +14,8 @@ from weekly_patch import (
     _select_targets,
     _sort_key_phase1,
     _sort_key_phase2,
+    get_batch_for_date,
+    get_post_badge,
 )
 
 
@@ -321,3 +324,56 @@ class TestBuildFrontUrl:
         from weekly_patch import _build_front_url
         post = {"categories": [3], "link": "https://wp.example.com/?p=4"}
         assert _build_front_url(post, "ja", self._CAT_MAP) == "https://wp.example.com/?p=4"
+
+
+# ---------------------------------------------------------------------------
+# get_batch_for_date / get_post_badge
+# ---------------------------------------------------------------------------
+
+class TestGetBatchForDate:
+    """バッチ番号算出（基準日からの経過週数 % BATCH_COUNT）のテスト。
+
+    月の日数差（28〜31日）に依存せず、週次実行を続ける限り
+    BATCH_COUNT 週（=2ヶ月）で全バッチを必ず一巡することを検証する。
+    """
+
+    def test_基準日はbatch0(self):
+        assert get_batch_for_date(date(2024, 1, 1)) == 0
+
+    def test_1週間後はbatch1(self):
+        assert get_batch_for_date(date(2024, 1, 8)) == 1
+
+    def test_BATCH_COUNT週間後はbatch0に戻る(self):
+        d = date(2024, 1, 1)
+        for _ in range(BATCH_COUNT):
+            d = date.fromordinal(d.toordinal() + 7)
+        assert get_batch_for_date(d) == 0
+
+    def test_月境界をまたいでも週次実行なら全バッチを一巡する(self):
+        """毎週月曜に実行し続けた場合、BATCH_COUNT 週で 0..BATCH_COUNT-1 が
+        重複・欠落なくちょうど1回ずつ出現することを確認する（月の日数差の影響を受けない）。"""
+        start = date(2024, 1, 1)
+        batches = [
+            get_batch_for_date(date.fromordinal(start.toordinal() + 7 * i))
+            for i in range(BATCH_COUNT * 3)  # 3周分（半年相当）検証
+        ]
+        for cycle in range(3):
+            cycle_batches = batches[cycle * BATCH_COUNT:(cycle + 1) * BATCH_COUNT]
+            assert sorted(cycle_batches) == list(range(BATCH_COUNT))
+
+    def test_非月曜日でも同じ7日ウィンドウ内なら同じバッチ(self):
+        # 基準日(月曜)から1〜6日後は依然として batch0 のウィンドウ内
+        for offset in range(1, 7):
+            d = date.fromordinal(date(2024, 1, 1).toordinal() + offset)
+            assert get_batch_for_date(d) == 0
+
+
+class TestGetPostBadge:
+    """投稿のバッジ番号（post_id % BATCH_COUNT）のテスト。"""
+
+    def test_post_idのモジュロで割り当てられる(self):
+        for post_id in range(BATCH_COUNT * 2):
+            assert get_post_badge({"id": post_id}) == post_id % BATCH_COUNT
+
+    def test_id未設定なら0扱い(self):
+        assert get_post_badge({}) == 0

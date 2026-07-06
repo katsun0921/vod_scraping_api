@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       batch:
-        description: "バッチ番号 0-3（空欄で実行日から自動判定）"
+        description: "バッチ番号 0-7（空欄で実行日から自動判定）"
         required: false
         default: ""
       force:

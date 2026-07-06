@@ -760,7 +760,7 @@ def get_all_posts_for_patch(
       - scraping_disabled=true の投稿（管理者が明示的に停止）
 
     週次パッチでは cooldown を無視するため、cooldown フィルタは適用しない。
-    バッチ番号フィルタ（post_id % 4）は呼び出し元で適用する。
+    バッチ番号フィルタ（post_id % BATCH_COUNT）は呼び出し元で適用する。
 
     Args:
         slug : 指定した場合、該当 slug の投稿のみ取得する。
