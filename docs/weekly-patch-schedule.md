@@ -12,6 +12,7 @@
 > 投稿数の増加に伴い1回あたりの処理時間が GitHub Actions のジョブタイムアウト
 > （`timeout-minutes: 120`）を超過し、バッチ内の後半の投稿が処理されずに
 > キャンセルされる事象が複数回発生したため、1回あたりの処理件数を半減させた。
+> 原因・影響・対応の詳細は [weekly-patch-timeout-incident.md](./weekly-patch-timeout-incident.md) 参照。
 
 ---
 

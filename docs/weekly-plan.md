@@ -9,7 +9,8 @@
 > 事象が確認されたため、本ドキュメント下部「選択肢A」を採用し
 > `BATCH_COUNT = 4 → 8`（1ヶ月で1周 → 2ヶ月で1周）に変更した。
 > 以下の本文は変更前提の記述を含むため、現在の正式仕様は
-> [weekly-patch-schedule.md](./weekly-patch-schedule.md) を参照。
+> [weekly-patch-schedule.md](./weekly-patch-schedule.md)、
+> 原因・影響・対応の詳細は [weekly-patch-timeout-incident.md](./weekly-patch-timeout-incident.md) を参照。
 
 ---
 
