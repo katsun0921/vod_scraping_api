@@ -109,6 +109,34 @@ def _base_url() -> str:
     return os.environ["WP_API_URL"].rstrip("/")
 
 
+def get_category_slug_map() -> dict[int, str]:
+    """カテゴリの term_id → slug のマッピングを取得する。
+
+    フロントエンド URL（/{lang}/{category}/{slug}）の組み立てに使用する。
+
+    Returns:
+        {term_id: slug} の辞書。
+    """
+    url = f"{_base_url()}/categories"
+    session = _session()
+    mapping: dict[int, str] = {}
+    page = 1
+    while True:
+        resp = session.get(
+            url,
+            params={"per_page": PER_PAGE, "page": page, "_fields": "id,slug"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        items = resp.json()
+        for cat in items:
+            mapping[cat["id"]] = cat.get("slug", "")
+        if len(items) < PER_PAGE:
+            break
+        page += 1
+    return mapping
+
+
 def get_posts(slug: Optional[str] = None, limit: Optional[int] = None) -> list[dict]:
     """publish 状態の投稿を取得して返す。
 

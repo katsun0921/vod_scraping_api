@@ -286,3 +286,38 @@ class TestSelectTargets:
         ids = [t["id"] for t in targets]
         assert len(ids) == len(set(ids)), "重複なし"
         assert sorted(ids) == [1, 2]
+
+
+# ---------------------------------------------------------------------------
+# _build_front_url
+# ---------------------------------------------------------------------------
+
+class TestBuildFrontUrl:
+    """フロントエンド URL 組み立てのテスト。"""
+
+    _CAT_MAP = {3: "anime", 5: "movie"}
+
+    def test_日本語作品のフロントURL(self):
+        from weekly_patch import _build_front_url
+        post = {"slug": "john-wick", "categories": [5], "link": "https://wp.example.com/?p=1"}
+        assert _build_front_url(post, "ja", self._CAT_MAP) == "https://katsumascore.blog/ja/movie/john-wick"
+
+    def test_英語作品のフロントURL(self):
+        from weekly_patch import _build_front_url
+        post = {"slug": "frieren", "categories": [3], "link": "https://wp.example.com/?p=2"}
+        assert _build_front_url(post, "en", self._CAT_MAP) == "https://katsumascore.blog/en/anime/frieren"
+
+    def test_複数カテゴリは最初に解決できたslugを使う(self):
+        from weekly_patch import _build_front_url
+        post = {"slug": "dual", "categories": [99, 3], "link": ""}
+        assert _build_front_url(post, "ja", self._CAT_MAP) == "https://katsumascore.blog/ja/anime/dual"
+
+    def test_カテゴリ未解決時はWPリンクにフォールバック(self):
+        from weekly_patch import _build_front_url
+        post = {"slug": "no-cat", "categories": [99], "link": "https://wp.example.com/?p=3"}
+        assert _build_front_url(post, "ja", self._CAT_MAP) == "https://wp.example.com/?p=3"
+
+    def test_slug欠落時はWPリンクにフォールバック(self):
+        from weekly_patch import _build_front_url
+        post = {"categories": [3], "link": "https://wp.example.com/?p=4"}
+        assert _build_front_url(post, "ja", self._CAT_MAP) == "https://wp.example.com/?p=4"
