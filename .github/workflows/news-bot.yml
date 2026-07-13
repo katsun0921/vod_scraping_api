@@ -1,9 +1,10 @@
 name: X News Bot
 
 on:
-  schedule:
-    # 2時間おきに実行（仕様書 3.: 1〜2時間おき推奨）
-    - cron: "0 */2 * * *"
+  # テスト段階のためcron自動実行は無効化し、手動実行のみとする。
+  # 本番投入時は下記のcomment outを解除する（仕様書 3.: 1〜2時間おき推奨）。
+  # schedule:
+  #   - cron: "0 */2 * * *"
   workflow_dispatch:
 
 jobs:
