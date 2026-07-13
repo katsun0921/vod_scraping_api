@@ -35,6 +35,9 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+    defaults:
+      run:
+        working-directory: vod_bot
 
     steps:
       - name: Checkout

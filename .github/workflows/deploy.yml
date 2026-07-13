@@ -37,7 +37,7 @@ jobs:
           docker build \
             --tag ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:${{ github.sha }} \
             --tag ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:latest \
-            .
+            vod_bot
           docker push ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:${{ github.sha }}
           docker push ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:latest
 
