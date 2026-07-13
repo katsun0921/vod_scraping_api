@@ -1,5 +1,9 @@
+.git
 .env
 .venv
-.git
 **/__pycache__
 *.pyc
+news_bot
+docs
+doc
+.github

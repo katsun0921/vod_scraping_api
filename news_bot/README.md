@@ -2,7 +2,9 @@
 
 Katsumascore（映画・アニメ・ドラマレビューメディア）のXニュース自動投稿システム。映画・アニメ関連ニュースをRSSから収集し、Claude APIでランク判定（S/A/B/D）した上で、人間の承認を経てXへ投稿する。
 
-このリポジトリはモノレポ構成で、`vod_bot/`（VOD配信状況スクレイピングAPI）とは完全に独立したサブシステム。依存関係（`requirements.txt`）・実行環境・CIジョブはすべて `news_bot/` 配下で完結し、`vod_bot/` には一切影響しない。データストア（Google Sheets）も `vod_bot/` のWordPressとは別物。
+このリポジトリはモノレポ構成で、`vod_bot/`（VOD配信状況スクレイピングAPI）とは独立したサブシステム。依存関係（`requirements.txt`）・実行環境・CIジョブは `news_bot/` 配下で完結し、`vod_bot/` には一切影響しない。データストア（Google Sheets）も `vod_bot/` のWordPressとは別物。
+
+`vod_bot/` と共通化できる汎用コード（レート制御・User-Agent等）は [`../utils/`](../utils/) に置く。`python -m news_bot.main` はリポジトリルートから実行するため追加設定なしで `../utils/` をimportできる。現時点では `news_bot/` から未使用だが、RSS/HTMLスクレイピングの間隔制御が必要になった場合は `utils.rate_limit.RateLimiter` を流用できる。
 
 詳細仕様 → [../docs/x-news-bot-spec.md](../docs/x-news-bot-spec.md)
 

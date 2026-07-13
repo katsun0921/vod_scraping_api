@@ -2,7 +2,7 @@
 
 VOD配信状況スクレイピングAPI。WordPress REST API から投稿データを取得し、各VODサービス（Netflix・Amazon Prime Video・Hulu・U-NEXT・Disney+・DMM TV・Apple TV・YouTube・Crunchyroll）の配信状況（`status` / `price`）を確認し、WordPressへ書き戻す。
 
-このリポジトリはモノレポ構成で、`news_bot/`（Xニュース自動投稿システム）とは完全に独立したサブシステム。依存関係（`requirements.txt`）・Dockerイメージ・CIジョブはすべて `vod_bot/` 配下で完結し、`news_bot/` には一切影響しない。
+このリポジトリはモノレポ構成で、`news_bot/`（Xニュース自動投稿システム）とは独立したサブシステム。依存関係（`requirements.txt`）・CIジョブは `vod_bot/` 配下で完結し、`news_bot/` には一切影響しない。ただし [`../utils/`](../utils/) はVOD/news両方から使う汎用コード（レート制御・User-Agent等）を置く共有ディレクトリで、`vod_bot/Dockerfile` のビルドコンテキストにはリポジトリルートを使用しこれを取り込む（詳細は「デプロイ」参照）。
 
 ## 責務
 
@@ -40,7 +40,13 @@ cp .env.example .env
 
 ### 3. 実行
 
+`checkers/` `weekly_patch.py` などは `vod_bot/` 直下がsys.pathに乗る前提のフラット構成だが、
+共有の `utils/`（レート制御・User-Agent）はリポジトリルートにあるため、`vod_bot/` から実行する際は
+`PYTHONPATH` にリポジトリルートを追加する。
+
 ```bash
+export PYTHONPATH=..
+
 # 今週のバッチ内全件を処理（投稿数増加に自動追従）
 python weekly_patch.py
 
@@ -90,16 +96,20 @@ python weekly_patch.py --limit 50
 vod_bot/
 ├── main.py           # Flask エントリーポイント（Cloud Run）
 ├── weekly_patch.py   # 週次パッチ統合ランナー（URLチェック + JustWatch検索）
+├── justwatch.py      # JustWatch APIクライアント
+├── slack.py          # Slack Webhook通知
+├── wordpress.py      # WordPress REST APIクライアント
 ├── checkers/         # VODサービスごとのスクレイピングロジック
-├── utils/            # WordPress REST APIクライアント・レート制御・Slack通知
 ├── tests/
 ├── acf/              # ACF フィールド定義（WP管理画面からインポート用）
 ├── requirements.txt
-└── Dockerfile
+└── Dockerfile        # ビルドコンテキストはリポジトリルート（../utils/ を含めるため）
+
+../utils/             # vod_bot / news_bot 共有の汎用コード（レート制御・User-Agent）
 ```
 
 ## デプロイ
 
 - Cloud Run へのデプロイ手順 → [../docs/cloud-run-deploy.md](../docs/cloud-run-deploy.md)
 - Workload Identity Federation の設定 → [../docs/workload-identity-setup.md](../docs/workload-identity-setup.md)
-- CI/CD は GitHub Actions（`.github/workflows/deploy.yml`）で自動化済み。ビルドコンテキストは `vod_bot/` のみ
+- CI/CD は GitHub Actions（`.github/workflows/deploy.yml`）で自動化済み。`../utils/` を含めるため Docker のビルドコンテキストはリポジトリルート（`docker build --file vod_bot/Dockerfile .`）

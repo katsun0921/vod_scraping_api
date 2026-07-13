@@ -21,13 +21,16 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY vod_bot/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Playwright の Chromium をインストール
 RUN playwright install chromium
 
-COPY . .
+# vod_bot と news_bot 共通の utils/ を先に、続けて vod_bot 本体をコピーする
+# （ビルドコンテキストはリポジトリルート。vod_bot/Dockerfile 参照）
+COPY utils/ ./utils/
+COPY vod_bot/ .
 
 EXPOSE 8080
 

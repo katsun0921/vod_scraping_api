@@ -1,4 +1,4 @@
-"""utils/justwatch.py / utils/wordpress.patch_multi_service_fields のユニットテスト。
+"""justwatch.py / wordpress.patch_multi_service_fields のユニットテスト。
 
 外部 API へのアクセスは一切行わない（requests をモックする）。
 """
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from utils.justwatch import (
+from justwatch import (
     _build_queries,
     _extract_urls_from_node,
     _pick_best_node,
@@ -152,7 +152,7 @@ def _make_graphql_response(nodes: list[dict]) -> dict:
 
 class TestSearchUrls:
 
-    @patch("utils.justwatch._post_graphql")
+    @patch("justwatch._post_graphql")
     def test_returns_urls_on_match(self, mock_graphql):
         node = {
             "content": {"title": "ジョン・ウィック", "originalTitle": "John Wick"},
@@ -168,7 +168,7 @@ class TestSearchUrls:
         assert result["netflix"] == "https://www.netflix.com/jp/title/70126666"
         assert result["amazon_prime_video"] == "https://www.amazon.co.jp/gp/video/detail/B09ABC"
 
-    @patch("utils.justwatch._post_graphql")
+    @patch("justwatch._post_graphql")
     def test_falls_back_to_slug_query(self, mock_graphql):
         """title で結果なし → slug クエリで再試行"""
         node = {
@@ -186,13 +186,13 @@ class TestSearchUrls:
         assert mock_graphql.call_count == 2
         assert "netflix" in result
 
-    @patch("utils.justwatch._post_graphql")
+    @patch("justwatch._post_graphql")
     def test_returns_empty_if_no_results(self, mock_graphql):
         mock_graphql.return_value = _make_graphql_response([])
         result = search_urls("存在しない映画", "no-such-movie")
         assert result == {}
 
-    @patch("utils.justwatch._post_graphql")
+    @patch("justwatch._post_graphql")
     def test_returns_empty_if_node_has_no_urls(self, mock_graphql):
         node = {
             "content": {"title": "ジョン・ウィック", "originalTitle": ""},
@@ -202,13 +202,13 @@ class TestSearchUrls:
         result = search_urls("ジョン・ウィック", "john-wick")
         assert result == {}
 
-    @patch("utils.justwatch._post_graphql")
+    @patch("justwatch._post_graphql")
     def test_raises_runtime_error_propagated(self, mock_graphql):
         mock_graphql.side_effect = RuntimeError("HTTP 429")
         with pytest.raises(RuntimeError, match="HTTP 429"):
             search_urls("ジョン・ウィック", "john-wick")
 
-    @patch("utils.justwatch._post_graphql")
+    @patch("justwatch._post_graphql")
     def test_all_mapped_services_extracted(self, mock_graphql):
         """マッピング済みサービスが同時に取れるケース（DMM TV / YouTube は JustWatch JP 未対応）"""
         node = {
@@ -255,12 +255,12 @@ class TestPatchMultiServiceFields:
         get_resp.raise_for_status = MagicMock()
         return session
 
-    @patch("utils.wordpress.os.environ", {"WP_API_URL": "https://example.com/wp-json/wp/v2", "WP_USER": "u", "WP_APP_PASSWORD": "p"})
-    @patch("utils.wordpress._get_acf_schema", return_value={})
-    @patch("utils.wordpress._session")
+    @patch("wordpress.os.environ", {"WP_API_URL": "https://example.com/wp-json/wp/v2", "WP_USER": "u", "WP_APP_PASSWORD": "p"})
+    @patch("wordpress._get_acf_schema", return_value={})
+    @patch("wordpress._session")
     def test_single_patch_for_multiple_services(self, mock_session_fn, mock_schema):
         """複数サービスを渡しても PATCH は 1回だけ呼ばれる。"""
-        from utils.wordpress import patch_multi_service_fields
+        from wordpress import patch_multi_service_fields
 
         existing = {
             "netflix": {"scraping_url": "", "status": ""},
@@ -284,12 +284,12 @@ class TestPatchMultiServiceFields:
         assert patched_acf["netflix"]["scraping_url"] == "https://www.netflix.com/jp/title/1"
         assert patched_acf["hulu"]["status"] == "unavailable"
 
-    @patch("utils.wordpress.os.environ", {"WP_API_URL": "https://example.com/wp-json/wp/v2", "WP_USER": "u", "WP_APP_PASSWORD": "p"})
-    @patch("utils.wordpress._get_acf_schema", return_value={})
-    @patch("utils.wordpress._session")
+    @patch("wordpress.os.environ", {"WP_API_URL": "https://example.com/wp-json/wp/v2", "WP_USER": "u", "WP_APP_PASSWORD": "p"})
+    @patch("wordpress._get_acf_schema", return_value={})
+    @patch("wordpress._session")
     def test_existing_fields_preserved(self, mock_session_fn, mock_schema):
         """既存の scraping_url など、更新対象外フィールドは保持される。"""
-        from utils.wordpress import patch_multi_service_fields
+        from wordpress import patch_multi_service_fields
 
         existing = {
             "netflix": {
@@ -313,11 +313,11 @@ class TestPatchMultiServiceFields:
         assert patched["scraping_url"] == "https://www.netflix.com/jp/title/999"
         assert patched["updated_at"] == "2026-01-01 00:00:00"
 
-    @patch("utils.wordpress._get_acf_schema", return_value={})
-    @patch("utils.wordpress._session")
+    @patch("wordpress._get_acf_schema", return_value={})
+    @patch("wordpress._session")
     def test_empty_service_fields_does_nothing(self, mock_session_fn, mock_schema):
         """service_fields が空なら GET も PATCH も呼ばれない。"""
-        from utils.wordpress import patch_multi_service_fields
+        from wordpress import patch_multi_service_fields
 
         session = MagicMock()
         mock_session_fn.return_value = session

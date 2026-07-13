@@ -35,6 +35,8 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
+    env:
+      PYTHONPATH: ".."
     defaults:
       run:
         working-directory: vod_bot
