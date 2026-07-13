@@ -3,3 +3,4 @@
 .git
 **/__pycache__
 *.pyc
+news_bot

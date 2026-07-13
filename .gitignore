@@ -3,3 +3,4 @@ checkers/__pycache__
 utils/__pycache__
 .env
 __pycache__
+news_bot/.env
