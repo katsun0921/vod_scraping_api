@@ -10,23 +10,16 @@ import os
 from anthropic import Anthropic
 
 from news_bot.fetch import NewsEntry
+from news_bot.prompt_loader import load as load_prompt
 
 logger = logging.getLogger(__name__)
 
 _MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 _MAX_HONBUN_LENGTH = 140
 
-_SYSTEM_PROMPT = f"""\
-あなたはKatsumascore（映画・アニメ・ドラマレビューメディア）のX運用担当です。
-入力されたニュースをもとに、X投稿用の文章を2つ生成してください。
-
-- 本文: URLを含めない。{_MAX_HONBUN_LENGTH}文字以内。ニュースの要点を簡潔に、
-  メディアの公式トーン（丁寧語・煽りすぎない）で。ハッシュタグは1〜2個まで。
-- リプライ本文: 「詳細はこちら」等の一言＋URL。本文と合わせて読める内容にする。
-
-出力は必ず以下のJSON形式のみ。前後に説明文を付けないこと。
-{{"honbun": "...", "reply": "..."}}
-"""
+_SYSTEM_PROMPT = load_prompt("compose_system_prompt").replace(
+    "{max_honbun_length}", str(_MAX_HONBUN_LENGTH)
+)
 
 
 def compose(entry: NewsEntry) -> dict:

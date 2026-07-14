@@ -35,16 +35,22 @@ GitHub Actions（`.github/workflows/news-bot.yml`）から `python -m news_bot.m
 
 ```
 news_bot/
-├── main.py       # fetch_cycle() / process_pending() エントリーポイント
-├── fetch.py      # RSS取得（feedparser）
-├── dedupe.py     # URL完全一致の重複チェック
-├── judge.py      # Claude APIでS/A/B/D判定
-├── compose.py    # 投稿文生成（本文＋リプライ）
-├── approval.py   # Slack承認フロー（Bot Token使用）
-├── post_x.py     # X API v2投稿（tweepy）
-├── sheets.py     # Google Sheets I/O（gspread）
+├── main.py           # fetch_cycle() / process_pending() エントリーポイント
+├── fetch.py          # RSS取得（feedparser）
+├── dedupe.py         # URL完全一致の重複チェック
+├── judge.py          # Claude APIでS/A/B/D判定
+├── compose.py        # 投稿文生成（本文＋リプライ）
+├── approval.py       # Slack承認フロー（Bot Token使用）
+├── post_x.py         # X API v2投稿（tweepy）
+├── sheets.py         # Google Sheets I/O（gspread）
+├── prompt_loader.py  # prompts/*.md を読み込むローダー
+├── prompts/          # プロンプト本文（Markdown）を専用管理
+│   ├── judge_system_prompt.md
+│   └── compose_system_prompt.md
 └── requirements.txt
 ```
+
+プロンプトは`judge.py` / `compose.py`にハードコードせず、`prompts/*.md`で管理する。judge/compose用のfew-shot例やトーンの調整はコードを触らずMarkdownファイルの編集だけで完結する。
 
 ## セットアップ
 
