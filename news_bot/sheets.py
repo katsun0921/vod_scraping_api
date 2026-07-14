@@ -17,7 +17,6 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional
 
 import gspread
 from google.oauth2.service_account import Credentials
@@ -46,6 +45,15 @@ _APPROVAL_QUEUE_HEADER = [
     "SlackチャンネルID", "Slackメッセージts", "通知日時", "ステータス",
 ]
 
+# main.py が実際に読み書きするシートのみ自動作成する。
+# タイトル一覧・公式X一覧・YouTube Shorts はMVPスコープ外のため対象外。
+_AUTO_CREATED_HEADERS = {
+    "ニュースソース": _NEWS_SOURCES_HEADER,
+    "ニュース取得": _NEWS_ITEMS_HEADER,
+    "X投稿履歴": _POST_HISTORY_HEADER,
+    "承認キュー": _APPROVAL_QUEUE_HEADER,
+}
+
 
 def _client() -> gspread.Client:
     creds_json = os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"]
@@ -61,6 +69,16 @@ class NewsBotSheets:
         client = _client()
         spreadsheet_id = os.environ["GOOGLE_SHEETS_SPREADSHEET_ID"]
         self._spreadsheet = client.open_by_key(spreadsheet_id)
+        self._ensure_sheets_exist()
+
+    def _ensure_sheets_exist(self) -> None:
+        """必要なワークシートとヘッダー行が無ければ作成する（初回実行時セットアップ）。"""
+        existing_titles = {ws.title for ws in self._spreadsheet.worksheets()}
+        for title, header in _AUTO_CREATED_HEADERS.items():
+            if title not in existing_titles:
+                ws = self._spreadsheet.add_worksheet(title=title, rows=1000, cols=len(header))
+                ws.append_row(header, value_input_option="USER_ENTERED")
+                logger.info("シート作成: %s", title)
 
     def _worksheet(self, title: str) -> gspread.Worksheet:
         return self._spreadsheet.worksheet(title)
@@ -169,22 +187,3 @@ class NewsBotSheets:
             return
         status_col = _APPROVAL_QUEUE_HEADER.index("ステータス") + 1
         ws.update_cell(cell.row, status_col, status)
-
-
-def ensure_sheets_exist(spreadsheet_id: Optional[str] = None) -> None:
-    """初回セットアップ用: 必要なワークシートとヘッダー行が無ければ作成する。"""
-    client = _client()
-    spreadsheet = client.open_by_key(spreadsheet_id or os.environ["GOOGLE_SHEETS_SPREADSHEET_ID"])
-    existing_titles = {ws.title for ws in spreadsheet.worksheets()}
-
-    headers_by_title = {
-        "ニュースソース": _NEWS_SOURCES_HEADER,
-        "ニュース取得": _NEWS_ITEMS_HEADER,
-        "X投稿履歴": _POST_HISTORY_HEADER,
-        "承認キュー": _APPROVAL_QUEUE_HEADER,
-    }
-    for title, header in headers_by_title.items():
-        if title not in existing_titles:
-            ws = spreadsheet.add_worksheet(title=title, rows=1000, cols=len(header))
-            ws.append_row(header, value_input_option="USER_ENTERED")
-            logger.info("シート作成: %s", title)
