@@ -64,6 +64,8 @@ news_bot/
 | 4 | Slackワークスペース + Slack App（Bot） | 承認フロー（S/A判定の通知・リアクション検知） | Bot Token（`chat:write` / `reactions:read` スコープ）、承認依頼を投稿するチャンネルのID | `NEWS_BOT_SLACK_BOT_TOKEN`, `NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID` |
 | 5 | GitHubリポジトリの管理権限 | 上記の認証情報をActions Secretsに登録する | - | - |
 
+> **長期有効な認証情報の運用方針**：`ANTHROPIC_API_KEY` / `X_API_*` / `NEWS_BOT_SLACK_BOT_TOKEN`は発行元サービスがWorkload Identity Federation等の短期認証に対応していないため、無期限キーとしてGitHub Actions Secretsで管理する。漏洩の通知・兆候（想定外の使用量急増、GitHubのsecret scanningアラート等）を検知した場合は各サービスのコンソールで即座にRevoke（失効）する。
+
 > Slack Botはワークスペースにインストールし、承認を行うチャンネルに招待（`/invite @bot名`）しておく必要がある。招待し忘れると`chat.postMessage`が失敗する。
 
 ## セットアップ
