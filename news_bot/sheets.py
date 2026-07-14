@@ -171,7 +171,9 @@ class NewsBotSheets:
             datetime.now(timezone.utc).isoformat(),
             "pending",
         ]
-        self._worksheet("承認キュー").append_row(row, value_input_option="USER_ENTERED")
+        # RAW指定: SlackメッセージtsはUSER_ENTEREDだとSheetsに数値変換され、
+        # 浮動小数点の丸めでreactions.get時にmessage_not_foundとなるため文字列のまま保存する。
+        self._worksheet("承認キュー").append_row(row, value_input_option="RAW")
 
     def get_pending_approvals(self) -> list[dict]:
         """ステータスが pending の承認待ちアイテムを取得する。"""

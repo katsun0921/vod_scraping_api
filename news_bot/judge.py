@@ -11,6 +11,7 @@ import os
 from anthropic import Anthropic
 
 from news_bot.fetch import NewsEntry
+from news_bot.json_response import parse as parse_json_response
 from news_bot.prompt_loader import load as load_prompt
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ def judge(entry: NewsEntry) -> dict:
     )
     text = response.content[0].text.strip()
     try:
-        result = json.loads(text)
+        result = parse_json_response(text)
     except json.JSONDecodeError:
         logger.error("AI判定のJSONパース失敗: %s", text)
         return {"rank": "D", "reason": "判定結果のパース失敗", "confidence": 0.0}
