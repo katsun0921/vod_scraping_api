@@ -29,11 +29,11 @@ jobs:
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
-          ANTHROPIC_API_KEY: ${{ secrets.NEWS_BOT_ANTHROPIC_API_KEY }}
-          X_API_KEY: ${{ secrets.NEWS_BOT_X_API_KEY }}
-          X_API_SECRET: ${{ secrets.NEWS_BOT_X_API_SECRET }}
-          X_ACCESS_TOKEN: ${{ secrets.NEWS_BOT_X_ACCESS_TOKEN }}
-          X_ACCESS_TOKEN_SECRET: ${{ secrets.NEWS_BOT_X_ACCESS_TOKEN_SECRET }}
-          SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
-          SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.SLACK_APPROVAL_CHANNEL_ID }}
         run: python -m news_bot.main
