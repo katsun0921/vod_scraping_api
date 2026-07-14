@@ -52,6 +52,20 @@ news_bot/
 
 プロンプトは`judge.py` / `compose.py`にハードコードせず、`prompts/*.md`で管理する。judge/compose用のfew-shot例やトーンの調整はコードを触らずMarkdownファイルの編集だけで完結する。
 
+## 必要なアカウント
+
+本番投入前に、以下のアカウント・認証情報を用意する必要がある。
+
+| # | アカウント/サービス | 用途 | 必要な認証情報 | GitHub Secret名 |
+|---|---|---|---|---|
+| 1 | Googleアカウント + Google Cloudプロジェクト | Google Sheets APIを有効化し、サービスアカウントを発行する | サービスアカウントJSON（Sheets APIのスコープ付与）、対象スプレッドシートをサービスアカウントのメールアドレスに共有 | `GOOGLE_SHEETS_CREDENTIALS_JSON`, `GOOGLE_SHEETS_SPREADSHEET_ID` |
+| 2 | Anthropic Console アカウント | Claude APIでAI判定・投稿文生成を行う | APIキー | `ANTHROPIC_API_KEY` |
+| 3 | X (Twitter) Developer アカウント + katsumascore運用アカウント | Xへの投稿（Pay-Per-Use課金の有効化・支出上限設定も必要、仕様書4.6） | App の Consumer Key/Secret、投稿アカウントのAccess Token/Secret（OAuth1.0a、Read and Write権限） | `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` |
+| 4 | Slackワークスペース + Slack App（Bot） | 承認フロー（S/A判定の通知・リアクション検知） | Bot Token（`chat:write` / `reactions:read` スコープ）、承認依頼を投稿するチャンネルのID | `NEWS_BOT_SLACK_BOT_TOKEN`, `NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID` |
+| 5 | GitHubリポジトリの管理権限 | 上記の認証情報をActions Secretsに登録する | - | - |
+
+> Slack Botはワークスペースにインストールし、承認を行うチャンネルに招待（`/invite @bot名`）しておく必要がある。招待し忘れると`chat.postMessage`が失敗する。
+
 ## セットアップ
 
 ### 1. 依存関係のインストール
