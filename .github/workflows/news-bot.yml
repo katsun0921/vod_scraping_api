@@ -28,7 +28,7 @@ jobs:
       - name: Run news bot pipeline
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
-          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.NEWS_BOT_GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.NEWS_BOT_ANTHROPIC_API_KEY }}
           X_API_KEY: ${{ secrets.NEWS_BOT_X_API_KEY }}
           X_API_SECRET: ${{ secrets.NEWS_BOT_X_API_SECRET }}
