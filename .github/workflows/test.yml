@@ -10,6 +10,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ".."
+    defaults:
+      run:
+        working-directory: vod_bot
 
     steps:
       - name: Checkout
@@ -20,7 +25,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: requirements-dev.txt
+          cache-dependency-path: vod_bot/requirements-dev.txt
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt

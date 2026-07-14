@@ -35,6 +35,7 @@ jobs:
       - name: Build and Push image
         run: |
           docker build \
+            --file vod_bot/Dockerfile \
             --tag ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:${{ github.sha }} \
             --tag ${{ secrets.ARTIFACT_REGISTRY_IMAGE }}:latest \
             .

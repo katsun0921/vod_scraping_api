@@ -62,10 +62,10 @@ from checkers.hulu import HuluChecker
 from checkers.netflix import NetflixChecker
 from checkers.unext import UnextChecker
 from checkers.youtube import YoutubeChecker
-from utils.justwatch import search_urls
+from justwatch import search_urls
+from slack import notify_weekly_new_streaming_summary
 from utils.rate_limit import RateLimiter
-from utils.slack import notify_weekly_new_streaming_summary
-from utils.wordpress import (
+from wordpress import (
     SERVICES,
     SERVICE_REQUIRED_CATEGORY_IDS,
     SERVICE_SUPPORTED_LANGUAGES,
