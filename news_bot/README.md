@@ -58,13 +58,11 @@ news_bot/
 
 | # | アカウント/サービス | 用途 | 必要な認証情報 | GitHub Secret名 |
 |---|---|---|---|---|
-| 1 | Google Cloud サービスアカウント（**他リポジトリと共用**） | 既存のサービスアカウントをnews_bot用スプレッドシートの読み書きにも利用する | 既存のサービスアカウントJSON、対象スプレッドシートをそのサービスアカウントのメールアドレスに共有 | `GOOGLE_SHEETS_CREDENTIALS_JSON`, `GOOGLE_SHEETS_SPREADSHEET_ID` |
+| 1 | Google Cloud サービスアカウント（**news_bot専用に新規発行**） | Google Sheets APIを有効化し、news_bot専用のサービスアカウントを発行する | サービスアカウントJSON、対象スプレッドシートをそのサービスアカウントのメールアドレスに共有 | `GOOGLE_SHEETS_CREDENTIALS_JSON`, `GOOGLE_SHEETS_SPREADSHEET_ID` |
 | 2 | Anthropic Console アカウント | Claude APIでAI判定・投稿文生成を行う | APIキー | `ANTHROPIC_API_KEY` |
 | 3 | X (Twitter) Developer アカウント + katsumascore運用アカウント | Xへの投稿（Pay-Per-Use課金の有効化・支出上限設定も必要、仕様書4.6） | App の Consumer Key/Secret、投稿アカウントのAccess Token/Secret（OAuth1.0a、Read and Write権限） | `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` |
 | 4 | Slackワークスペース + Slack App（Bot） | 承認フロー（S/A判定の通知・リアクション検知） | Bot Token（`chat:write` / `reactions:read` スコープ）、承認依頼を投稿するチャンネルのID | `NEWS_BOT_SLACK_BOT_TOKEN`, `NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID` |
 | 5 | GitHubリポジトリの管理権限 | 上記の認証情報をActions Secretsに登録する | - | - |
-
-> **Googleサービスアカウントの共用について**：他リポジトリで使用中の既存サービスアカウントをそのまま流用する。このJSONキーが漏洩した場合、他リポジトリ側で共有しているシートも含めて影響範囲が及ぶ点に注意。専用アカウントに切り出したくなった場合は、新規サービスアカウントを発行し対象スプレッドシートを共有し直すだけで移行できる（コード変更は不要）。
 
 > Slack Botはワークスペースにインストールし、承認を行うチャンネルに招待（`/invite @bot名`）しておく必要がある。招待し忘れると`chat.postMessage`が失敗する。
 
