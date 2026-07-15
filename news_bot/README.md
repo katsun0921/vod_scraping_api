@@ -36,12 +36,25 @@ ChatGPT/Grokとの精度比較テストのため `NEWS_BOT_JUDGE_PROVIDERS: "cla
 | `fetch_cycle()` | ニュース取得 → 重複チェック → 保存 → AI判定 → S/A判定は承認依頼をSlackに投稿 |
 | `process_pending()` | 承認キューを確認し、承認済み分をX投稿 |
 
+## Xポストのニュースソース化（試作・検証中）
+
+RSSに続く追加ニュースソースとして、公式Xアカウントの投稿を`fetch_x.py`で取得できるか試作中。まだ`main.py`のパイプラインには統合していない（`fetch_all_x()`は独立関数として存在するのみ）。
+
+- **取得方針**：日本メディア・アメリカメディアで取得ソースを分け、それぞれ1日1回（合計2回/日）のcronで取得する想定
+- **認証**：投稿用のOAuth1.0aキー（`X_API_KEY`等）とは別に、読み取り専用の`X_BEARER_TOKEN`（OAuth2.0 App-Only）を発行して使う
+- **コスト**：Pay-Per-Useで投稿の読み取りは$0.005/件。`since_id`（前回取得した最新投稿ID）を渡せば新着分のみ課金対象になるため、`fetch_from_x_account()`の`account`引数に`since_id`/`user_id`を渡してコストを抑える設計にしている（本実装時は「公式X一覧」シートにキャッシュする想定）
+
+### 試作検証の実行方法
+
+`.github/workflows/news-bot-fetch-x-test.yml`（`workflow_dispatch`、`handle`入力でテスト対象アカウントを指定可能、既定は`anime_jaadugar`）から`python -m news_bot.fetch_x`を単独実行できる。Secretsに`X_BEARER_TOKEN`を登録すればすぐ試せる。
+
 ## ディレクトリ構成
 
 ```
 news_bot/
 ├── main.py           # fetch_cycle() / process_pending() エントリーポイント
 ├── fetch.py          # RSS取得（feedparser）
+├── fetch_x.py        # 公式Xアカウントの投稿取得（試作・ニュースソース化に向けた検証中）
 ├── dedupe.py         # URL完全一致の重複チェック
 ├── judge.py          # S/A/B/D判定（複数AIプロバイダーの並列実行に対応）
 ├── ai_clients.py     # Claude/ChatGPT/Grokへの個別API呼び出しラッパー
@@ -69,8 +82,9 @@ news_bot/
 | 3 | OpenAI Platform アカウント（**AI判定の精度比較テスト用**） | ChatGPTでのAI判定（`NEWS_BOT_JUDGE_PROVIDERS`に`openai`を含めた場合のみ） | APIキー | `OPENAI_API_KEY` |
 | 4 | xAI Developer アカウント（**AI判定の精度比較テスト用**） | Grokでの AI判定（`NEWS_BOT_JUDGE_PROVIDERS`に`grok`を含めた場合のみ） | APIキー | `GROK_API_KEY` |
 | 5 | X (Twitter) Developer アカウント + katsumascore運用アカウント | Xへの投稿（Pay-Per-Use課金の有効化・支出上限設定も必要、仕様書4.6） | App の Consumer Key/Secret、投稿アカウントのAccess Token/Secret（OAuth1.0a、Read and Write権限） | `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET` |
-| 6 | Slackワークスペース + Slack App（Bot） | 承認フロー（S/A判定の通知・リアクション検知） | Bot Token（`chat:write` / `reactions:read` スコープ）、承認依頼を投稿するチャンネルのID | `NEWS_BOT_SLACK_BOT_TOKEN`, `NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID` |
-| 7 | GitHubリポジトリの管理権限 | 上記の認証情報をActions Secretsに登録する | - | - |
+| 6 | 同上のX Developerアカウント（**Xポストのニュースソース化・試作検証用**） | 公式Xアカウントの投稿読み取り（`fetch_x.py`） | 同一App内で発行するOAuth2.0 App-Only Bearer Token | `X_BEARER_TOKEN` |
+| 7 | Slackワークスペース + Slack App（Bot） | 承認フロー（S/A判定の通知・リアクション検知） | Bot Token（`chat:write` / `reactions:read` スコープ）、承認依頼を投稿するチャンネルのID | `NEWS_BOT_SLACK_BOT_TOKEN`, `NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID` |
+| 8 | GitHubリポジトリの管理権限 | 上記の認証情報をActions Secretsに登録する | - | - |
 
 > **長期有効な認証情報の運用方針**：`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GROK_API_KEY` / `X_API_*` / `NEWS_BOT_SLACK_BOT_TOKEN`は発行元サービスがWorkload Identity Federation等の短期認証に対応していないため、無期限キーとしてGitHub Actions Secretsで管理する。漏洩の通知・兆候（想定外の使用量急増、GitHubのsecret scanningアラート等）を検知した場合は各サービスのコンソールで即座にRevoke（失効）する。
 
