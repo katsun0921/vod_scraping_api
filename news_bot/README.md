@@ -24,6 +24,8 @@ GitHub Actions（`.github/workflows/news-bot.yml`）から `python -m news_bot.m
 
 現在はテスト段階のため、Actionsタブからの手動実行（`workflow_dispatch`）のみ有効。本番投入時は2時間おきのcron（仕様書 3.: 1〜2時間おき推奨）をworkflow内のコメントアウトを解除して有効化する。
 
+また `NEWS_BOT_FETCH_LIMIT: "1"` を設定し、1回のfetch_cycle()で処理する件数を1件に制限している（Claude API/Slack/X APIの呼び出しを抑えるため）。本番投入時はこの行を削除して無制限に戻す。
+
 1回の実行で以下の2つを行う：
 
 | 関数 | 処理内容 |
