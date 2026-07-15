@@ -29,9 +29,13 @@ jobs:
         env:
           # テスト段階のため1件のみ処理する。本番投入時はこの行を削除する。
           NEWS_BOT_FETCH_LIMIT: "1"
+          # ChatGPT・Grokとの精度比較テスト用。本番投入時はclaudeのみに戻す。
+          NEWS_BOT_JUDGE_PROVIDERS: "claude,openai,grok"
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}

@@ -58,6 +58,7 @@ def fetch_cycle() -> dict:
             rank=rank,
             post_status="保存のみ" if rank not in _POSTABLE_RANKS else "承認待ち",
             judge_reason=result["reason"],
+            provider_results=result["providers"],
         )
         stats["judged"] += 1
         existing_urls.add(entry.url)

@@ -38,7 +38,13 @@ SHEET_TITLES = [
 ]
 
 _NEWS_SOURCES_HEADER = ["ID", "名称", "URL", "カテゴリ", "取得方法", "取得間隔", "有効/無効", "規約確認済み"]
-_NEWS_ITEMS_HEADER = ["取得日時", "タイトル", "URL", "媒体", "関連タイトル", "概要", "重要度(S/A/B/D)", "投稿状態", "重複フラグ", "AI判定理由"]
+_NEWS_ITEMS_HEADER = [
+    "取得日時", "タイトル", "URL", "媒体", "関連タイトル", "概要",
+    "重要度(S/A/B/D)", "投稿状態", "重複フラグ", "AI判定理由",
+    "Claude判定", "Claude理由", "ChatGPT判定", "ChatGPT理由", "Grok判定", "Grok理由",
+]
+# judge.pyのプロバイダーキー → 上記ヘッダーの列名接頭辞
+_JUDGE_PROVIDER_COLUMNS = {"claude": "Claude", "openai": "ChatGPT", "grok": "Grok"}
 _POST_HISTORY_HEADER = ["投稿日時", "ニュースID", "本文", "リプライ本文", "インプレッション", "いいね数", "承認者"]
 _APPROVAL_QUEUE_HEADER = [
     "ニュースURL", "ランク", "本文", "リプライ本文",
@@ -113,8 +119,14 @@ class NewsBotSheets:
         post_status: str = "",
         is_duplicate: bool = False,
         judge_reason: str = "",
+        provider_results: dict[str, dict] | None = None,
     ) -> None:
-        """「ニュース取得」シートに1件追記する。"""
+        """「ニュース取得」シートに1件追記する。
+
+        provider_results: judge.judge()が返す {プロバイダー名: {rank, reason, ...}}。
+        比較テスト用に、判定に使われなかったプロバイダーの列は空欄のまま残す。
+        """
+        provider_results = provider_results or {}
         row = [
             datetime.now(timezone.utc).isoformat(),
             title,
@@ -127,6 +139,10 @@ class NewsBotSheets:
             "重複" if is_duplicate else "",
             judge_reason,
         ]
+        for provider in _JUDGE_PROVIDER_COLUMNS:
+            result = provider_results.get(provider)
+            row.append(result["rank"] if result else "")
+            row.append(result["reason"] if result else "")
         self._worksheet("ニュース取得").append_row(row, value_input_option="USER_ENTERED")
 
     def update_news_item_status(self, url: str, *, post_status: str) -> None:
