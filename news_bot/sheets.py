@@ -19,6 +19,7 @@ import os
 from datetime import datetime, timezone
 
 import gspread
+from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,10 @@ SHEET_TITLES = [
 ]
 
 _NEWS_SOURCES_HEADER = ["ID", "名称", "URL", "カテゴリ", "取得方法", "取得間隔", "有効/無効", "規約確認済み"]
+_X_ACCOUNTS_HEADER = [
+    "ID", "アカウント名", "Xハンドル", "URL", "種別", "地域", "有効/無効",
+    "user_id", "since_id", "最終取得日時",
+]
 _NEWS_ITEMS_HEADER = [
     "取得日時", "タイトル", "URL", "媒体", "関連タイトル", "概要",
     "重要度(S/A/B/D)", "投稿状態", "重複フラグ", "AI判定理由",
@@ -52,12 +57,13 @@ _APPROVAL_QUEUE_HEADER = [
 ]
 
 # main.py が実際に読み書きするシートのみ自動作成する。
-# タイトル一覧・公式X一覧・YouTube Shorts はMVPスコープ外のため対象外。
+# タイトル一覧・YouTube Shorts はMVPスコープ外のため対象外。
 _AUTO_CREATED_HEADERS = {
     "ニュースソース": _NEWS_SOURCES_HEADER,
     "ニュース取得": _NEWS_ITEMS_HEADER,
     "X投稿履歴": _POST_HISTORY_HEADER,
     "承認キュー": _APPROVAL_QUEUE_HEADER,
+    "公式X一覧": _X_ACCOUNTS_HEADER,
 }
 
 
@@ -205,3 +211,48 @@ class NewsBotSheets:
             return
         status_col = _APPROVAL_QUEUE_HEADER.index("ステータス") + 1
         ws.update_cell(cell.row, status_col, status)
+
+    def get_active_x_accounts(self, region: str) -> list[dict]:
+        """「公式X一覧」から指定地域の有効なアカウントを取得する（fetch_x.fetch_all_xへ渡す形に整形）。
+
+        Args:
+            region: "地域"列の値（例: "日本" / "アメリカ"）
+        """
+        rows = self._worksheet("公式X一覧").get_all_records()
+        return [
+            {
+                "名称": row["アカウント名"],
+                "Xハンドル": row["Xハンドル"],
+                "user_id": row.get("user_id") or None,
+                "since_id": row.get("since_id") or None,
+            }
+            for row in rows
+            if row.get("地域") == region and row.get("有効/無効") == "有効"
+        ]
+
+    def update_x_account_state(self, handle: str, *, user_id: str, since_id: str | None) -> None:
+        """Xハンドルをキーに「公式X一覧」のuser_id/since_id/最終取得日時を更新する。
+
+        user_id・since_idはTwitterのsnowflake ID（19桁の整数文字列）のため、
+        USER_ENTEREDで書き込むとSheets側が数値変換して桁落ちする。rawで書き込む。
+        """
+        ws = self._worksheet("公式X一覧")
+        cell = ws.find(handle, in_column=_X_ACCOUNTS_HEADER.index("Xハンドル") + 1)
+        if cell is None:
+            logger.warning("公式X一覧にハンドルが見つかりません: %s", handle)
+            return
+        user_id_col = _X_ACCOUNTS_HEADER.index("user_id") + 1
+        since_id_col = _X_ACCOUNTS_HEADER.index("since_id") + 1
+        fetched_at_col = _X_ACCOUNTS_HEADER.index("最終取得日時") + 1
+        ws.update(
+            range_name=rowcol_to_a1(cell.row, user_id_col),
+            values=[[user_id]],
+            raw=True,
+        )
+        if since_id is not None:
+            ws.update(
+                range_name=rowcol_to_a1(cell.row, since_id_col),
+                values=[[since_id]],
+                raw=True,
+            )
+        ws.update_cell(cell.row, fetched_at_col, datetime.now(timezone.utc).isoformat())

@@ -1,0 +1,48 @@
+name: X News Bot - 公式Xアカウント取得
+
+on:
+  # テスト段階のためcron自動実行は無効化し、手動実行のみとする。
+  # 本番投入時は下記のcomment outを解除する（地域ごとに1日1回、コスト管理のため分ける）。
+  # schedule:
+  #   - cron: "0 1 * * *"   # 日本メディア 1日1回
+  #   - cron: "0 13 * * *"  # アメリカメディア 1日1回
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "取得する地域（「公式X一覧」シートの地域列と一致させる）"
+        required: false
+        default: "日本"
+        type: choice
+        options:
+          - "日本"
+          - "アメリカ"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: news_bot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r news_bot/requirements.txt
+
+      - name: Run news bot X fetch pipeline
+        env:
+          # テスト段階のため1件のみ処理する。本番投入時はこの行を削除する。
+          NEWS_BOT_FETCH_LIMIT: "1"
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
+          SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
+        run: python -m news_bot.main x "${{ github.event.inputs.region }}"

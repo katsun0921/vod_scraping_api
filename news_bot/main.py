@@ -2,22 +2,23 @@
 
 GitHub Actions cron から呼び出す想定（仕様書 3.: 1〜2時間おき推奨）。
 
-    fetch_cycle(): ニュース取得 → 重複チェック → 保存 → AI判定 → S/A判定は投稿テンプレートをSlackに送信
+    fetch_cycle():        RSS取得 → 重複チェック → 保存 → AI判定 → S/A判定は投稿テンプレートをSlackに送信
+    fetch_x_cycle(region): 公式Xアカウント取得（地域ごとに1日1回）→ 上記と同じ処理
 
-投稿は現在手動運用のため、fetch_cycle()はSlackへテンプレートを送るところまでで終わる。
+投稿は現在手動運用のため、両サイクルともSlackへテンプレートを送るところまでで終わる。
 X APIへの自動投稿（process_pending() + post_x.post_with_reply）は予算状況次第で
 再開できるようコードは残してあるが、__main__からは呼び出していない。
 
 環境変数:
-    NEWS_BOT_FETCH_LIMIT: 1回のfetch_cycle()で処理する件数の上限（テスト用、未設定なら無制限）
+    NEWS_BOT_FETCH_LIMIT: 1回のサイクルで処理する件数の上限（テスト用、未設定なら無制限）
 """
 
 import logging
 import os
 import sys
 
-from news_bot import approval, compose, dedupe, judge, post_x
-from news_bot.fetch import fetch_all
+from news_bot import approval, compose, dedupe, fetch_x, judge, post_x
+from news_bot.fetch import NewsEntry, fetch_all
 from news_bot.sheets import NewsBotSheets
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
@@ -26,13 +27,11 @@ logger = logging.getLogger(__name__)
 _POSTABLE_RANKS = {"S", "A"}
 
 
-def fetch_cycle() -> dict:
-    """ニュース取得〜AI判定〜投稿テンプレートのSlack送信までを1サイクル実行する。"""
-    sheets = NewsBotSheets()
-    sources = sheets.get_active_sources()
-    existing_urls = sheets.get_existing_urls()
+def _process_entries(entries: list[NewsEntry], sheets: NewsBotSheets, existing_urls: set[str]) -> dict:
+    """記事一覧を重複チェック→AI判定→（S/A判定は）Slackテンプレート送信まで処理する。
 
-    entries = fetch_all(sources)
+    fetch_cycle() / fetch_x_cycle() の共通処理。取得元（RSS/X）に依存しない。
+    """
     fetch_limit = os.environ.get("NEWS_BOT_FETCH_LIMIT")
     if fetch_limit:
         entries = entries[: int(fetch_limit)]
@@ -82,7 +81,43 @@ def fetch_cycle() -> dict:
             logger.exception("Slackテンプレート送信失敗: %s", entry.url)
             stats["errors"] += 1
 
+    return stats
+
+
+def fetch_cycle() -> dict:
+    """RSSニュース取得〜AI判定〜投稿テンプレートのSlack送信までを1サイクル実行する。"""
+    sheets = NewsBotSheets()
+    sources = sheets.get_active_sources()
+    existing_urls = sheets.get_existing_urls()
+
+    entries = fetch_all(sources)
+    stats = _process_entries(entries, sheets, existing_urls)
     logger.info("fetch_cycle 完了: %s", stats)
+    return stats
+
+
+def fetch_x_cycle(region: str) -> dict:
+    """公式Xアカウントの投稿取得〜AI判定〜投稿テンプレートのSlack送信までを1サイクル実行する。
+
+    日本メディア・アメリカメディアを分けてコスト管理するため、地域ごとに1日1回の実行を想定
+    （仕様書「Xポストのニュースソース化」）。
+
+    Args:
+        region: 「公式X一覧」シートの"地域"列の値（例: "日本" / "アメリカ"）
+    """
+    sheets = NewsBotSheets()
+    accounts = sheets.get_active_x_accounts(region)
+    existing_urls = sheets.get_existing_urls()
+
+    entries, updated_states = fetch_x.fetch_all_x(accounts)
+    stats = _process_entries(entries, sheets, existing_urls)
+
+    for handle, state in updated_states.items():
+        if state["user_id"] is None:
+            continue
+        sheets.update_x_account_state(handle, user_id=state["user_id"], since_id=state["since_id"])
+
+    logger.info("fetch_x_cycle(%s) 完了: %s", region, stats)
     return stats
 
 
@@ -132,6 +167,10 @@ def process_pending() -> dict:
 
 
 if __name__ == "__main__":
-    fetch_cycle()
+    # 引数無し: RSS取得（fetch_cycle）。 "x <地域>": 公式Xアカウント取得（fetch_x_cycle）。
+    if len(sys.argv) > 1 and sys.argv[1] == "x":
+        fetch_x_cycle(sys.argv[2] if len(sys.argv) > 2 else "日本")
+    else:
+        fetch_cycle()
     # 投稿は手動運用のため自動投稿は呼ばない。自動化を再開する場合はコメントを外す。
     # process_pending()
