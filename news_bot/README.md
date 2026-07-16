@@ -24,8 +24,6 @@ GitHub Actions（RSS: `.github/workflows/news-bot.yml`、X: `.github/workflows/n
 
 cronが有効化されており、`news-bot.yml`は1日1回（0:00 UTC。仕様書 3.は1〜2時間おき推奨だが運用判断で変更）、`news-bot-x.yml`は地域ごとに1日1回（日本 1:00 UTC / アメリカ 13:00 UTC）で自動実行される。Actionsタブからの手動実行（`workflow_dispatch`）も引き続き可能。
 
-また `NEWS_BOT_FETCH_LIMIT: "1"` を設定し、1回のfetch_cycle()で処理する件数を1件に制限している（Claude API/Slack/X APIの呼び出しを抑えるため）。本番投入時はこの行を削除して無制限に戻す。
-
 ChatGPT/Grokとの精度比較テストのため `NEWS_BOT_JUDGE_PROVIDERS: "claude,openai,grok"` を設定し、3プロバイダーを並列実行している。各プロバイダーの判定結果（rank/reason）は「ニュース取得」シートのClaude/ChatGPT/Grok列にそれぞれ記録される。最終的にどのランクを採用するかは `NEWS_BOT_JUDGE_DECISION`（既定 `primary` = 先頭プロバイダーのランクを採用）で制御し、比較結果を見た上で `majority`（多数決）への切り替えを検討する。本番投入時は `NEWS_BOT_JUDGE_PROVIDERS` を `claude` のみに戻す想定。
 
 投稿は手動運用のため、実行するのは`fetch_cycle()`/`fetch_x_cycle()`のみ：
