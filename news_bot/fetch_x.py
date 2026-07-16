@@ -45,7 +45,7 @@ def fetch_from_x_account(
     client = client or _client()
     handle = account["Xハンドル"].lstrip("@")
     name = account["名称"]
-    since_id = account.get("since_id") or None
+    since_id = str(account["since_id"]) if account.get("since_id") else None
     user_id = account.get("user_id")
 
     if user_id is None:
@@ -63,6 +63,7 @@ def fetch_from_x_account(
         tweet_fields=["created_at"],
     )
     tweets = response.data or []
+    # 新着が無い場合は元のsince_idを維持する（既に文字列化済みなので再度str()を通す必要はない）。
     state = {"user_id": str(user_id), "since_id": str(tweets[0].id) if tweets else since_id}
     if not tweets:
         return [], state
