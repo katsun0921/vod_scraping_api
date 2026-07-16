@@ -67,6 +67,16 @@ _AUTO_CREATED_HEADERS = {
 }
 
 
+def _is_enabled(value) -> bool:
+    """「有効/無効」列の値を判定する。
+
+    テキストで"有効"と入力した場合と、Sheetsのチェックボックス（真偽値セル）で
+    有効にした場合の両方を許容する。チェックボックスはSheets API上ではブール値
+    True/Falseとして返るため、文字列比較だけでは常にFalse扱いになってしまう。
+    """
+    return value == "有効" or value is True
+
+
 def _client() -> gspread.Client:
     creds_json = os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"]
     info = json.loads(creds_json)
@@ -98,12 +108,13 @@ class NewsBotSheets:
     def get_active_sources(self) -> list[dict]:
         """「RSS一覧」シートから有効なRSSソースを取得する。
 
-        有効/無効="有効"、規約確認済み="済" の行のみ対象。
+        有効/無効が有効（テキスト"有効"またはチェックボックスON）、
+        規約確認済み="済" の行のみ対象。
         """
         rows = self._worksheet("RSS一覧").get_all_records()
         return [
             row for row in rows
-            if row.get("有効/無効") == "有効"
+            if _is_enabled(row.get("有効/無効"))
             and row.get("規約確認済み") == "済"
         ]
 
@@ -235,7 +246,7 @@ class NewsBotSheets:
                 "since_id": str(row["since_id"]) if row.get("since_id") else None,
             }
             for row in rows
-            if row.get("地域") == region and row.get("有効/無効") == "有効"
+            if row.get("地域") == region and _is_enabled(row.get("有効/無効"))
         ]
 
     def update_x_account_state(self, handle: str, *, user_id: str, since_id: str | None) -> None:
