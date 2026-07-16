@@ -38,9 +38,9 @@ SHEET_TITLES = [
     "承認キュー",
 ]
 
-_NEWS_SOURCES_HEADER = ["ID", "名称", "URL", "カテゴリ", "取得間隔", "規約確認済み"]
+_NEWS_SOURCES_HEADER = ["ID", "名称", "URL", "カテゴリ", "地域", "取得間隔", "有効/無効", "規約確認済み"]
 _X_ACCOUNTS_HEADER = [
-    "ID", "アカウント名", "Xハンドル", "URL", "種別", "地域",
+    "ID", "アカウント名", "Xハンドル", "URL", "種別", "地域", "有効/無効",
     "user_id", "since_id", "最終取得日時",
 ]
 _NEWS_ITEMS_HEADER = [
@@ -65,6 +65,11 @@ _AUTO_CREATED_HEADERS = {
     "承認キュー": _APPROVAL_QUEUE_HEADER,
     "公式X一覧": _X_ACCOUNTS_HEADER,
 }
+
+
+def _is_active(value) -> bool:
+    """「有効/無効」列（Sheetsのチェックボックス＝真偽値セル）がTRUEかどうかを判定する。"""
+    return value is True
 
 
 def _client() -> gspread.Client:
@@ -98,11 +103,13 @@ class NewsBotSheets:
     def get_active_sources(self) -> list[dict]:
         """「RSS一覧」シートから有効なRSSソースを取得する。
 
-        シートに載っている行は全て有効（無効化したい場合は行ごと削除する運用）。
-        規約確認済み="済" の行のみ対象。
+        有効/無効列（チェックボックス）がTRUE、規約確認済み="済" の行のみ対象。
         """
         rows = self._worksheet("RSS一覧").get_all_records()
-        return [row for row in rows if row.get("規約確認済み") == "済"]
+        return [
+            row for row in rows
+            if _is_active(row.get("有効/無効")) and row.get("規約確認済み") == "済"
+        ]
 
     def get_existing_urls(self) -> set[str]:
         """「ニュース取得」シートに既に保存済みのURL集合を返す（一次重複チェック用）。"""
@@ -209,9 +216,9 @@ class NewsBotSheets:
         ws.update_cell(cell.row, status_col, status)
 
     def get_active_x_accounts(self, region: str) -> list[dict]:
-        """「公式X一覧」から指定地域のアカウントを取得する（fetch_x.fetch_all_xへ渡す形に整形）。
+        """「公式X一覧」から指定地域の有効なアカウントを取得する（fetch_x.fetch_all_xへ渡す形に整形）。
 
-        シートに載っている行は全て有効（無効化したい場合は行ごと削除する運用）。
+        有効/無効列（チェックボックス）がTRUEの行のみ対象。
 
         Args:
             region: "地域"列の値（例: "日本" / "アメリカ"）
@@ -234,7 +241,7 @@ class NewsBotSheets:
                 "since_id": str(row["since_id"]) if row.get("since_id") else None,
             }
             for row in rows
-            if row.get("地域") == region
+            if row.get("地域") == region and _is_active(row.get("有効/無効"))
         ]
 
     def update_x_account_state(self, handle: str, *, user_id: str, since_id: str | None) -> None:
