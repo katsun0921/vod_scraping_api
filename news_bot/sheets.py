@@ -31,14 +31,14 @@ _SCOPES = [
 SHEET_TITLES = [
     "タイトル一覧",
     "公式X一覧",
-    "ニュースソース",
+    "RSS一覧",
     "ニュース取得",
     "X投稿履歴",
     "YouTube Shorts",
     "承認キュー",
 ]
 
-_NEWS_SOURCES_HEADER = ["ID", "名称", "URL", "カテゴリ", "取得方法", "取得間隔", "有効/無効", "規約確認済み"]
+_NEWS_SOURCES_HEADER = ["ID", "名称", "URL", "カテゴリ", "取得間隔", "有効/無効", "規約確認済み"]
 _X_ACCOUNTS_HEADER = [
     "ID", "アカウント名", "Xハンドル", "URL", "種別", "地域", "有効/無効",
     "user_id", "since_id", "最終取得日時",
@@ -59,7 +59,7 @@ _APPROVAL_QUEUE_HEADER = [
 # main.py が実際に読み書きするシートのみ自動作成する。
 # タイトル一覧・YouTube Shorts はMVPスコープ外のため対象外。
 _AUTO_CREATED_HEADERS = {
-    "ニュースソース": _NEWS_SOURCES_HEADER,
+    "RSS一覧": _NEWS_SOURCES_HEADER,
     "ニュース取得": _NEWS_ITEMS_HEADER,
     "X投稿履歴": _POST_HISTORY_HEADER,
     "承認キュー": _APPROVAL_QUEUE_HEADER,
@@ -96,15 +96,14 @@ class NewsBotSheets:
         return self._spreadsheet.worksheet(title)
 
     def get_active_sources(self) -> list[dict]:
-        """「ニュースソース」シートから有効なRSSソースを取得する。
+        """「RSS一覧」シートから有効なRSSソースを取得する。
 
-        取得方法="RSS"、有効/無効="有効"、規約確認済み="済" の行のみ対象。
+        有効/無効="有効"、規約確認済み="済" の行のみ対象。
         """
-        rows = self._worksheet("ニュースソース").get_all_records()
+        rows = self._worksheet("RSS一覧").get_all_records()
         return [
             row for row in rows
-            if row.get("取得方法") == "RSS"
-            and row.get("有効/無効") == "有効"
+            if row.get("有効/無効") == "有効"
             and row.get("規約確認済み") == "済"
         ]
 
@@ -217,14 +216,23 @@ class NewsBotSheets:
 
         Args:
             region: "地域"列の値（例: "日本" / "アメリカ"）
+
+        user_id・since_idはTwitterのsnowflake ID（19桁）のため、gspreadのget_all_records()
+        が数値に見える文字列を自動でint/floatへ変換してしまう挙動（numericise）を
+        numericise_ignoreで無効化する。ここで文字列化を怠ると、新着0件の実行時に
+        既存値をそのままSheetsへ書き戻す際に数値として書き込まれ桁落ちする。
         """
-        rows = self._worksheet("公式X一覧").get_all_records()
+        user_id_col = _X_ACCOUNTS_HEADER.index("user_id") + 1
+        since_id_col = _X_ACCOUNTS_HEADER.index("since_id") + 1
+        rows = self._worksheet("公式X一覧").get_all_records(
+            numericise_ignore=[user_id_col, since_id_col]
+        )
         return [
             {
                 "名称": row["アカウント名"],
                 "Xハンドル": row["Xハンドル"],
-                "user_id": row.get("user_id") or None,
-                "since_id": row.get("since_id") or None,
+                "user_id": str(row["user_id"]) if row.get("user_id") else None,
+                "since_id": str(row["since_id"]) if row.get("since_id") else None,
             }
             for row in rows
             if row.get("地域") == region and row.get("有効/無効") == "有効"

@@ -21,7 +21,7 @@ class NewsEntry:
 
 
 def fetch_from_source(source: dict) -> list[NewsEntry]:
-    """1つの「ニュースソース」行（RSS）から記事一覧を取得する。
+    """1つの「RSS一覧」行から記事一覧を取得する。
 
     Args:
         source: sheets.NewsBotSheets.get_active_sources() が返す行
