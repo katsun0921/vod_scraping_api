@@ -10,6 +10,7 @@ import os
 from anthropic import Anthropic
 
 from news_bot.fetch import NewsEntry
+from news_bot.json_response import parse as parse_json_response
 from news_bot.prompt_loader import load as load_prompt
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ def compose(entry: NewsEntry) -> dict:
     )
     text = response.content[0].text.strip()
     try:
-        result = json.loads(text)
+        result = parse_json_response(text)
     except json.JSONDecodeError:
         logger.error("投稿文生成のJSONパース失敗: %s", text)
         raise

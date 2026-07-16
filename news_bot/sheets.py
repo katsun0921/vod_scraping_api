@@ -17,9 +17,9 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional
 
 import gspread
+from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 
 logger = logging.getLogger(__name__)
@@ -39,12 +39,32 @@ SHEET_TITLES = [
 ]
 
 _NEWS_SOURCES_HEADER = ["ID", "名称", "URL", "カテゴリ", "取得方法", "取得間隔", "有効/無効", "規約確認済み"]
-_NEWS_ITEMS_HEADER = ["取得日時", "タイトル", "URL", "媒体", "関連タイトル", "概要", "重要度(S/A/B/D)", "投稿状態", "重複フラグ", "AI判定理由"]
+_X_ACCOUNTS_HEADER = [
+    "ID", "アカウント名", "Xハンドル", "URL", "種別", "地域", "有効/無効",
+    "user_id", "since_id", "最終取得日時",
+]
+_NEWS_ITEMS_HEADER = [
+    "取得日時", "タイトル", "URL", "媒体", "関連タイトル", "概要",
+    "重要度(S/A/B/D)", "投稿状態", "重複フラグ", "AI判定理由",
+    "Claude判定", "Claude理由", "ChatGPT判定", "ChatGPT理由", "Grok判定", "Grok理由",
+]
+# judge.pyのプロバイダーキー → 上記ヘッダーの列名接頭辞
+_JUDGE_PROVIDER_COLUMNS = {"claude": "Claude", "openai": "ChatGPT", "grok": "Grok"}
 _POST_HISTORY_HEADER = ["投稿日時", "ニュースID", "本文", "リプライ本文", "インプレッション", "いいね数", "承認者"]
 _APPROVAL_QUEUE_HEADER = [
     "ニュースURL", "ランク", "本文", "リプライ本文",
     "SlackチャンネルID", "Slackメッセージts", "通知日時", "ステータス",
 ]
+
+# main.py が実際に読み書きするシートのみ自動作成する。
+# タイトル一覧・YouTube Shorts はMVPスコープ外のため対象外。
+_AUTO_CREATED_HEADERS = {
+    "ニュースソース": _NEWS_SOURCES_HEADER,
+    "ニュース取得": _NEWS_ITEMS_HEADER,
+    "X投稿履歴": _POST_HISTORY_HEADER,
+    "承認キュー": _APPROVAL_QUEUE_HEADER,
+    "公式X一覧": _X_ACCOUNTS_HEADER,
+}
 
 
 def _client() -> gspread.Client:
@@ -61,6 +81,16 @@ class NewsBotSheets:
         client = _client()
         spreadsheet_id = os.environ["GOOGLE_SHEETS_SPREADSHEET_ID"]
         self._spreadsheet = client.open_by_key(spreadsheet_id)
+        self._ensure_sheets_exist()
+
+    def _ensure_sheets_exist(self) -> None:
+        """必要なワークシートとヘッダー行が無ければ作成する（初回実行時セットアップ）。"""
+        existing_titles = {ws.title for ws in self._spreadsheet.worksheets()}
+        for title, header in _AUTO_CREATED_HEADERS.items():
+            if title not in existing_titles:
+                ws = self._spreadsheet.add_worksheet(title=title, rows=1000, cols=len(header))
+                ws.append_row(header, value_input_option="USER_ENTERED")
+                logger.info("シート作成: %s", title)
 
     def _worksheet(self, title: str) -> gspread.Worksheet:
         return self._spreadsheet.worksheet(title)
@@ -95,8 +125,14 @@ class NewsBotSheets:
         post_status: str = "",
         is_duplicate: bool = False,
         judge_reason: str = "",
+        provider_results: dict[str, dict] | None = None,
     ) -> None:
-        """「ニュース取得」シートに1件追記する。"""
+        """「ニュース取得」シートに1件追記する。
+
+        provider_results: judge.judge()が返す {プロバイダー名: {rank, reason, ...}}。
+        比較テスト用に、判定に使われなかったプロバイダーの列は空欄のまま残す。
+        """
+        provider_results = provider_results or {}
         row = [
             datetime.now(timezone.utc).isoformat(),
             title,
@@ -109,6 +145,10 @@ class NewsBotSheets:
             "重複" if is_duplicate else "",
             judge_reason,
         ]
+        for provider in _JUDGE_PROVIDER_COLUMNS:
+            result = provider_results.get(provider)
+            row.append(result["rank"] if result else "")
+            row.append(result["reason"] if result else "")
         self._worksheet("ニュース取得").append_row(row, value_input_option="USER_ENTERED")
 
     def update_news_item_status(self, url: str, *, post_status: str) -> None:
@@ -153,7 +193,9 @@ class NewsBotSheets:
             datetime.now(timezone.utc).isoformat(),
             "pending",
         ]
-        self._worksheet("承認キュー").append_row(row, value_input_option="USER_ENTERED")
+        # RAW指定: SlackメッセージtsはUSER_ENTEREDだとSheetsに数値変換され、
+        # 浮動小数点の丸めでreactions.get時にmessage_not_foundとなるため文字列のまま保存する。
+        self._worksheet("承認キュー").append_row(row, value_input_option="RAW")
 
     def get_pending_approvals(self) -> list[dict]:
         """ステータスが pending の承認待ちアイテムを取得する。"""
@@ -170,21 +212,47 @@ class NewsBotSheets:
         status_col = _APPROVAL_QUEUE_HEADER.index("ステータス") + 1
         ws.update_cell(cell.row, status_col, status)
 
+    def get_active_x_accounts(self, region: str) -> list[dict]:
+        """「公式X一覧」から指定地域の有効なアカウントを取得する（fetch_x.fetch_all_xへ渡す形に整形）。
 
-def ensure_sheets_exist(spreadsheet_id: Optional[str] = None) -> None:
-    """初回セットアップ用: 必要なワークシートとヘッダー行が無ければ作成する。"""
-    client = _client()
-    spreadsheet = client.open_by_key(spreadsheet_id or os.environ["GOOGLE_SHEETS_SPREADSHEET_ID"])
-    existing_titles = {ws.title for ws in spreadsheet.worksheets()}
+        Args:
+            region: "地域"列の値（例: "日本" / "アメリカ"）
+        """
+        rows = self._worksheet("公式X一覧").get_all_records()
+        return [
+            {
+                "名称": row["アカウント名"],
+                "Xハンドル": row["Xハンドル"],
+                "user_id": row.get("user_id") or None,
+                "since_id": row.get("since_id") or None,
+            }
+            for row in rows
+            if row.get("地域") == region and row.get("有効/無効") == "有効"
+        ]
 
-    headers_by_title = {
-        "ニュースソース": _NEWS_SOURCES_HEADER,
-        "ニュース取得": _NEWS_ITEMS_HEADER,
-        "X投稿履歴": _POST_HISTORY_HEADER,
-        "承認キュー": _APPROVAL_QUEUE_HEADER,
-    }
-    for title, header in headers_by_title.items():
-        if title not in existing_titles:
-            ws = spreadsheet.add_worksheet(title=title, rows=1000, cols=len(header))
-            ws.append_row(header, value_input_option="USER_ENTERED")
-            logger.info("シート作成: %s", title)
+    def update_x_account_state(self, handle: str, *, user_id: str, since_id: str | None) -> None:
+        """Xハンドルをキーに「公式X一覧」のuser_id/since_id/最終取得日時を更新する。
+
+        user_id・since_idはTwitterのsnowflake ID（19桁の整数文字列）のため、
+        USER_ENTEREDで書き込むとSheets側が数値変換して桁落ちする。rawで書き込む。
+        """
+        ws = self._worksheet("公式X一覧")
+        cell = ws.find(handle, in_column=_X_ACCOUNTS_HEADER.index("Xハンドル") + 1)
+        if cell is None:
+            logger.warning("公式X一覧にハンドルが見つかりません: %s", handle)
+            return
+        user_id_col = _X_ACCOUNTS_HEADER.index("user_id") + 1
+        since_id_col = _X_ACCOUNTS_HEADER.index("since_id") + 1
+        fetched_at_col = _X_ACCOUNTS_HEADER.index("最終取得日時") + 1
+        ws.update(
+            range_name=rowcol_to_a1(cell.row, user_id_col),
+            values=[[user_id]],
+            raw=True,
+        )
+        if since_id is not None:
+            ws.update(
+                range_name=rowcol_to_a1(cell.row, since_id_col),
+                values=[[since_id]],
+                raw=True,
+            )
+        ws.update_cell(cell.row, fetched_at_col, datetime.now(timezone.utc).isoformat())

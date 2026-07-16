@@ -1,11 +1,21 @@
-name: X News Bot
+name: X News Bot - 公式Xアカウント取得
 
 on:
   # テスト段階のためcron自動実行は無効化し、手動実行のみとする。
-  # 本番投入時は下記のcomment outを解除する（仕様書 3.: 1〜2時間おき推奨）。
+  # 本番投入時は下記のcomment outを解除する（地域ごとに1日1回、コスト管理のため分ける）。
   # schedule:
-  #   - cron: "0 */2 * * *"
+  #   - cron: "0 1 * * *"   # 日本メディア 1日1回
+  #   - cron: "0 13 * * *"  # アメリカメディア 1日1回
   workflow_dispatch:
+    inputs:
+      region:
+        description: "取得する地域（「公式X一覧」シートの地域列と一致させる）"
+        required: false
+        default: "日本"
+        type: choice
+        options:
+          - "日本"
+          - "アメリカ"
 
 jobs:
   run:
@@ -25,22 +35,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r news_bot/requirements.txt
 
-      - name: Run news bot pipeline
+      - name: Run news bot X fetch pipeline
         env:
           # テスト段階のため1件のみ処理する。本番投入時はこの行を削除する。
           NEWS_BOT_FETCH_LIMIT: "1"
-          # ChatGPT・Grokとの精度比較テスト用。本番投入時はclaudeのみに戻す。
-          NEWS_BOT_JUDGE_PROVIDERS: "claude,openai,grok"
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
-          # 投稿は手動運用のため現状は未使用（process_pending()を再開する場合に必要）
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
-          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
-        run: python -m news_bot.main
+        run: python -m news_bot.main x "${{ github.event.inputs.region }}"
