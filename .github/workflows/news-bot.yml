@@ -1,10 +1,9 @@
 name: X News Bot
 
 on:
-  # テスト段階のためcron自動実行は無効化し、手動実行のみとする。
-  # 本番投入時は下記のcomment outを解除する（仕様書 3.: 1〜2時間おき推奨）。
-  # schedule:
-  #   - cron: "0 */2 * * *"
+  # 仕様書 3.は1〜2時間おき推奨だが、運用判断で1日1回に変更。
+  schedule:
+    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -27,8 +26,6 @@ jobs:
 
       - name: Run news bot pipeline
         env:
-          # テスト段階のため1件のみ処理する。本番投入時はこの行を削除する。
-          NEWS_BOT_FETCH_LIMIT: "1"
           # ChatGPT・Grokとの精度比較テスト用。本番投入時はclaudeのみに戻す。
           NEWS_BOT_JUDGE_PROVIDERS: "claude,openai,grok"
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
