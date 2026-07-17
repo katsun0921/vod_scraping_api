@@ -347,7 +347,7 @@ news_bot/
 
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | レイヤー1データソースの確定 | 「劇場情報源」シートに登録できる実際のRSS/構造化データ元を探す。見つからない場合はhtml方式のスクレイパー実装が必要 |
+| 1 | レイヤー1データソースの確定 | 「劇場情報源」シートに登録できる実際のRSS/構造化データ元を探す。候補調査は [theater-sources-candidates.md](theater-sources-candidates.md) を参照（TMDb APIを最有力候補として推奨、要ToS最終確認）。html方式のスクレイパーは未実装 |
 | 2 | 公開日抽出の精度向上 | 現状はタイトル/概要への正規表現ベストエフォート抽出のみ（`fetch_theater.extract_release_date()`）。抽出できない記事は保存されずスキップされる |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/feature/coming-soon-pipeline.md` の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
 | 4 | Katsumascore照合（10.） | WP REST API検索の実装が必要（`vod_bot/wordpress.py` にタイトル/tmdb_id検索関数が無い）。現状 `Katsumascore URL` / `WP post_id` は常に空欄 |
