@@ -29,4 +29,5 @@ jobs:
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: python -m news_bot.main theater

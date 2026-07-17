@@ -137,7 +137,7 @@ def theater_cycle() -> dict:
     sources = sheets.get_active_theater_sources()
     existing_keys = sheets.get_existing_theater_keys()
 
-    entries = fetch_theater.fetch_all(sources)
+    entries = fetch_theater.fetch_all(sources, start, end)
     stats = {"fetched": len(entries), "no_date": 0, "out_of_range": 0, "duplicate": 0, "saved": 0}
 
     for entry in entries:
@@ -158,6 +158,8 @@ def theater_cycle() -> dict:
             release_date=release_date_str,
             title=entry.title,
             dedupe_key=key,
+            original_title=entry.original_title,
+            category=entry.category,
             official_url=entry.url,
             source=entry.source,
         )

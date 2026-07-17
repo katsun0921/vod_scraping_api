@@ -1,29 +1,51 @@
-"""劇場公開情報の取得（RSSのみ対応・レイヤー1）。
+"""劇場公開情報の取得（RSS / TMDb discover API・レイヤー1）。
 
 仕様書 7.（取得元方針）: `docs/feature/theater-release-calendar-spec.md`
 
-レイヤー1データソースは仕様書時点で未確定のため、コード変更なしに追加できるよう
-「劇場情報源」シート（sheets.get_active_theater_sources()）に登録された取得元を
-巡回する方式にしている。取得方式は現状 "rss" のみ対応（html/apiは未実装・TODO）。
+レイヤー1データソースは「劇場情報源」シート（sheets.get_active_theater_sources()）に
+登録された取得元を巡回する方式にしている（コード変更なしに追加できるようにするため）。
+取得方式は "rss"（feedparser）と "tmdb"（TMDb discover API）に対応する
+（htmlスクレイピングは未実装・TODO、仕様書17.参照）。
 
-公開日はRSSの構造化フィールドとして提供されない前提で、タイトル・概要からの
+TMDb API採用の経緯: レイヤー1データソースを配給会社公式サイト・映画情報サイトから
+探したが、RSS/構造化データが無いかToSで複製・転載が禁止されているものが大半だった。
+TMDbはAPI利用規約が明確な数少ない候補だが、商用利用（広告収益等でのマネタイズ）の
+判定基準が公式ドキュメント上曖昧で、TMDBサポートへの問い合わせ回答も本実装時点では
+得られていない。コミュニティの実例（トラフィックが小さい間は無償利用が黙認されている
+という報告）を踏まえ、公式回答を待たずに無償利用前提で実装を進める判断とした。
+トラフィック増加時・公式回答受領時は商用ライセンス（$149/月〜）の要否を再検討すること。
+
+RSS取得時の公開日は構造化フィールドとして提供されない前提で、タイトル・概要からの
 正規表現ベストエフォート抽出のみ行う（抽出できない場合は release_date=None）。
-精度向上・レイヤー2/3補完は未実装（TODO、仕様書17.参照）。
+TMDb取得時は release_date がAPIレスポンスの構造化データからそのまま得られる。
 """
 
 import logging
+import os
 import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
 import feedparser
+import requests
 
 logger = logging.getLogger(__name__)
 
 _DATE_FULL_RE = re.compile(r"(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日")
 _DATE_MD_KANJI_RE = re.compile(r"(\d{1,2})月\s*(\d{1,2})日\s*(?:\([^)]*\))?\s*(?:から)?公開")
 _DATE_MD_SLASH_RE = re.compile(r"(\d{1,2})/(\d{1,2})\s*(?:\([^)]*\))?\s*公開")
+
+_TMDB_API_BASE = "https://api.themoviedb.org/3"
+
+# TMDb公式ジャンルリスト（/genre/movie/list?language=ja-JP）。頻繁に変わらないため静的に保持する。
+_TMDB_GENRE_JA = {
+    28: "アクション", 12: "アドベンチャー", 16: "アニメーション", 35: "コメディ",
+    80: "クライム", 99: "ドキュメンタリー", 18: "ドラマ", 10751: "ファミリー",
+    14: "ファンタジー", 36: "歴史", 27: "ホラー", 10402: "音楽",
+    9648: "ミステリー", 10749: "ロマンス", 878: "SF", 10770: "TVムービー",
+    53: "スリラー", 10752: "戦争", 37: "西部劇",
+}
 
 
 @dataclass
@@ -33,6 +55,8 @@ class TheaterEntry:
     source: str
     summary: str = ""
     release_date: Optional[date] = None
+    original_title: str = ""
+    category: str = ""
 
 
 def _infer_year(month: int, day: int, today: date) -> int:
@@ -77,19 +101,8 @@ def extract_release_date(text: str, today: Optional[date] = None) -> Optional[da
     return None
 
 
-def fetch_from_source(source: dict) -> list[TheaterEntry]:
-    """1つの「劇場情報源」行から劇場公開情報一覧を取得する。
-
-    Args:
-        source: sheets.NewsBotSheets.get_active_theater_sources() が返す行
-            （少なくとも "名称" "URL" "取得方式" キーを持つ）
-    """
+def _fetch_rss(source: dict) -> list[TheaterEntry]:
     name = source.get("名称", "")
-    method = source.get("取得方式")
-    if method != "rss":
-        logger.warning("未対応の取得方式のためスキップ: %s (取得方式=%r)", name, method)
-        return []
-
     feed_url = source["URL"]
     parsed = feedparser.parse(feed_url)
     if parsed.bozo:
@@ -109,12 +122,89 @@ def fetch_from_source(source: dict) -> list[TheaterEntry]:
     return entries
 
 
-def fetch_all(sources: list[dict]) -> list[TheaterEntry]:
+def _fetch_tmdb(source: dict, start: date, end: date) -> list[TheaterEntry]:
+    """TMDb discover APIで対象期間の劇場公開作品（映画）を取得する。
+
+    with_release_type=2|3（劇場公開）を対象期間内でフィルタするため、
+    RSSと違い公開日はAPIレスポンスから構造化データとしてそのまま得られる。
+    """
+    name = source.get("名称") or "TMDb"
+    api_key = os.environ["TMDB_API_KEY"]
+    base_params = {
+        "api_key": api_key,
+        "language": "ja-JP",
+        "region": "JP",
+        "sort_by": "primary_release_date.asc",
+        "with_release_type": "2|3",
+        "primary_release_date.gte": start.isoformat(),
+        "primary_release_date.lte": end.isoformat(),
+        "include_adult": "false",
+    }
+
+    entries: list[TheaterEntry] = []
+    page = 1
+    while True:
+        resp = requests.get(
+            f"{_TMDB_API_BASE}/discover/movie", params={**base_params, "page": page}, timeout=30
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        for movie in data.get("results", []):
+            release_date = None
+            raw_date = movie.get("release_date")
+            if raw_date:
+                try:
+                    release_date = date.fromisoformat(raw_date)
+                except ValueError:
+                    release_date = None
+            genres = [_TMDB_GENRE_JA.get(gid, "") for gid in movie.get("genre_ids", [])]
+            entries.append(
+                TheaterEntry(
+                    title=movie.get("title") or movie.get("original_title", ""),
+                    url=f"https://www.themoviedb.org/movie/{movie['id']}",
+                    source=name,
+                    summary=movie.get("overview", ""),
+                    release_date=release_date,
+                    original_title=movie.get("original_title", ""),
+                    category="/".join(g for g in genres if g),
+                )
+            )
+
+        total_pages = data.get("total_pages", 1)
+        if page >= total_pages:
+            break
+        page += 1
+
+    return entries
+
+
+def fetch_from_source(source: dict, start: date, end: date) -> list[TheaterEntry]:
+    """1つの「劇場情報源」行から劇場公開情報一覧を取得する。
+
+    Args:
+        source: sheets.NewsBotSheets.get_active_theater_sources() が返す行
+            （少なくとも "名称" "取得方式" キーを持つ。"rss" は "URL" も必須）
+        start, end: 対象期間（theater_calendar.week_range()）。tmdb取得時のみ
+            APIクエリの絞り込みに使う（rss取得時は無視し、後段でフィルタする）
+    """
+    name = source.get("名称", "")
+    method = source.get("取得方式")
+    if method == "rss":
+        return _fetch_rss(source)
+    if method == "tmdb":
+        return _fetch_tmdb(source, start, end)
+
+    logger.warning("未対応の取得方式のためスキップ: %s (取得方式=%r)", name, method)
+    return []
+
+
+def fetch_all(sources: list[dict], start: date, end: date) -> list[TheaterEntry]:
     """有効な全取得元を巡回して劇場公開情報一覧を取得する。1件の失敗は他に伝播させない。"""
     all_entries: list[TheaterEntry] = []
     for source in sources:
         try:
-            all_entries.extend(fetch_from_source(source))
+            all_entries.extend(fetch_from_source(source, start, end))
         except Exception:
             logger.exception("劇場情報源取得失敗: %s", source.get("名称"))
     return all_entries
