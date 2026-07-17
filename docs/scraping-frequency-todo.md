@@ -47,10 +47,10 @@
 
 ## Phase 4: ドキュメント更新
 
-- [x] `doc/relations.md` に新規 ACF フィールドを追加
-- [x] `doc/json-output.md` に新規フィールドを追加
-- [x] `doc/operations.md` のスキップ条件表を更新
-- [x] `doc/operations.md` の設計思想にクールダウン説明を追加
+- [x] `docs/relations.md` に新規 ACF フィールドを追加
+- [x] `docs/json-output.md` に新規フィールドを追加
+- [x] `docs/operations.md` のスキップ条件表を更新
+- [x] `docs/operations.md` の設計思想にクールダウン説明を追加
 - [x] ルート `CLAUDE.md` の ACF フィールド定義を更新（apple_tv 追加 + 新規3フィールド）
 
 ---

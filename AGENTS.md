@@ -22,7 +22,7 @@ vod_scraping_api/
 ├── utils/
 │   ├── wordpress.py           # WP REST API クライアント
 │   └── rate_limit.py          # リクエスト間隔制御
-├── doc/
+├── docs/
 │   ├── relations.md           # データリレーション（ACF + taxonomy ER図）
 │   ├── json-output.md         # WP REST API レスポンス仕様
 │   ├── operations.md          # 運用フロー・アーキテクチャ・設計思想
