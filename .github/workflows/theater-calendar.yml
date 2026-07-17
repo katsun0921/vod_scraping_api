@@ -1,0 +1,32 @@
+name: Theater Calendar
+
+on:
+  # 仕様書は毎週月曜実行のみが初期MVPスコープ（docs/feature/theater-release-calendar-spec.md 5.）。
+  # 0 21 * * 0 (UTC) = 毎週月曜 06:00 JST
+  schedule:
+    - cron: "0 21 * * 0"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: news_bot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r news_bot/requirements.txt
+
+      - name: Run theater calendar pipeline
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+        run: python -m news_bot.main theater
