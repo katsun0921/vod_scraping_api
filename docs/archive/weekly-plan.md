@@ -341,4 +341,4 @@ BATCH_COUNT = 30   # 日次運用に近づける
 | `utils/justwatch.py` | JustWatch GraphQL クライアント |
 | `utils/rate_limit.py` | リクエスト間隔制御 |
 | `checkers/` | 各 VOD サービスのチェッカー |
-| `docs/weekly-patch-schedule.md` | 技術仕様詳細 |
+| `docs/archive/weekly-patch-schedule.md` | 技術仕様詳細 |

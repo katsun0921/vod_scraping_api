@@ -15,5 +15,5 @@
 
 ## ドキュメント
 
-- [doc/](doc/) / [docs/](docs/) — 運用・設計ドキュメント一式
+- [docs/](docs/) — 運用・設計ドキュメント一式
 - [docs/x-news-bot-spec.md](docs/x-news-bot-spec.md) — news_bot 実装仕様書

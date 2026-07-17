@@ -111,8 +111,8 @@ def get_batch_for_date(d):
 | `utils/wordpress.py` | `get_all_posts_for_patch()` のdocstringを更新 |
 | `.github/workflows/weekly-patch.yml` | `batch` 入力の説明を `0-7` に更新 |
 | `tests/test_quota.py` | `get_batch_for_date()` / `get_post_badge()` のユニットテストを追加 |
-| `docs/weekly-patch-schedule.md` | スケジュール仕様・週次予算を全面更新 |
-| `docs/weekly-plan.md` | 「選択肢A」採用済みである旨を追記 |
+| `docs/archive/weekly-patch-schedule.md` | スケジュール仕様・週次予算を全面更新 |
+| `docs/archive/weekly-plan.md` | 「選択肢A」採用済みである旨を追記 |
 
 ### 未対応・今後のフォローアップ
 
@@ -121,7 +121,7 @@ def get_batch_for_date(d):
   かつジョブが `success` で完了することを確認する必要がある。
 - 投稿数がさらに増加した場合、再び120分を超過する可能性がある。その場合の
   追加選択肢（`timeout-minutes` 延長 / サービス切り替え待機の見直し /
-  `BATCH_COUNT` のさらなる増加）は `docs/weekly-plan.md` の
+  `BATCH_COUNT` のさらなる増加）は `docs/archive/weekly-plan.md` の
   「大規模対応」セクションを参照。
 - サービス切り替え待機（10秒）がボトルネックの大部分を占めるため、
   投稿単位ではなくサービス単位でループする等の抜本的な高速化は未着手。
