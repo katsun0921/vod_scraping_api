@@ -1,4 +1,4 @@
-name: X News Bot - 公式Xアカウント取得
+name: News Bot - 公式X取得
 
 on:
   # 地域ごとに1日1回、コスト管理のため分ける。
