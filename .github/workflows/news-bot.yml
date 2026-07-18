@@ -1,4 +1,4 @@
-name: X News Bot
+name: News Bot - RSS取得
 
 on:
   # 仕様書 3.は1〜2時間おき推奨だが、運用判断で1日1回に変更。
