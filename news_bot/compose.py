@@ -57,10 +57,15 @@ def compose(entry: NewsEntry) -> dict:
     return result
 
 
-def compose_headline(entry: NewsEntry) -> str:
-    """スレッド用の1行見出し文（URLなし）を生成する。呼び出し側でURLを付与する。"""
+def compose_headline(entry: NewsEntry, rank: str) -> str:
+    """スレッド用の1行見出し文（URLなし）を生成する。呼び出し側でURLを付与する。
+
+    Args:
+        rank: judge.judge() の判定ランク（"S" | "A"）。プロンプト側でランクに
+            応じてトーンを変える（Sは速報性を伝える書き方、Aは控えめな書き方）。
+    """
     client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    user_content = f"タイトル: {entry.title}\n概要: {entry.summary}"
+    user_content = f"ランク: {rank}\nタイトル: {entry.title}\n概要: {entry.summary}"
 
     response = client.messages.create(
         model=_MODEL,
