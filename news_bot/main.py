@@ -33,7 +33,7 @@ def _notify_thread(postable: list[tuple[NewsEntry, str]]) -> None:
     """S/A判定記事一覧を1つのXスレッド（連投）用テンプレートにまとめてSlackへ送信する。"""
     lines = []
     for entry, rank in postable:
-        headline = compose.compose_headline(entry)
+        headline = compose.compose_headline(entry, rank)
         lines.append(f"【{rank}】{headline} {entry.url}")
     thread_parts = compose.pack_thread(lines)
     approval.notify_manual_thread(postable, thread_parts)
