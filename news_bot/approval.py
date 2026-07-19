@@ -2,7 +2,9 @@
 
 現在は投稿を手動運用としているため、S/A判定記事は投稿用テンプレートを
 Slackに送るだけで、リアクションによる承認・自動投稿は行わない
-（notify_manual_post）。
+（notify_manual_thread）。1回のrunでS/A判定になった記事は個別投稿ではなく
+1つのXスレッド（連投）にまとめる。`notify_manual_post`は1記事単独版として
+コードを残してあるが、main.pyの現在のフローからは呼ばれていない。
 
 :white_check_mark: リアクションによる承認フロー＋自動投稿（notify_pending/
 resolve）は、予算状況次第で自動化を再開できるようコードは残してある。
@@ -49,8 +51,33 @@ def _post_message(text: str) -> tuple[str, str]:
     return data["channel"], data["ts"]
 
 
+def notify_manual_thread(postable: list[tuple[NewsEntry, str]], thread_parts: list[str]) -> tuple[str, str]:
+    """1回のrunでS/A判定になった記事をまとめたスレッド（連投）用テンプレートをSlackに送信する。
+
+    Args:
+        postable: [(NewsEntry, rank), ...]（対象記事一覧の表示用）
+        thread_parts: compose.pack_thread() が返す、Xへの連投用テキストのリスト
+            （①→②→③…の順に、②は①への返信、というように手動で連投する）
+
+    Returns:
+        (channel_id, ts)
+    """
+    article_lines = "\n".join(f"[{rank}] {entry.title}（{entry.source}）" for entry, rank in postable)
+    thread_sections = "\n\n".join(
+        f"――― 投稿 {i}/{len(thread_parts)} ―――\n{part}" for i, part in enumerate(thread_parts, 1)
+    )
+    text = (
+        f"*S/A判定 {len(postable)}件をスレッドにまとめました*："
+        f"以下を1つのXスレッドとして1→2→3…の順に手動で連投してください"
+        f"（2件目以降は直前の投稿への返信として投稿）。\n\n"
+        f"――― 対象記事 ―――\n{article_lines}\n\n"
+        f"{thread_sections}"
+    )
+    return _post_message(text)
+
+
 def notify_manual_post(entry: NewsEntry, rank: str, honbun: str, reply: str) -> tuple[str, str]:
-    """手動投稿用のテンプレートをSlackに送信する（自動投稿は行わない）。
+    """[未使用・1記事単独投稿用] 手動投稿用のテンプレートをSlackに送信する（自動投稿は行わない）。
 
     Returns:
         (channel_id, ts)
