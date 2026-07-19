@@ -68,8 +68,16 @@ _AUTO_CREATED_HEADERS = {
 
 
 def _is_active(value) -> bool:
-    """「有効/無効」列（Sheetsのチェックボックス＝真偽値セル）がTRUEかどうかを判定する。"""
-    return value is True
+    """「有効/無効」列（Sheetsのチェックボックス）がTRUEかどうかを判定する。
+
+    gspreadの get_all_records() はチェックボックスの値をPythonのbool Trueで返す
+    こともあれば、文字列"TRUE"で返すこともある（実運用で確認：後者だった）ため両方許容する。
+    """
+    if isinstance(value, bool):
+        return value is True
+    if isinstance(value, str):
+        return value.strip().upper() == "TRUE"
+    return False
 
 
 def _client() -> gspread.Client:
@@ -233,15 +241,6 @@ class NewsBotSheets:
         rows = self._worksheet("公式X一覧").get_all_records(
             numericise_ignore=[user_id_col, since_id_col]
         )
-        # 診断用: 0件になる原因切り分けのため一時的に全行の判定結果をログ出力する。
-        logger.info("公式X一覧: %d行読み込み、region=%r", len(rows), region)
-        for row in rows:
-            logger.info(
-                "公式X一覧 row: 地域=%r(match=%s) 有効/無効=%r(type=%s, active=%s) アカウント名=%r",
-                row.get("地域"), row.get("地域") == region,
-                row.get("有効/無効"), type(row.get("有効/無効")).__name__, _is_active(row.get("有効/無効")),
-                row.get("アカウント名"),
-            )
         return [
             {
                 "名称": row["アカウント名"],
