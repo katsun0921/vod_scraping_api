@@ -36,6 +36,9 @@ jobs:
 
       - name: Run news bot X fetch pipeline
         env:
+          # 1回の実行で処理する件数の上限。取得エントリ数がこれを超える分は
+          # 切り捨てられる（翌日に持ち越されない）。情報が足りなければ増やす。
+          NEWS_BOT_FETCH_LIMIT: "5"
           # workflow_dispatchはinputsの地域を使う。scheduleはgithub.event.inputsが
           # 存在しないため、どちらのcronが発火したか(github.event.schedule)で判定する。
           REGION: ${{ github.event.inputs.region || (github.event.schedule == '0 1 * * *' && '日本') || (github.event.schedule == '0 13 * * *' && 'アメリカ') || '日本' }}
