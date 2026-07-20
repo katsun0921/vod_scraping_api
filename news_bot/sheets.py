@@ -36,6 +36,8 @@ SHEET_TITLES = [
     "X投稿履歴",
     "YouTube Shorts",
     "承認キュー",
+    "劇場情報源",
+    "劇場公開予定",
 ]
 
 _NEWS_SOURCES_HEADER = ["ID", "名称", "URL", "カテゴリ", "地域", "取得間隔", "有効/無効", "規約確認済み"]
@@ -55,6 +57,16 @@ _APPROVAL_QUEUE_HEADER = [
     "ニュースURL", "ランク", "本文", "リプライ本文",
     "SlackチャンネルID", "Slackメッセージts", "通知日時", "ステータス",
 ]
+# 劇場公開カレンダー収集パイプライン（docs/feature/theater-release-calendar-spec.md 8.）
+_THEATER_ITEMS_HEADER = [
+    "取得日時", "公開日", "タイトル", "原題", "カテゴリ", "国", "配給",
+    "公式URL", "予告URL", "情報源", "Katsumascore URL", "WP post_id",
+    "SNS優先度(S/A/B/C)", "投稿状態", "重複キー", "メモ",
+]
+# 「劇場情報源」はレイヤー1データソースを未確定のままコード変更なしで追加できるよう、
+# RSS一覧と同じ「シートに参照を記述すれば取得対象になる」方式で新設した管理用シート
+# （仕様書には無い）。取得方式は現状 "rss" のみ fetch_theater.py が対応する。
+_THEATER_SOURCES_HEADER = ["ID", "名称", "URL", "取得方式", "レイヤー", "有効/無効", "規約確認済み", "メモ"]
 
 # main.py が実際に読み書きするシートのみ自動作成する。
 # タイトル一覧・YouTube Shorts はMVPスコープ外のため対象外。
@@ -64,6 +76,8 @@ _AUTO_CREATED_HEADERS = {
     "X投稿履歴": _POST_HISTORY_HEADER,
     "承認キュー": _APPROVAL_QUEUE_HEADER,
     "公式X一覧": _X_ACCOUNTS_HEADER,
+    "劇場情報源": _THEATER_SOURCES_HEADER,
+    "劇場公開予定": _THEATER_ITEMS_HEADER,
 }
 
 
@@ -278,3 +292,61 @@ class NewsBotSheets:
                 raw=True,
             )
         ws.update_cell(cell.row, fetched_at_col, datetime.now(timezone.utc).isoformat())
+
+    def get_active_theater_sources(self) -> list[dict]:
+        """「劇場情報源」シートから有効な取得元を取得する。
+
+        有効/無効列（チェックボックス）がTRUE、規約確認済み="済" の行のみ対象。
+        レイヤー1データソースは未確定のため、コード変更なしにこのシートへ行を
+        追加するだけで取得対象を増やせるようにしている（取得方式="rss"のみ対応）。
+        """
+        rows = self._worksheet("劇場情報源").get_all_records()
+        return [
+            row for row in rows
+            if _is_active(row.get("有効/無効")) and row.get("規約確認済み") == "済"
+        ]
+
+    def get_existing_theater_keys(self) -> set[str]:
+        """「劇場公開予定」シートに既に保存済みの重複キー集合を返す。"""
+        rows = self._worksheet("劇場公開予定").get_all_records()
+        return {row["重複キー"] for row in rows if row.get("重複キー")}
+
+    def append_theater_item(
+        self,
+        *,
+        release_date: str,
+        title: str,
+        dedupe_key: str,
+        original_title: str = "",
+        category: str = "",
+        country: str = "",
+        distributor: str = "",
+        official_url: str = "",
+        trailer_url: str = "",
+        source: str = "",
+        katsumascore_url: str = "",
+        wp_post_id: str = "",
+        sns_priority: str = "",
+        post_status: str = "未判定",
+        memo: str = "",
+    ) -> None:
+        """「劇場公開予定」シートに1件追記する。"""
+        row = [
+            datetime.now(timezone.utc).isoformat(),
+            release_date,
+            title,
+            original_title,
+            category,
+            country,
+            distributor,
+            official_url,
+            trailer_url,
+            source,
+            katsumascore_url,
+            wp_post_id,
+            sns_priority,
+            post_status,
+            dedupe_key,
+            memo,
+        ]
+        self._worksheet("劇場公開予定").append_row(row, value_input_option="USER_ENTERED")

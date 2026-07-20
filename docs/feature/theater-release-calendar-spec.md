@@ -318,3 +318,96 @@ news_bot/
 - 取得元URLを必ず保存し、後から確認できるようにする
 - X投稿は初期MVPでは手動運用を維持する
 - Katsumascore URLがない作品だけで投稿を作ると送客効率が落ちるため、まとめページなどの受け皿を用意する
+
+## 17. TODO（未実装・未確定事項）
+
+`news_bot/` に着手した現時点の実装状況と、残タスクを記録する。
+
+### 実装済み（発見〜保存の骨組みのみ）
+
+- `theater_calendar.py`: 対象期間計算（6.）・タイトル正規化/重複キー生成（9.）
+- `sheets.py`: 「劇場公開予定」シート（8.のヘッダー）の自動作成・追記
+- `discover_theater.py`: **AI Web検索（Claude/OpenAI併用）による劇場公開作品の発見**（現行の
+  レイヤー1相当。事実情報のみを収集し、両AIの結果を重複キーでマージする。下記「AI発見方式への
+  転換」参照）
+- `fetch_theater.py`: RSS取得（feedparser）・TMDb discover API取得（`取得方式=tmdb`）。
+  **規約上の理由でいずれも現在未使用**（コードは残存）
+- `main.py`: `theater_discover_cycle()` — AI発見→対象期間フィルタ→重複チェック→保存
+  （投稿状態=`承認待ち`）。旧`theater_cycle()`（劇場情報源シート巡回）も残存するが実質未使用
+- `.github/workflows/theater-calendar.yml`: 毎週月曜 06:00 JST に`theater_discover`を実行
+  （`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`を渡す）
+
+### 設計変更: レイヤー1データソースの決め方
+
+仕様書7.時点ではレイヤー1の実際の取得元（サイト/API）が未確定だった。着手にあたり、
+**取得元をコードにハードコードせず「劇場情報源」シートで管理する**方式に変更した
+（既存の「RSS一覧」と同じ考え方）。
+
+- シート列: `ID / 名称 / URL / 取得方式 / レイヤー / 有効/無効 / 規約確認済み / メモ`
+- 「有効/無効」チェックボックスと「規約確認済み」="済" が揃った行のみ取得対象になる
+- `取得方式` は `rss`（feedparser）と `tmdb`（TMDb discover API）に対応。html方式は未実装
+- 配給会社（東宝・東映・松竹等）公式サイトはRSS/構造化データが無く、確認できた範囲では
+  利用規約で無断複製・転載を明示的に禁止していたため、レイヤー1の候補から除外した
+  （調査詳細は [theater-sources-candidates.md](theater-sources-candidates.md) E.節）
+
+### データソース決定: TMDb API採用 → 撤回（2026-07-17）
+
+一時、**TMDb discover API**（`/discover/movie`, `region=JP`, `with_release_type=2|3`）を
+採用し`fetch_theater.py`に実装した（コードは残存、`取得方式=tmdb`として呼び出し可能）。
+
+**撤回理由**: KatsumascoreはGoogle AdSenseを掲載しており現在収益を得ている。TMDb APIの
+「Personal Use」申請フォームには「non-commercial and generates no revenue」
+「will not use in any business or commercial environment」という明示的な誓約があり、
+虚偽申告には「immediate termination」「revocation」「potential reporting to TMDB」が
+明記されている。AdSense掲載はTMDBの定義する商用利用（広告表示によるサイトの収益化）に
+該当するため、無償利用前提での採用を撤回した。
+
+**今後の選択肢**（詳細は [theater-sources-candidates.md](theater-sources-candidates.md) A.節）:
+1. TMDB公式へ商用利用として問い合わせ、Commercial APIプラン（$149/月〜）を契約する
+2. レイヤー1データソースをTMDb以外の候補（RSS/HTML一覧/PR TIMES企業別RSS）から再選定する
+   （**着手したが再度撤回。下記参照**）
+
+### レイヤー1データソース再選定 → PR TIMES企業別RSSも撤回（2026-07-20）
+
+TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates.md) B/C/E節）を再調査した。
+
+- 映画.com新着情報RSSは利用規約で複製・転載・公衆送信を明示的に禁止しており**見送り確定**
+- シネマトゥデイRSS・HTML一覧（MOVIE WALKER PRESS等）は規約未確認またはスクレイパー実装コストが
+  高く**保留**
+- **PR TIMES企業別RSS**（配給会社が自ら配信するプレスリリースのRSS/RDF、
+  `https://prtimes.jp/companyrdf.php?company_id={ID}`）を東宝・東映・松竹・ワーナー ブラザース
+  ジャパン・ディズニー・ギャガ・KADOKAWAのcompany_id確認の上で最有力候補としたが、人間から
+  共有されたPR TIMES利用規約全文（PDF）を確認した結果、**撤回**した。一般規約第6条④
+  「有償目的で企業コンテンツを利用する行為」の禁止規定に、AdSense収益化しているKatsumascore
+  での利用が抵触するリスクが高いと判断したため（TMDbの件と同型の問題。詳細は
+  [theater-sources-candidates.md](theater-sources-candidates.md) E.節）
+
+### AI発見方式への転換（2026-07-20）
+
+特定サイトの自動取得がすべて撤回されたことを受け、レイヤー1相当の発見ステップを
+**AIのWeb検索（Claude API `web_search_20260209` + OpenAI Responses API `web_search` の併用）**
+に転換した（`discover_theater.py` / `main.theater_discover_cycle()`）。
+
+- **規約上の整理**: AIに対象週の公開作品を調べさせ、**事実情報のみ**（タイトル・公開日・
+  配給会社名・公式URL）を構造化して保存する。事実は著作権の保護対象ではなく、特定サービスの
+  フィード/APIを機械巡回してコンテンツを取り込む構造でもないため、撤回した各方式とはリスクの
+  性質が異なる。あらすじ・紹介文などの表現は保存しない
+- **人間の承認**: AI検索結果は誤り得るため、保存時は投稿状態=`承認待ち`。人間がシートを確認・
+  修正した上で承認するまで下流（週次サマリー・Slack/WP投稿）には流さない。両AIが同じ作品を
+  挙げた場合は情報源=`AI検索(claude+openai)`となり、承認時の実在確度シグナルとして使える
+- **今後の拡張**: 「劇場公開予定」シートの確定行をGoogleカレンダーへ自動同期する
+  （シート=データストア、カレンダー=管理者向けビューの併用構成）
+
+### 未実装・未確定事項（優先度順）
+
+| # | 項目 | 内容 |
+|---|---|---|
+| 1 | 承認フローの具体化 | AI発見結果（投稿状態=`承認待ち`）を人間がどう承認するか（承認列のチェックボックス追加、承認済み行のみ下流処理対象にする等）が未設計。Slackへの候補リスト通知も未実装 |
+| 2 | Googleカレンダー同期 | 確定行をGoogle Calendar APIでイベント化する（サービスアカウントにスコープ追加・重複防止はextendedPropertiesに重複キーを保持）。未実装 |
+| 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/feature/coming-soon-pipeline.md` の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
+| 4 | Katsumascore照合（10.） | WP REST API検索の実装が必要（`vod_bot/wordpress.py` にタイトル/tmdb_id検索関数が無い）。現状 `Katsumascore URL` / `WP post_id` は常に空欄 |
+| 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。現状は常に空欄で保存される |
+| 6 | AI発見の精度検証 | `theater_discover_cycle()`を実データで数週回し、取りこぼし（網羅性）・実在しない作品（ハルシネーション）・公開日誤りの頻度を確認する。プロンプトや`_MAX_WEB_SEARCHES`の調整はこの結果を見て行う |
+| 7 | `compose_theater.py`（11.） | 週次まとめ・個別投稿案の生成は未実装 |
+| 8 | Slack通知（11.） | 週次まとめ投稿案のSlack送信は未実装（`approval.py` のテンプレート送信パターンを流用予定） |
+| 9 | 旧取得方式の再開条件 | `fetch_theater.py`（RSS/TMDb）と「劇場情報源」シート巡回は、PR TIMESパートナーメディア提携またはTMDb商用ライセンス契約が成立した場合のみ再開する（[theater-sources-candidates.md](theater-sources-candidates.md)） |
