@@ -39,4 +39,6 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
+          # 劇場公開通知の専用チャンネル。未設定(空)の場合は上の承認チャンネルに送る
+          SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
         run: python -m news_bot.main theater_discover
