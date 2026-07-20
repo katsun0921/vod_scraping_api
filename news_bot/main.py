@@ -46,26 +46,31 @@ def _process_entries(entries: list[NewsEntry], sheets: NewsBotSheets, existing_u
     """記事一覧を重複チェック→AI判定まで処理し、S/A判定分はまとめて1回だけSlack通知する。
 
     fetch_cycle() / fetch_x_cycle() の共通処理。取得元（RSS/X）に依存しない。
+    重複していない記事はjudge.judge_batch()でまとめて1〜数リクエストで判定する
+    （記事ごとに1リクエストずつ叩くとsystemプロンプトの重複送信でコストが嵩むため）。
     """
     fetch_limit = os.environ.get("NEWS_BOT_FETCH_LIMIT")
     if fetch_limit:
         entries = entries[: int(fetch_limit)]
     stats = {"fetched": len(entries), "duplicate": 0, "judged": 0, "queued": 0, "errors": 0}
-    postable: list[tuple[NewsEntry, str]] = []
 
+    new_entries: list[NewsEntry] = []
     for entry in entries:
         if dedupe.is_duplicate(entry, existing_urls):
             sheets.append_news_item(title=entry.title, url=entry.url, source=entry.source, is_duplicate=True)
             stats["duplicate"] += 1
-            continue
+        else:
+            new_entries.append(entry)
 
-        try:
-            result = judge.judge(entry)
-        except Exception:
-            logger.exception("AI判定失敗: %s", entry.url)
-            stats["errors"] += 1
-            continue
+    try:
+        judge_results = judge.judge_batch(new_entries)
+    except Exception:
+        logger.exception("AI判定(バッチ)失敗: %d件", len(new_entries))
+        stats["errors"] += len(new_entries)
+        judge_results = []
 
+    postable: list[tuple[NewsEntry, str]] = []
+    for entry, result in zip(new_entries, judge_results):
         rank = result["rank"]
         sheets.append_news_item(
             title=entry.title,

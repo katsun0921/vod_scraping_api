@@ -32,6 +32,8 @@ jobs:
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # NEWS_BOT_JUDGE_PROVIDERSからgrokを外したため現状は未使用。3社比較を再開する場合はコメントを外す。
+          # GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
           # 投稿は手動運用のため現状は未使用（process_pending()を再開する場合に必要）
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}

@@ -24,7 +24,7 @@ _ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 _OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 _GROK_MODEL = os.environ.get("GROK_MODEL", "grok-4")
 _GROK_BASE_URL = "https://api.x.ai/v1"
-_MAX_TOKENS = 300
+_MAX_TOKENS = 4096  # judge.judge_batch()が最大_BATCH_SIZE件分のJSON配列を1レスポンスで返すため
 
 
 def call_claude(system_prompt: str, user_content: str) -> str:
