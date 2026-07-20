@@ -7,13 +7,12 @@
 取得方式は "rss"（feedparser）と "tmdb"（TMDb discover API）に対応する
 （htmlスクレイピングは未実装・TODO、仕様書17.参照）。
 
-TMDb API採用の経緯: レイヤー1データソースを配給会社公式サイト・映画情報サイトから
-探したが、RSS/構造化データが無いかToSで複製・転載が禁止されているものが大半だった。
-TMDbはAPI利用規約が明確な数少ない候補だが、商用利用（広告収益等でのマネタイズ）の
-判定基準が公式ドキュメント上曖昧で、TMDBサポートへの問い合わせ回答も本実装時点では
-得られていない。コミュニティの実例（トラフィックが小さい間は無償利用が黙認されている
-という報告）を踏まえ、公式回答を待たずに無償利用前提で実装を進める判断とした。
-トラフィック増加時・公式回答受領時は商用ライセンス（$149/月〜）の要否を再検討すること。
+[保留中] TMDb取得（"tmdb"）は実装済みだが、現状「劇場情報源」シートには登録しないこと。
+KatsumascoreはGoogle AdSenseを掲載しており収益を得ているため、TMDb APIの
+「Personal Use」申請（non-commercial / generates no revenue の誓約）が事実に反する。
+商用ライセンス（$149/月〜、要 api@themoviedb.org への問い合わせ）を契約するまでは
+無償利用してはならない。詳細経緯は docs/feature/theater-sources-candidates.md A.節。
+レイヤー1データソースは現在RSS/HTML一覧/PR TIMES企業別RSSから再選定中。
 
 RSS取得時の公開日は構造化フィールドとして提供されない前提で、タイトル・概要からの
 正規表現ベストエフォート抽出のみ行う（抽出できない場合は release_date=None）。
@@ -127,6 +126,10 @@ def _fetch_tmdb(source: dict, start: date, end: date) -> list[TheaterEntry]:
 
     with_release_type=2|3（劇場公開）を対象期間内でフィルタするため、
     RSSと違い公開日はAPIレスポンスから構造化データとしてそのまま得られる。
+
+    [保留中] KatsumascoreはAdSense収益があるためTMDb無償利用（Personal Use）の
+    誓約に反する。商用ライセンス契約までは「劇場情報源」シートに
+    取得方式=tmdbの行を登録しないこと（モジュールdocstring参照）。
     """
     name = source.get("名称") or "TMDb"
     api_key = os.environ["TMDB_API_KEY"]

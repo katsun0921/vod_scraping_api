@@ -345,30 +345,34 @@ news_bot/
   利用規約で無断複製・転載を明示的に禁止していたため、レイヤー1の候補から除外した
   （調査詳細は [theater-sources-candidates.md](theater-sources-candidates.md) E.節）
 
-### データソース決定: TMDb API採用（要再検討の可能性あり）
+### データソース決定: TMDb API採用 → 撤回（2026-07-17）
 
-レイヤー1データソースは **TMDb discover API**（`/discover/movie`, `region=JP`,
-`with_release_type=2|3`）を採用し、`fetch_theater.py`に実装済み。原題・ジャンルも
-同じレスポンスから構造化データとして取得できるため、レイヤー3補完の一部を先取りしている
-（配給会社・ポスター・詳細あらすじは未取得）。
+一時、**TMDb discover API**（`/discover/movie`, `region=JP`, `with_release_type=2|3`）を
+採用し`fetch_theater.py`に実装した（コードは残存、`取得方式=tmdb`として呼び出し可能）。
 
-**留意事項**: TMDb APIの商用利用（広告収益等でのマネタイズ）に該当するかの判定基準は
-公式ドキュメント上曖昧で、TMDBサポート（`api@themoviedb.org`）への問い合わせ回答は本決定時点
-（2026-07-17）で未受領。コミュニティの実例（トラフィックが小さい間は無償利用が黙認されている
-という報告）を根拠に、**公式回答を待たず無償利用前提で実装を進める判断**とした。トラフィック
-増加時・公式回答受領時は商用ライセンス（$149/月〜）の要否を再検討すること。
+**撤回理由**: KatsumascoreはGoogle AdSenseを掲載しており現在収益を得ている。TMDb APIの
+「Personal Use」申請フォームには「non-commercial and generates no revenue」
+「will not use in any business or commercial environment」という明示的な誓約があり、
+虚偽申告には「immediate termination」「revocation」「potential reporting to TMDB」が
+明記されている。AdSense掲載はTMDBの定義する商用利用（広告表示によるサイトの収益化）に
+該当するため、無償利用前提での採用を撤回した。
+
+**今後の選択肢**（詳細は [theater-sources-candidates.md](theater-sources-candidates.md) A.節）:
+1. TMDB公式へ商用利用として問い合わせ、Commercial APIプラン（$149/月〜）を契約する
+2. レイヤー1データソースをTMDb以外の候補（RSS/HTML一覧/PR TIMES企業別RSS）から再選定する
+   （**現在この方針で調査中**）
 
 ### 未実装・未確定事項（優先度順）
 
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | ~~レイヤー1データソースの確定~~ | **解決済み**: TMDb API採用（上記「データソース決定」参照）。商用利用判定は要再検討 |
-| 2 | 公開日抽出の精度向上 | TMDb取得分は構造化データのため対象外。RSS取得分のみタイトル/概要への正規表現ベストエフォート抽出（`fetch_theater.extract_release_date()`）が残る。抽出できない記事は保存されずスキップされる |
+| 1 | レイヤー1データソースの確定 | **再オープン**: TMDb採用は撤回済み（AdSense掲載により無償利用不可）。RSS/HTML一覧/PR TIMES企業別RSSから再選定中（[theater-sources-candidates.md](theater-sources-candidates.md)） |
+| 2 | 公開日抽出の精度向上 | `fetch_theater.extract_release_date()`によるタイトル/概要への正規表現ベストエフォート抽出のみ。抽出できない記事は保存されずスキップされる。TMDbは現状未使用のため全ソースに適用される |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/feature/coming-soon-pipeline.md` の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
 | 4 | Katsumascore照合（10.） | WP REST API検索の実装が必要（`vod_bot/wordpress.py` にタイトル/tmdb_id検索関数が無い）。現状 `Katsumascore URL` / `WP post_id` は常に空欄 |
 | 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。現状は常に空欄で保存され、投稿状態も常に`未判定`のまま進まない |
 | 6 | レイヤー2（一次ソース）補完 | 予告URL・配給会社・特別上映情報の取得は未実装 |
-| 7 | レイヤー3（TMDb等）補完の残り | 原題・ジャンルはレイヤー1のTMDb取得で取得済み。配給会社・ポスター・詳細あらすじは未実装 |
+| 7 | レイヤー3（TMDb等）補完 | TMDb採用撤回により原題・ジャンル取得も未実装に戻った。`TMDB_API_KEY`の商用ライセンス取得状況次第で`fetch_theater._fetch_tmdb()`を再利用できる |
 | 8 | `compose_theater.py`（11.） | 週次まとめ・個別投稿案の生成は未実装 |
 | 9 | Slack通知（11.） | 週次まとめ投稿案のSlack送信は未実装（`approval.py` のテンプレート送信パターンを流用予定） |
 | 10 | html取得方式のサポート | 「劇場情報源」シートに `取得方式=html` を登録しても現状スキップされる（rss/tmdbは対応済み） |
