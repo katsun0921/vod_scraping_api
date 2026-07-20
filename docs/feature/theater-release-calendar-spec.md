@@ -360,9 +360,9 @@ news_bot/
 **今後の選択肢**（詳細は [theater-sources-candidates.md](theater-sources-candidates.md) A.節）:
 1. TMDB公式へ商用利用として問い合わせ、Commercial APIプラン（$149/月〜）を契約する
 2. レイヤー1データソースをTMDb以外の候補（RSS/HTML一覧/PR TIMES企業別RSS）から再選定する
-   （**採用済み。下記参照**）
+   （**着手したが再度撤回。下記参照**）
 
-### レイヤー1データソース再選定（2026-07-20）
+### レイヤー1データソース再選定 → PR TIMES企業別RSSも撤回（2026-07-20）
 
 TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates.md) B/C/E節）を再調査した。
 
@@ -370,19 +370,18 @@ TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates
 - シネマトゥデイRSS・HTML一覧（MOVIE WALKER PRESS等）は規約未確認またはスクレイパー実装コストが
   高く**保留**
 - **PR TIMES企業別RSS**（配給会社が自ら配信するプレスリリースのRSS/RDF、
-  `https://prtimes.jp/companyrdf.php?company_id={ID}`）が最有力候補として浮上した。
-  東宝・東映・松竹・ワーナー ブラザース ジャパン・ディズニー・ギャガ・KADOKAWAのcompany_idを
-  確認済み。標準的なRSS形式のため既存の`fetch_theater._fetch_rss()`をそのまま流用でき、
-  映画.com等のような明示的な複製・転載禁止条項も検索範囲では見つからなかった（ただし規約全文の
-  逐条確認は未実施）。個別プレスリリースのため公開作品一覧ではなく、
-  `extract_release_date()`と同様のテキスト解析での「劇場公開」告知判定が必要
-- 正式採用前に人間がPR TIMES利用規約全文を確認する必要がある（次項#1）
+  `https://prtimes.jp/companyrdf.php?company_id={ID}`）を東宝・東映・松竹・ワーナー ブラザース
+  ジャパン・ディズニー・ギャガ・KADOKAWAのcompany_id確認の上で最有力候補としたが、人間から
+  共有されたPR TIMES利用規約全文（PDF）を確認した結果、**撤回**した。一般規約第6条④
+  「有償目的で企業コンテンツを利用する行為」の禁止規定に、AdSense収益化しているKatsumascore
+  での利用が抵触するリスクが高いと判断したため（TMDbの件と同型の問題。詳細は
+  [theater-sources-candidates.md](theater-sources-candidates.md) E.節）
 
 ### 未実装・未確定事項（優先度順）
 
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | レイヤー1データソースの確定 | PR TIMES企業別RSS（東宝/東映/松竹/ワーナー/ディズニー/ギャガ/KADOKAWA、company_id確認済み）を最有力候補として選定。**人間によるPR TIMES利用規約の確認待ち**。確認後「劇場情報源」シートに`取得方式=rss`で登録する（[theater-sources-candidates.md](theater-sources-candidates.md) E.節） |
+| 1 | レイヤー1データソースの確定 | **再オープン（2度目）**: TMDb・PR TIMES企業別RSSともAdSense収益化との抵触リスクにより撤回済み。映画.com・配給会社公式サイトも規約上不可。残る選択肢はPR TIMESとのパートナーメディア提携、シネマトゥデイ/HTML一覧の規約確認、未調査候補の探索、または手動運用（[theater-sources-candidates.md](theater-sources-candidates.md) 次のアクション参照） |
 | 2 | 公開日抽出の精度向上 | `fetch_theater.extract_release_date()`によるタイトル/概要への正規表現ベストエフォート抽出のみ。抽出できない記事は保存されずスキップされる。TMDbは現状未使用のため全ソースに適用される |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/feature/coming-soon-pipeline.md` の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
 | 4 | Katsumascore照合（10.） | WP REST API検索の実装が必要（`vod_bot/wordpress.py` にタイトル/tmdb_id検索関数が無い）。現状 `Katsumascore URL` / `WP post_id` は常に空欄 |
