@@ -26,7 +26,8 @@ jobs:
         run: pip install -r news_bot/requirements.txt
 
       # AI Web検索（Claude/OpenAI併用）で対象週の劇場公開作品を発見し、
-      # 「劇場公開予定」シートに投稿状態="承認待ち"で保存する。
+      # 「劇場公開予定」シートに投稿状態="承認待ち"で保存する。新規保存分は
+      # Slackに親メッセージ+作品ごとのスレッド返信で確認依頼を通知する。
       # 人間がシートを確認・修正・承認するまで下流処理には流れない。
       # （旧: 「劇場情報源」シート巡回の `theater` コマンド。レイヤー1データソース
       #  撤回によりシート未登録のため、cronからは外した。手動実行は引き続き可能）
@@ -36,4 +37,8 @@ jobs:
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
+          SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
+          # 劇場公開通知の専用チャンネル。未設定(空)の場合は上の承認チャンネルに送る
+          SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
         run: python -m news_bot.main theater_discover

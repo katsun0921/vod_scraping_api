@@ -1,0 +1,43 @@
+name: Theater Add URL
+
+# 人間が見つけた劇場公開情報のURLを手動入力で受け付け、AI抽出(タイトル・公開日・
+# 配給・公式URL)して「劇場公開予定」シートに承認待ちで追記する。
+# 実行方法: Actionsタブ → Theater Add URL → Run workflow → URLを入力
+# (GitHubモバイルアプリからも実行可能)
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "劇場公開情報のURL（作品公式サイト・ニュース記事等）"
+        required: true
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: news_bot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r news_bot/requirements.txt
+
+      - name: Add theater release from URL
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
+          SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
+          SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
+          # inputs を run: に直接埋め込むとシェルインジェクションになるため env 経由で渡す
+          INPUT_URL: ${{ inputs.url }}
+        run: python -m news_bot.main theater_add "$INPUT_URL"

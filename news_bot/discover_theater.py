@@ -101,6 +101,85 @@ def _parse_entries(text: str, source: str) -> list[TheaterEntry]:
     return entries
 
 
+def _build_url_prompt(url: str) -> str:
+    return f"""\
+以下のURLは、日本で劇場公開される映画に関するページ（作品公式サイト・ニュース記事等）です。
+このページを取得して内容を確認し、作品の事実情報のみをJSONオブジェクト1つで出力してください
+（前置き・後書き・説明文は不要です）:
+
+{url}
+
+出力形式:
+{{"title": "邦題", "release_date": "YYYY-MM-DD", "distributor": "配給会社名", "official_url": "公式サイトURL"}}
+
+- 事実情報のみを含めること。あらすじ・紹介文・レビューなどの文章は一切含めない
+- 日本での劇場公開日をrelease_dateに入れる。ページから確認できない場合は空文字 "" にする
+- official_urlは作品公式サイトのURL。不明なら上記の入力URLをそのまま入れる
+- distributorが不明な場合は空文字 "" にする"""
+
+
+def extract_from_url(url: str) -> TheaterEntry:
+    """人間が指定した1つのURLから、Claude APIのweb_fetchツールで事実情報を抽出する。
+
+    「人間が見つけた特定の1ページを個別に取得して事実のみ記録する」用途であり、
+    特定サイトの一覧を機械巡回する撤回済みの方式とはリスクの性質が異なる。
+    抽出結果は誤り得るため、呼び出し元は投稿状態="承認待ち"で保存する。
+    """
+    client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    messages = [{"role": "user", "content": _build_url_prompt(url)}]
+
+    text_parts: list[str] = []
+    for _ in range(1 + _MAX_CONTINUATIONS):
+        response = client.messages.create(
+            model=_ANTHROPIC_MODEL,
+            max_tokens=_MAX_TOKENS,
+            tools=[{"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 3}],
+            messages=messages,
+        )
+        text_parts.extend(block.text for block in response.content if block.type == "text")
+        if response.stop_reason != "pause_turn":
+            break
+        messages.append({"role": "assistant", "content": response.content})
+    else:
+        logger.warning("URL抽出がpause_turn継続上限に達しました: %s", url)
+
+    return _parse_url_result("\n".join(text_parts), url)
+
+
+def _parse_url_result(text: str, url: str) -> TheaterEntry:
+    """extract_from_url()の応答テキストからJSONオブジェクトを取り出しTheaterEntryにする。
+
+    タイトルが取れなければ抽出失敗としてValueError。公開日は取れない場合もある
+    （release_date=Noneのまま返し、呼び出し元がメモ付きで保存する）。
+    """
+    cleaned = _CODE_FENCE_RE.sub("", text.strip()).strip()
+    begin = cleaned.find("{")
+    close = cleaned.rfind("}")
+    if begin == -1 or close == -1 or close < begin:
+        raise ValueError(f"JSONオブジェクトが見つかりません: {cleaned[:200]!r}")
+    item = json.loads(cleaned[begin : close + 1])
+
+    title = (item.get("title") or "").strip()
+    if not title:
+        raise ValueError(f"タイトルを抽出できませんでした: {url}")
+
+    release_date = None
+    raw_date = (item.get("release_date") or "").strip()
+    if raw_date:
+        try:
+            release_date = date.fromisoformat(raw_date)
+        except ValueError:
+            logger.warning("公開日が不正のため空欄にします: %s (%r)", title, raw_date)
+
+    return TheaterEntry(
+        title=title,
+        url=(item.get("official_url") or "").strip() or url,
+        source="手動URL(AI抽出)",
+        release_date=release_date,
+        distributor=(item.get("distributor") or "").strip(),
+    )
+
+
 def discover_claude(start: date, end: date) -> list[TheaterEntry]:
     """Claude APIのWeb検索サーバーツールで対象週の劇場公開作品を調べる。
 
