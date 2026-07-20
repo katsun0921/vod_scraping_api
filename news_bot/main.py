@@ -2,12 +2,14 @@
 
 GitHub Actions cron から呼び出す想定（仕様書 3.: 1〜2時間おき推奨）。
 
-    fetch_cycle():        RSS取得 → 重複チェック → 保存 → AI判定 → S/A判定は投稿テンプレートをSlackに送信
+    fetch_cycle():        RSS取得 → 重複チェック → 保存 → AI判定 → S/A判定はスレッドにまとめてSlack送信
     fetch_x_cycle(region): 公式Xアカウント取得（地域ごとに1日1回）→ 上記と同じ処理
     theater_cycle():      劇場公開情報取得（週次）→ 対象期間フィルタ → 重複チェック → 保存
                            （docs/feature/theater-release-calendar-spec.md。Katsumascore照合・
                            SNS優先度判定・投稿案生成・Slack通知は未実装、同spec 17.のTODO参照）
 
+1回のrunでS/A判定になった記事は個別に投稿する代わりに1つのXスレッド（連投）にまとめる
+（`compose.compose_headline()` + `compose.pack_thread()` + `approval.notify_manual_thread()`）。
 投稿は現在手動運用のため、両サイクルともSlackへテンプレートを送るところまでで終わる。
 X APIへの自動投稿（process_pending() + post_x.post_with_reply）は予算状況次第で
 再開できるようコードは残してあるが、__main__からは呼び出していない。
@@ -31,29 +33,48 @@ logger = logging.getLogger(__name__)
 _POSTABLE_RANKS = {"S", "A"}
 
 
+def _notify_thread(postable: list[tuple[NewsEntry, str]]) -> None:
+    """S/A判定記事一覧を1つのXスレッド（連投）用テンプレートにまとめてSlackへ送信する。"""
+    lines = []
+    for entry, rank in postable:
+        headline = compose.compose_headline(entry, rank)
+        lines.append(f"【{rank}】{headline} {entry.url}")
+    thread_parts = compose.pack_thread(lines)
+    approval.notify_manual_thread(postable, thread_parts)
+    # 自動承認フロー（自動投稿）を再開する場合は、記事ごとにcompose.compose()で
+    # 本文/リプライを生成し、approval.notify_pending() + sheets.enqueue_approval()
+    # に切り替えること（このスレッドまとめ機能とは別立てで実装する）。
+
+
 def _process_entries(entries: list[NewsEntry], sheets: NewsBotSheets, existing_urls: set[str]) -> dict:
-    """記事一覧を重複チェック→AI判定→（S/A判定は）Slackテンプレート送信まで処理する。
+    """記事一覧を重複チェック→AI判定まで処理し、S/A判定分はまとめて1回だけSlack通知する。
 
     fetch_cycle() / fetch_x_cycle() の共通処理。取得元（RSS/X）に依存しない。
+    重複していない記事はjudge.judge_batch()でまとめて1〜数リクエストで判定する
+    （記事ごとに1リクエストずつ叩くとsystemプロンプトの重複送信でコストが嵩むため）。
     """
     fetch_limit = os.environ.get("NEWS_BOT_FETCH_LIMIT")
     if fetch_limit:
         entries = entries[: int(fetch_limit)]
     stats = {"fetched": len(entries), "duplicate": 0, "judged": 0, "queued": 0, "errors": 0}
 
+    new_entries: list[NewsEntry] = []
     for entry in entries:
         if dedupe.is_duplicate(entry, existing_urls):
             sheets.append_news_item(title=entry.title, url=entry.url, source=entry.source, is_duplicate=True)
             stats["duplicate"] += 1
-            continue
+        else:
+            new_entries.append(entry)
 
-        try:
-            result = judge.judge(entry)
-        except Exception:
-            logger.exception("AI判定失敗: %s", entry.url)
-            stats["errors"] += 1
-            continue
+    try:
+        judge_results = judge.judge_batch(new_entries)
+    except Exception:
+        logger.exception("AI判定(バッチ)失敗: %d件", len(new_entries))
+        stats["errors"] += len(new_entries)
+        judge_results = []
 
+    postable: list[tuple[NewsEntry, str]] = []
+    for entry, result in zip(new_entries, judge_results):
         rank = result["rank"]
         sheets.append_news_item(
             title=entry.title,
@@ -68,21 +89,15 @@ def _process_entries(entries: list[NewsEntry], sheets: NewsBotSheets, existing_u
         stats["judged"] += 1
         existing_urls.add(entry.url)
 
-        if rank not in _POSTABLE_RANKS:
-            continue
+        if rank in _POSTABLE_RANKS:
+            postable.append((entry, rank))
 
+    if postable:
         try:
-            composed = compose.compose(entry)
-            approval.notify_manual_post(entry, rank, composed["honbun"], composed["reply"])
-            # 自動承認フロー（自動投稿）を再開する場合は上記の代わりに以下を使う:
-            # channel, ts = approval.notify_pending(entry, rank, composed["honbun"], composed["reply"])
-            # sheets.enqueue_approval(
-            #     url=entry.url, rank=rank, honbun=composed["honbun"], reply=composed["reply"],
-            #     slack_channel_id=channel, slack_ts=ts,
-            # )
-            stats["queued"] += 1
+            _notify_thread(postable)
+            stats["queued"] = len(postable)
         except Exception:
-            logger.exception("Slackテンプレート送信失敗: %s", entry.url)
+            logger.exception("スレッドテンプレート送信失敗（%d件）", len(postable))
             stats["errors"] += 1
 
     return stats

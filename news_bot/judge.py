@@ -3,7 +3,13 @@
 仕様書 4.3: Claude APIへのプロンプトには過去の判定実例（few-shot）を含め、
 判定のブレを抑える。出力は JSON: {rank, reason, confidence}。
 
-他AI（ChatGPT/Grok）との精度比較テストのため、複数プロバイダーで並列判定できる。
+他AI（ChatGPT）との精度比較テストのため、複数プロバイダーで並列判定できる。
+
+1件ずつAPIを叩くとsystemプロンプトの重複送信でコストが嵩むため、
+`judge_batch()`は複数記事を`_BATCH_SIZE`件ごとにまとめて1リクエストで判定する
+（記事本文自体の入出力トークンは減らないが、システムプロンプトの重複回数を
+1/`_BATCH_SIZE`に減らせる。あわせて同一バッチ内の記事同士を比較できるため、
+重複記事（D判定）の精度も上がる）。
 
 環境変数:
     NEWS_BOT_JUDGE_PROVIDERS: 判定に使うプロバイダーをカンマ区切りで指定
@@ -28,6 +34,7 @@ logger = logging.getLogger(__name__)
 _SYSTEM_PROMPT = load_prompt("judge_system_prompt")
 _VALID_RANKS = {"S", "A", "B", "D"}
 _RANK_ORDER = {"D": 0, "B": 1, "A": 2, "S": 3}
+_BATCH_SIZE = 15
 
 _PROVIDER_CALLS = {
     "claude": ai_clients.call_claude,
@@ -36,18 +43,45 @@ _PROVIDER_CALLS = {
 }
 
 
-def _judge_with_provider(provider: str, user_content: str) -> dict:
+def _build_batch_user_content(entries: list[NewsEntry]) -> str:
+    articles = [
+        {"index": i, "title": e.title, "summary": e.summary, "媒体": e.source}
+        for i, e in enumerate(entries)
+    ]
+    return (
+        f"以下の{len(entries)}件のニュース記事をそれぞれ判定してください。\n"
+        f"{json.dumps(articles, ensure_ascii=False)}"
+    )
+
+
+def _fallback_results(count: int, reason: str) -> list[dict]:
+    return [{"rank": "D", "reason": reason, "confidence": 0.0} for _ in range(count)]
+
+
+def _judge_batch_with_provider(provider: str, entries: list[NewsEntry]) -> list[dict]:
+    """1プロバイダーで`entries`をまとめて判定し、entriesと同じ順序・件数のリストを返す。"""
+    user_content = _build_batch_user_content(entries)
     text = _PROVIDER_CALLS[provider](_SYSTEM_PROMPT, user_content).strip()
     try:
-        result = parse_json_response(text)
+        results = parse_json_response(text)
     except json.JSONDecodeError:
-        logger.error("AI判定のJSONパース失敗(%s): %s", provider, text)
-        return {"rank": "D", "reason": "判定結果のパース失敗", "confidence": 0.0}
+        logger.error("AI判定(バッチ)のJSONパース失敗(%s): %s", provider, text)
+        return _fallback_results(len(entries), "判定結果のパース失敗")
 
-    if result.get("rank") not in _VALID_RANKS:
-        logger.error("AI判定の不正なrank(%s): %s", provider, result)
-        return {"rank": "D", "reason": "不正な判定結果", "confidence": 0.0}
-    return result
+    if not isinstance(results, list) or len(results) != len(entries):
+        logger.error(
+            "AI判定(バッチ)の件数不一致(%s): 期待%d件, 応答=%s", provider, len(entries), results
+        )
+        return _fallback_results(len(entries), "判定結果の件数不一致")
+
+    validated = []
+    for result in results:
+        if not isinstance(result, dict) or result.get("rank") not in _VALID_RANKS:
+            logger.error("AI判定(バッチ)の不正なrank(%s): %s", provider, result)
+            validated.append({"rank": "D", "reason": "不正な判定結果", "confidence": 0.0})
+        else:
+            validated.append(result)
+    return validated
 
 
 def _decide(providers: list[str], results: dict[str, dict]) -> dict:
@@ -67,33 +101,48 @@ def _decide(providers: list[str], results: dict[str, dict]) -> dict:
     return results[providers[0]]
 
 
-def judge(entry: NewsEntry) -> dict:
-    """1件のニュースを設定されたAIプロバイダーで判定する。
+def judge_batch(entries: list[NewsEntry]) -> list[dict]:
+    """複数記事をまとめて設定されたAIプロバイダーで判定する。
+
+    `_BATCH_SIZE`件ごとにチャンク分割して1プロバイダーにつき1リクエストで判定する。
 
     Returns:
+        entriesと同じ順序・件数のリスト。各要素は
         {"rank": str, "reason": str, "confidence": float, "providers": {name: {rank, reason, confidence}}}
     """
+    if not entries:
+        return []
+
     providers = [p.strip() for p in os.environ.get("NEWS_BOT_JUDGE_PROVIDERS", "claude").split(",") if p.strip()]
-    user_content = f"タイトル: {entry.title}\n概要: {entry.summary}\n媒体: {entry.source}"
+    final_results: list[dict] = []
 
-    results: dict[str, dict] = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers)) as executor:
-        future_to_provider = {
-            executor.submit(_judge_with_provider, provider, user_content): provider
-            for provider in providers
-        }
-        for future in concurrent.futures.as_completed(future_to_provider):
-            provider = future_to_provider[future]
-            try:
-                results[provider] = future.result()
-            except Exception:
-                logger.exception("AI判定失敗(%s): %s", provider, entry.url)
-                results[provider] = {"rank": "D", "reason": "API呼び出し失敗", "confidence": 0.0}
+    for start in range(0, len(entries), _BATCH_SIZE):
+        chunk = entries[start : start + _BATCH_SIZE]
+        provider_results: dict[str, list[dict]] = {}
 
-    final = _decide(providers, results)
-    return {
-        "rank": final["rank"],
-        "reason": final["reason"],
-        "confidence": final.get("confidence", 0.0),
-        "providers": results,
-    }
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(providers)) as executor:
+            future_to_provider = {
+                executor.submit(_judge_batch_with_provider, provider, chunk): provider
+                for provider in providers
+            }
+            for future in concurrent.futures.as_completed(future_to_provider):
+                provider = future_to_provider[future]
+                try:
+                    provider_results[provider] = future.result()
+                except Exception:
+                    logger.exception("AI判定(バッチ)失敗(%s): %d件", provider, len(chunk))
+                    provider_results[provider] = _fallback_results(len(chunk), "API呼び出し失敗")
+
+        for i in range(len(chunk)):
+            per_provider = {provider: provider_results[provider][i] for provider in providers}
+            final = _decide(providers, per_provider)
+            final_results.append(
+                {
+                    "rank": final["rank"],
+                    "reason": final["reason"],
+                    "confidence": final.get("confidence", 0.0),
+                    "providers": per_provider,
+                }
+            )
+
+    return final_results
