@@ -125,6 +125,30 @@ def notify_theater_discovered(start: date, end: date, entries: list) -> tuple[st
     return channel, ts
 
 
+def notify_theater_added(entry, input_url: str, duplicate: bool = False) -> tuple[str, str]:
+    """人間が指定したURLからの追記結果を劇場公開チャンネルに通知する（1件・スレッドなし）。
+
+    Args:
+        entry: fetch_theater.TheaterEntry（release_dateはNoneの場合あり）
+        input_url: 人間が入力したURL（抽出結果の確認用に表示する）
+        duplicate: 既にシートに存在したため追記しなかった場合True
+    """
+    theater_channel = os.environ.get("SLACK_THEATER_CHANNEL_ID") or None
+    release = entry.release_date.isoformat() if entry.release_date else "抽出できず（シートで補完してください）"
+    if duplicate:
+        headline = "*URLの作品は既に「劇場公開予定」シートに存在するため追記しませんでした*"
+    else:
+        headline = "*URLから「劇場公開予定」シートに`承認待ち`で追記しました*（AI抽出のため内容の確認をお願いします）"
+    text = (
+        f"{headline}\n"
+        f"*{entry.title}*\n"
+        f"公開日: {release} / 配給: {entry.distributor or '不明'}\n"
+        f"公式URL: {entry.url or 'なし'}\n"
+        f"入力URL: {input_url}"
+    )
+    return _post_message(text, channel=theater_channel)
+
+
 def notify_manual_post(entry: NewsEntry, rank: str, honbun: str, reply: str) -> tuple[str, str]:
     """[未使用・1記事単独投稿用] 手動投稿用のテンプレートをSlackに送信する（自動投稿は行わない）。
 

@@ -251,6 +251,53 @@ def theater_discover_cycle() -> dict:
     return stats
 
 
+def theater_add_url(url: str) -> dict:
+    """人間が見つけた劇場公開情報のURLから事実を抽出し、シートに承認待ちで追記する。
+
+    週次のAI発見（theater_discover_cycle）と違い対象期間ではフィルタしない
+    （人間は来月公開の作品のURLを入れることもあるため）。公開日が抽出できなかった
+    場合もメモ付きで保存し、人間がシートで補完する。抽出失敗（タイトルすら取れない）
+    は例外で落とし、Actionsの実行失敗として入力者に見えるようにする。
+    """
+    sheets = NewsBotSheets()
+    entry = discover_theater.extract_from_url(url)
+    stats = {"duplicate": 0, "saved": 0, "notified": 0}
+
+    dedupe_key = ""
+    memo = ""
+    if entry.release_date is not None:
+        release_date_str = entry.release_date.isoformat()
+        dedupe_key = theater_calendar.dedupe_key(release_date_str, entry.title)
+        if dedupe_key in sheets.get_existing_theater_keys():
+            stats["duplicate"] = 1
+            logger.info("既存のためスキップ: %s (%s)", entry.title, release_date_str)
+    else:
+        release_date_str = ""
+        memo = "公開日をAI抽出できず。シートで補完してください"
+
+    if not stats["duplicate"]:
+        sheets.append_theater_item(
+            release_date=release_date_str,
+            title=entry.title,
+            dedupe_key=dedupe_key,
+            distributor=entry.distributor,
+            official_url=entry.url,
+            source=entry.source,
+            post_status="承認待ち",
+            memo=memo,
+        )
+        stats["saved"] = 1
+
+    try:
+        approval.notify_theater_added(entry, input_url=url, duplicate=bool(stats["duplicate"]))
+        stats["notified"] = 1
+    except Exception:
+        logger.exception("URL追記Slack通知失敗: %s", url)
+
+    logger.info("theater_add_url(%s) 完了: %s", url, stats)
+    return stats
+
+
 def process_pending() -> dict:
     """[未使用・自動投稿再開用] 承認キューを確認し、承認済み分をX投稿する。
 
@@ -300,12 +347,17 @@ if __name__ == "__main__":
     # 引数無し: RSS取得（fetch_cycle）。 "x <地域>": 公式Xアカウント取得（fetch_x_cycle）。
     # "theater": 劇場情報源シート巡回（theater_cycle、現在シート未登録のため実質未使用）。
     # "theater_discover": AI Web検索による劇場公開作品の発見（theater_discover_cycle）。
+    # "theater_add <URL>": 人間が見つけたURLからの追記（theater_add_url）。
     if len(sys.argv) > 1 and sys.argv[1] == "x":
         fetch_x_cycle(sys.argv[2] if len(sys.argv) > 2 else "日本")
     elif len(sys.argv) > 1 and sys.argv[1] == "theater":
         theater_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "theater_discover":
         theater_discover_cycle()
+    elif len(sys.argv) > 1 and sys.argv[1] == "theater_add":
+        if len(sys.argv) < 3:
+            raise SystemExit("使い方: python -m news_bot.main theater_add <URL>")
+        theater_add_url(sys.argv[2])
     else:
         fetch_cycle()
     # 投稿は手動運用のため自動投稿は呼ばない。自動化を再開する場合はコメントを外す。
