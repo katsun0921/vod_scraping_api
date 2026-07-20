@@ -70,7 +70,13 @@ def compose_headline(entry: NewsEntry, rank: str) -> str:
     response = client.messages.create(
         model=_MODEL,
         max_tokens=150,
-        system=_THREAD_HEADLINE_SYSTEM_PROMPT,
+        system=[
+            {
+                "type": "text",
+                "text": _THREAD_HEADLINE_SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
         messages=[{"role": "user", "content": user_content}],
     )
     return response.content[0].text.strip()

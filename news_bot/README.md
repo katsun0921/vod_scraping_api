@@ -57,7 +57,7 @@ news_bot/
 ├── fetch.py          # RSS取得（feedparser）
 ├── fetch_x.py        # 公式Xアカウントの投稿取得（RSSに続く第2のニュースソース）
 ├── dedupe.py         # URL完全一致の重複チェック
-├── judge.py          # S/A/B/D判定（複数AIプロバイダーの並列実行に対応）
+├── judge.py          # S/A/B/D判定（複数AIプロバイダーの並列実行・複数記事のバッチ判定に対応）
 ├── ai_clients.py     # Claude/ChatGPT/Grokへの個別API呼び出しラッパー
 ├── compose.py        # 投稿文生成（スレッド見出し生成 + パッキング / 単独投稿版は未使用で保持）
 ├── approval.py       # Slack通知（スレッドまとめテンプレート送信）
