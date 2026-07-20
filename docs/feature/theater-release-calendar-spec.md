@@ -323,14 +323,19 @@ news_bot/
 
 `news_bot/` に着手した現時点の実装状況と、残タスクを記録する。
 
-### 実装済み（取得〜保存の骨組みのみ）
+### 実装済み（発見〜保存の骨組みのみ）
 
 - `theater_calendar.py`: 対象期間計算（6.）・タイトル正規化/重複キー生成（9.）
 - `sheets.py`: 「劇場公開予定」シート（8.のヘッダー）の自動作成・追記
-- `fetch_theater.py`: RSS取得（feedparser）・TMDb discover API取得（`取得方式=tmdb`）・
-  RSS取得時のみタイトル/概要からの公開日ベストエフォート抽出
-- `main.py`: `theater_cycle()` — 取得→対象期間フィルタ→重複チェック→保存（投稿状態は常に`未判定`）
-- `.github/workflows/theater-calendar.yml`: 毎週月曜 06:00 JST 実行（`TMDB_API_KEY`を渡す）
+- `discover_theater.py`: **AI Web検索（Claude/OpenAI併用）による劇場公開作品の発見**（現行の
+  レイヤー1相当。事実情報のみを収集し、両AIの結果を重複キーでマージする。下記「AI発見方式への
+  転換」参照）
+- `fetch_theater.py`: RSS取得（feedparser）・TMDb discover API取得（`取得方式=tmdb`）。
+  **規約上の理由でいずれも現在未使用**（コードは残存）
+- `main.py`: `theater_discover_cycle()` — AI発見→対象期間フィルタ→重複チェック→保存
+  （投稿状態=`承認待ち`）。旧`theater_cycle()`（劇場情報源シート巡回）も残存するが実質未使用
+- `.github/workflows/theater-calendar.yml`: 毎週月曜 06:00 JST に`theater_discover`を実行
+  （`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`を渡す）
 
 ### 設計変更: レイヤー1データソースの決め方
 
@@ -377,17 +382,32 @@ TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates
   での利用が抵触するリスクが高いと判断したため（TMDbの件と同型の問題。詳細は
   [theater-sources-candidates.md](theater-sources-candidates.md) E.節）
 
+### AI発見方式への転換（2026-07-20）
+
+特定サイトの自動取得がすべて撤回されたことを受け、レイヤー1相当の発見ステップを
+**AIのWeb検索（Claude API `web_search_20260209` + OpenAI Responses API `web_search` の併用）**
+に転換した（`discover_theater.py` / `main.theater_discover_cycle()`）。
+
+- **規約上の整理**: AIに対象週の公開作品を調べさせ、**事実情報のみ**（タイトル・公開日・
+  配給会社名・公式URL）を構造化して保存する。事実は著作権の保護対象ではなく、特定サービスの
+  フィード/APIを機械巡回してコンテンツを取り込む構造でもないため、撤回した各方式とはリスクの
+  性質が異なる。あらすじ・紹介文などの表現は保存しない
+- **人間の承認**: AI検索結果は誤り得るため、保存時は投稿状態=`承認待ち`。人間がシートを確認・
+  修正した上で承認するまで下流（週次サマリー・Slack/WP投稿）には流さない。両AIが同じ作品を
+  挙げた場合は情報源=`AI検索(claude+openai)`となり、承認時の実在確度シグナルとして使える
+- **今後の拡張**: 「劇場公開予定」シートの確定行をGoogleカレンダーへ自動同期する
+  （シート=データストア、カレンダー=管理者向けビューの併用構成）
+
 ### 未実装・未確定事項（優先度順）
 
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | レイヤー1データソースの確定 | **再オープン（2度目）**: TMDb・PR TIMES企業別RSSともAdSense収益化との抵触リスクにより撤回済み。映画.com・配給会社公式サイトも規約上不可。残る選択肢はPR TIMESとのパートナーメディア提携、シネマトゥデイ/HTML一覧の規約確認、未調査候補の探索、または手動運用（[theater-sources-candidates.md](theater-sources-candidates.md) 次のアクション参照） |
-| 2 | 公開日抽出の精度向上 | `fetch_theater.extract_release_date()`によるタイトル/概要への正規表現ベストエフォート抽出のみ。抽出できない記事は保存されずスキップされる。TMDbは現状未使用のため全ソースに適用される |
+| 1 | 承認フローの具体化 | AI発見結果（投稿状態=`承認待ち`）を人間がどう承認するか（承認列のチェックボックス追加、承認済み行のみ下流処理対象にする等）が未設計。Slackへの候補リスト通知も未実装 |
+| 2 | Googleカレンダー同期 | 確定行をGoogle Calendar APIでイベント化する（サービスアカウントにスコープ追加・重複防止はextendedPropertiesに重複キーを保持）。未実装 |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/feature/coming-soon-pipeline.md` の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
 | 4 | Katsumascore照合（10.） | WP REST API検索の実装が必要（`vod_bot/wordpress.py` にタイトル/tmdb_id検索関数が無い）。現状 `Katsumascore URL` / `WP post_id` は常に空欄 |
-| 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。現状は常に空欄で保存され、投稿状態も常に`未判定`のまま進まない |
-| 6 | レイヤー2（一次ソース）補完 | 予告URL・配給会社・特別上映情報の取得は未実装 |
-| 7 | レイヤー3（TMDb等）補完 | TMDb採用撤回により原題・ジャンル取得も未実装に戻った。`TMDB_API_KEY`の商用ライセンス取得状況次第で`fetch_theater._fetch_tmdb()`を再利用できる |
-| 8 | `compose_theater.py`（11.） | 週次まとめ・個別投稿案の生成は未実装 |
-| 9 | Slack通知（11.） | 週次まとめ投稿案のSlack送信は未実装（`approval.py` のテンプレート送信パターンを流用予定） |
-| 10 | html取得方式のサポート | 「劇場情報源」シートに `取得方式=html` を登録しても現状スキップされる（rss/tmdbは対応済み） |
+| 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。現状は常に空欄で保存される |
+| 6 | AI発見の精度検証 | `theater_discover_cycle()`を実データで数週回し、取りこぼし（網羅性）・実在しない作品（ハルシネーション）・公開日誤りの頻度を確認する。プロンプトや`_MAX_WEB_SEARCHES`の調整はこの結果を見て行う |
+| 7 | `compose_theater.py`（11.） | 週次まとめ・個別投稿案の生成は未実装 |
+| 8 | Slack通知（11.） | 週次まとめ投稿案のSlack送信は未実装（`approval.py` のテンプレート送信パターンを流用予定） |
+| 9 | 旧取得方式の再開条件 | `fetch_theater.py`（RSS/TMDb）と「劇場情報源」シート巡回は、PR TIMESパートナーメディア提携またはTMDb商用ライセンス契約が成立した場合のみ再開する（[theater-sources-candidates.md](theater-sources-candidates.md)） |

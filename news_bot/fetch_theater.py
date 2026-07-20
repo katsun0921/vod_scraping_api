@@ -56,6 +56,7 @@ class TheaterEntry:
     release_date: Optional[date] = None
     original_title: str = ""
     category: str = ""
+    distributor: str = ""
 
 
 def _infer_year(month: int, day: int, today: date) -> int:
