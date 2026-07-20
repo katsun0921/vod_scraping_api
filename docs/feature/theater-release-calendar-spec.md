@@ -402,7 +402,7 @@ TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates
 
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | 承認フローの具体化 | AI発見結果（投稿状態=`承認待ち`）を人間がどう承認するか（承認列のチェックボックス追加、承認済み行のみ下流処理対象にする等）が未設計。Slackへの候補リスト通知も未実装 |
+| 1 | 承認フローの具体化 | AI発見結果（投稿状態=`承認待ち`）を人間がどう承認するか（承認列のチェックボックス追加、承認済み行のみ下流処理対象にする等）が未設計。Slackへの確認依頼通知（親メッセージ+作品ごとのスレッド返信、`approval.notify_theater_discovered()`）は実装済み |
 | 2 | Googleカレンダー同期 | 確定行をGoogle Calendar APIでイベント化する（サービスアカウントにスコープ追加・重複防止はextendedPropertiesに重複キーを保持）。未実装 |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/feature/coming-soon-pipeline.md` の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
 | 4 | Katsumascore照合（10.） | WP REST API検索の実装が必要（`vod_bot/wordpress.py` にタイトル/tmdb_id検索関数が無い）。現状 `Katsumascore URL` / `WP post_id` は常に空欄 |

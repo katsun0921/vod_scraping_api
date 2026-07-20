@@ -211,8 +211,9 @@ def theater_discover_cycle() -> dict:
     existing_keys = sheets.get_existing_theater_keys()
 
     entries = discover_theater.discover_all(start, end)
-    stats = {"discovered": len(entries), "out_of_range": 0, "duplicate": 0, "saved": 0}
+    stats = {"discovered": len(entries), "out_of_range": 0, "duplicate": 0, "saved": 0, "notified": 0}
 
+    saved_entries = []
     for entry in entries:
         if not theater_calendar.in_range(entry.release_date, start, end):
             stats["out_of_range"] += 1
@@ -234,7 +235,17 @@ def theater_discover_cycle() -> dict:
             post_status="承認待ち",
         )
         existing_keys.add(key)
+        saved_entries.append(entry)
         stats["saved"] += 1
+
+    # 新規保存分があればSlackに親メッセージ+作品ごとのスレッド返信で確認依頼を送る。
+    # 通知失敗でもシート保存は完了しているためサイクル自体は失敗させない。
+    if saved_entries:
+        try:
+            approval.notify_theater_discovered(start, end, saved_entries)
+            stats["notified"] = len(saved_entries)
+        except Exception:
+            logger.exception("劇場公開Slack通知失敗（%d件）", len(saved_entries))
 
     logger.info("theater_discover_cycle(%s〜%s) 完了: %s", start, end, stats)
     return stats
