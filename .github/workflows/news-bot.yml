@@ -26,13 +26,12 @@ jobs:
 
       - name: Run news bot pipeline
         env:
-          # ChatGPT・Grokとの精度比較テスト用。本番投入時はclaudeのみに戻す。
-          NEWS_BOT_JUDGE_PROVIDERS: "claude,openai,grok"
+          # Claude・ChatGPTの2社比較テスト用（判定の差異が大きいためどちらが適切か判断中）。
+          NEWS_BOT_JUDGE_PROVIDERS: "claude,openai"
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
           # 投稿は手動運用のため現状は未使用（process_pending()を再開する場合に必要）
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
