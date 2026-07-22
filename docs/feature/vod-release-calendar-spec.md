@@ -120,15 +120,18 @@ python -m news_bot.main vod_publish    # 承認済み行から週次まとめを
 |---|---|
 | VODサービス公式Xアカウント | **採用（必須）**。X API v2（公式API・有償）経由のためスクレイピング規約問題が生じない |
 | AI Web検索 | 採用（既定）。事実情報のみの構造化保存 |
-| 各サービス公式サイトのスクレイピング | **不採用**。Netflix（規約4.6）・Amazon・Disney+・Hulu・U-NEXT（2026-07-22に人間が規約原文確認済み）は自動化手段によるアクセス／データ収集を規約で明示禁止。DMM TVのみ規約原文未確認のため人間確認待ち |
+| 各サービス公式サイトのスクレイピング | **不採用（確定）**。Netflix（規約4.6）・Amazon・Disney+・Hulu・U-NEXT・DMM TV（全6サービス、2026-07-22に人間が規約原文確認済み）は自動化手段によるアクセス／データ収集を規約で明示禁止。サービスごとの一次情報はX（7.3）のみで取得する |
 | TMDb（スクレイピング） | **不採用**。規約でサイトのスクレイピングを明示禁止。公認のプログラムアクセスはAPIのみ |
 | TMDb（API） | 商用契約（$149/月〜）成立時のみ将来採用（[theater-sources-candidates.md](theater-sources-candidates.md) A.節の判断を継承） |
 | PR TIMES企業別RSS / ニュースメディアRSS | theater施策の判断を継承し不採用・保留 |
 
-### 7.3 必須情報源: VODサービス公式Xアカウント（取得方式=x）
+### 7.3 唯一のper-service情報源: VODサービス公式Xアカウント（取得方式=x）
 
 配信開始告知はサービス公式Xアカウントが一次情報であり、X API v2という公認の機械取得ルートが
-あるため、**本施策の必須情報源**とする。
+ある。加えて2026-07-22時点で対象6サービスすべて（Netflix / Prime Video / U-NEXT / Disney+ /
+Hulu / DMM TV）の公式サイトスクレイピングが規約上不採用確定した（7.2）ため、**Xは
+「本施策の必須情報源」ではなく「サービスごとの一次情報を機械取得できる唯一のルート」**
+という位置づけになる。逐一の配信開始告知はXを通じて継続的に取得する。
 
 - 「VOD情報源」シートに `取得方式=x` で各サービスの公式アカウント（Netflix / Prime Video /
   U-NEXT / Disney+ / Hulu / DMM TV。ハンドルは登録前に人間が実在確認）を登録する
@@ -425,7 +428,7 @@ news_bot/
 | 6 | AI発見の精度検証 | theater側#6と同じく、数週回して網羅性・ハルシネーション・日付誤りの頻度を確認してから公開運用に進む |
 | 7 | X公式アカウントのハンドル確定 | 登録候補6サービスのハンドル実在確認（[vod-sources-candidates.md](vod-sources-candidates.md) A.節）と「VOD情報源」シートへの登録 |
 | 8 | X API読み取りコスト | 試算済み（[vod-sources-candidates.md](vod-sources-candidates.md) A.1節）。1日1回・6アカウントで月額$0.5〜$5程度と見込み、既存news-bot-x予算内。実行頻度（週1 or 日1）は本番実績を見て確定する |
-| 9 | ~~U-NEXT / DMM TV 公式サイトの規約確認~~ → DMM TV公式サイトの規約確認 | **U-NEXTは2026-07-22に人間が規約原文を確認し、他サービスと同様に自動化手段によるアクセス禁止が判明したため不採用確定**。転用予定だった`coming-soon-pipeline.md`の`scrape_official.py`もこれにより組み込めなくなり、同ファイルは`docs/drop/`へ移動した。**残るDMM TVのみ**引き続き人間がブラウザで規約原文を確認し、禁止条項が無ければ公式サイト取得（`html`）を再検討できる（[vod-sources-candidates.md](vod-sources-candidates.md) B節参照） |
+| 9 | ~~U-NEXT / DMM TV 公式サイトの規約確認~~（解決済み） | **U-NEXT・DMM TVとも2026-07-22に人間が規約原文を確認し、他サービスと同様に自動化手段によるアクセス禁止が判明したため両方とも不採用確定**。これで対象6サービスすべての公式サイトスクレイピングが不採用となり、`取得方式=html`は当面登録対象なし。転用予定だった`coming-soon-pipeline.md`の`scrape_official.py`もこれにより組み込めなくなり、同ファイルは`docs/drop/`へ移動した。**サービスごとの一次情報はXが唯一の機械取得ルートとなる**（7.3、[vod-sources-candidates.md](vod-sources-candidates.md) B節参照） |
 | 10 | X抽出プロンプトの精度検証 | `extract_vod.py`のX投稿構造化抽出（7.5）は宣伝文・キャンペーン告知等を配信開始情報と誤抽出する可能性がある。theater側#6のAI発見精度検証と合わせて数週回して確認する |
 | 11 | AI Web検索（discover_vod.py）のコスト試算 | X抽出（7.5.1、月額$0.2〜$1.8）は試算済みだが、discover_vod.pyのWeb検索（Claude/OpenAI併用）側のコストは未試算。theater-calendarの週次実行実績を参考に別途試算する |
 
