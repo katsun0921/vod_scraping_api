@@ -2,9 +2,17 @@
 
 GitHub Actions cron から呼び出す想定（仕様書 3.: 1〜2時間おき推奨）。
 
-    fetch_cycle():        RSS取得 → 重複チェック → 保存 → AI判定 → S/A判定は投稿テンプレートをSlackに送信
+    fetch_cycle():        RSS取得 → 重複チェック → 保存 → AI判定 → S/A判定はスレッドにまとめてSlack送信
     fetch_x_cycle(region): 公式Xアカウント取得（地域ごとに1日1回）→ 上記と同じ処理
+    theater_cycle():      「劇場情報源」シート巡回による劇場公開情報取得
+                           （レイヤー1データソース撤回により現在シート未登録＝実質未使用）
+    theater_discover_cycle(): AI Web検索（Claude/OpenAI併用）による劇場公開作品の発見（週次）
+                           → 対象期間フィルタ → 重複チェック → 承認待ちとして保存
+                           （docs/feature/theater-release-calendar-spec.md。人間の承認後の
+                           下流処理（週次サマリー・Slack/WP投稿）は未実装、同spec 17.のTODO参照）
 
+1回のrunでS/A判定になった記事は個別に投稿する代わりに1つのXスレッド（連投）にまとめる
+（`compose.compose_headline()` + `compose.pack_thread()` + `approval.notify_manual_thread()`）。
 投稿は現在手動運用のため、両サイクルともSlackへテンプレートを送るところまでで終わる。
 X APIへの自動投稿（process_pending() + post_x.post_with_reply）は予算状況次第で
 再開できるようコードは残してあるが、__main__からは呼び出していない。
@@ -16,8 +24,19 @@ X APIへの自動投稿（process_pending() + post_x.post_with_reply）は予算
 import logging
 import os
 import sys
+from datetime import date
 
-from news_bot import approval, compose, dedupe, fetch_x, judge, post_x
+from news_bot import (
+    approval,
+    compose,
+    dedupe,
+    discover_theater,
+    fetch_theater,
+    fetch_x,
+    judge,
+    post_x,
+    theater_calendar,
+)
 from news_bot.fetch import NewsEntry, fetch_all
 from news_bot.sheets import NewsBotSheets
 
@@ -27,36 +46,48 @@ logger = logging.getLogger(__name__)
 _POSTABLE_RANKS = {"S", "A"}
 
 
+def _notify_thread(postable: list[tuple[NewsEntry, str]]) -> None:
+    """S/A判定記事一覧を1つのXスレッド（連投）用テンプレートにまとめてSlackへ送信する。"""
+    lines = []
+    for entry, rank in postable:
+        headline = compose.compose_headline(entry, rank)
+        lines.append(f"【{rank}】{headline} {entry.url}")
+    thread_parts = compose.pack_thread(lines)
+    approval.notify_manual_thread(postable, thread_parts)
+    # 自動承認フロー（自動投稿）を再開する場合は、記事ごとにcompose.compose()で
+    # 本文/リプライを生成し、approval.notify_pending() + sheets.enqueue_approval()
+    # に切り替えること（このスレッドまとめ機能とは別立てで実装する）。
+
+
 def _process_entries(entries: list[NewsEntry], sheets: NewsBotSheets, existing_urls: set[str]) -> dict:
-    """記事一覧を重複チェック→AI判定→（S/A判定は）Slackテンプレート送信まで処理する。
+    """記事一覧を重複チェック→AI判定まで処理し、S/A判定分はまとめて1回だけSlack通知する。
 
     fetch_cycle() / fetch_x_cycle() の共通処理。取得元（RSS/X）に依存しない。
+    重複していない記事はjudge.judge_batch()でまとめて1〜数リクエストで判定する
+    （記事ごとに1リクエストずつ叩くとsystemプロンプトの重複送信でコストが嵩むため）。
     """
     fetch_limit = os.environ.get("NEWS_BOT_FETCH_LIMIT")
     if fetch_limit:
         entries = entries[: int(fetch_limit)]
     stats = {"fetched": len(entries), "duplicate": 0, "judged": 0, "queued": 0, "errors": 0}
 
+    new_entries: list[NewsEntry] = []
     for entry in entries:
         if dedupe.is_duplicate(entry, existing_urls):
             sheets.append_news_item(title=entry.title, url=entry.url, source=entry.source, is_duplicate=True)
             stats["duplicate"] += 1
-            continue
+        else:
+            new_entries.append(entry)
 
-        try:
-            result = judge.judge(entry)
-        except Exception:
-            logger.exception("AI判定失敗: %s", entry.url)
-            sheets.append_news_item(
-                title=entry.title,
-                url=entry.url,
-                source=entry.source,
-                summary=entry.summary,
-                post_status="判定エラー",
-            )
-            stats["errors"] += 1
-            continue
+    try:
+        judge_results = judge.judge_batch(new_entries)
+    except Exception:
+        logger.exception("AI判定(バッチ)失敗: %d件", len(new_entries))
+        stats["errors"] += len(new_entries)
+        judge_results = []
 
+    postable: list[tuple[NewsEntry, str]] = []
+    for entry, result in zip(new_entries, judge_results):
         rank = result["rank"]
         sheets.append_news_item(
             title=entry.title,
@@ -71,21 +102,15 @@ def _process_entries(entries: list[NewsEntry], sheets: NewsBotSheets, existing_u
         stats["judged"] += 1
         existing_urls.add(entry.url)
 
-        if rank not in _POSTABLE_RANKS:
-            continue
+        if rank in _POSTABLE_RANKS:
+            postable.append((entry, rank))
 
+    if postable:
         try:
-            composed = compose.compose(entry)
-            approval.notify_manual_post(entry, rank, composed["honbun"], composed["reply"])
-            # 自動承認フロー（自動投稿）を再開する場合は上記の代わりに以下を使う:
-            # channel, ts = approval.notify_pending(entry, rank, composed["honbun"], composed["reply"])
-            # sheets.enqueue_approval(
-            #     url=entry.url, rank=rank, honbun=composed["honbun"], reply=composed["reply"],
-            #     slack_channel_id=channel, slack_ts=ts,
-            # )
-            stats["queued"] += 1
+            _notify_thread(postable)
+            stats["queued"] = len(postable)
         except Exception:
-            logger.exception("Slackテンプレート送信失敗: %s", entry.url)
+            logger.exception("スレッドテンプレート送信失敗（%d件）", len(postable))
             stats["errors"] += 1
 
     return stats
@@ -127,6 +152,151 @@ def fetch_x_cycle(region: str) -> dict:
         sheets.update_x_account_state(handle, user_id=state["user_id"], since_id=state["since_id"])
 
     logger.info("fetch_x_cycle(%s) 完了: %s", region, stats)
+    return stats
+
+
+def theater_cycle() -> dict:
+    """劇場公開情報取得〜対象期間フィルタ〜重複チェック〜保存までを1サイクル実行する。
+
+    取得元は「劇場情報源」シートに登録された行（fetch_theater.fetch_all）。
+    Katsumascore照合・SNS優先度判定・投稿案生成・Slack通知は未実装のため、
+    保存時は投稿状態="未判定"のまま（docs/feature/theater-release-calendar-spec.md 17.のTODO参照）。
+    """
+    sheets = NewsBotSheets()
+    start, end = theater_calendar.week_range(date.today())
+    sources = sheets.get_active_theater_sources()
+    existing_keys = sheets.get_existing_theater_keys()
+
+    entries = fetch_theater.fetch_all(sources, start, end)
+    stats = {"fetched": len(entries), "no_date": 0, "out_of_range": 0, "duplicate": 0, "saved": 0}
+
+    for entry in entries:
+        if entry.release_date is None:
+            stats["no_date"] += 1
+            continue
+        if not theater_calendar.in_range(entry.release_date, start, end):
+            stats["out_of_range"] += 1
+            continue
+
+        release_date_str = entry.release_date.isoformat()
+        key = theater_calendar.dedupe_key(release_date_str, entry.title)
+        if key in existing_keys:
+            stats["duplicate"] += 1
+            continue
+
+        sheets.append_theater_item(
+            release_date=release_date_str,
+            title=entry.title,
+            dedupe_key=key,
+            original_title=entry.original_title,
+            category=entry.category,
+            official_url=entry.url,
+            source=entry.source,
+        )
+        existing_keys.add(key)
+        stats["saved"] += 1
+
+    logger.info("theater_cycle(%s〜%s) 完了: %s", start, end, stats)
+    return stats
+
+
+def theater_discover_cycle() -> dict:
+    """AIのWeb検索で対象週の劇場公開作品を発見し、承認待ちとして保存する。
+
+    レイヤー1データソース（特定サイトの自動取得）が規約上すべて撤回されたため、
+    Claude/OpenAIのWeb検索併用で事実情報のみを収集する方式（discover_theater.py）。
+    AIの結果は誤り得るため投稿状態="承認待ち"で保存し、人間がシートを確認・
+    修正・承認する。承認後の下流処理（週次サマリー・Slack/WP投稿）は未実装。
+    """
+    sheets = NewsBotSheets()
+    start, end = theater_calendar.week_range(date.today())
+    existing_keys = sheets.get_existing_theater_keys()
+
+    entries = discover_theater.discover_all(start, end)
+    stats = {"discovered": len(entries), "out_of_range": 0, "duplicate": 0, "saved": 0, "notified": 0}
+
+    saved_entries = []
+    for entry in entries:
+        if not theater_calendar.in_range(entry.release_date, start, end):
+            stats["out_of_range"] += 1
+            continue
+
+        release_date_str = entry.release_date.isoformat()
+        key = theater_calendar.dedupe_key(release_date_str, entry.title)
+        if key in existing_keys:
+            stats["duplicate"] += 1
+            continue
+
+        sheets.append_theater_item(
+            release_date=release_date_str,
+            title=entry.title,
+            dedupe_key=key,
+            distributor=entry.distributor,
+            official_url=entry.url,
+            source=entry.source,
+            post_status="承認待ち",
+        )
+        existing_keys.add(key)
+        saved_entries.append(entry)
+        stats["saved"] += 1
+
+    # 新規保存分があればSlackに親メッセージ+作品ごとのスレッド返信で確認依頼を送る。
+    # 通知失敗でもシート保存は完了しているためサイクル自体は失敗させない。
+    if saved_entries:
+        try:
+            approval.notify_theater_discovered(start, end, saved_entries)
+            stats["notified"] = len(saved_entries)
+        except Exception:
+            logger.exception("劇場公開Slack通知失敗（%d件）", len(saved_entries))
+
+    logger.info("theater_discover_cycle(%s〜%s) 完了: %s", start, end, stats)
+    return stats
+
+
+def theater_add_url(url: str) -> dict:
+    """人間が見つけた劇場公開情報のURLから事実を抽出し、シートに承認待ちで追記する。
+
+    週次のAI発見（theater_discover_cycle）と違い対象期間ではフィルタしない
+    （人間は来月公開の作品のURLを入れることもあるため）。公開日が抽出できなかった
+    場合もメモ付きで保存し、人間がシートで補完する。抽出失敗（タイトルすら取れない）
+    は例外で落とし、Actionsの実行失敗として入力者に見えるようにする。
+    """
+    sheets = NewsBotSheets()
+    entry = discover_theater.extract_from_url(url)
+    stats = {"duplicate": 0, "saved": 0, "notified": 0}
+
+    dedupe_key = ""
+    memo = ""
+    if entry.release_date is not None:
+        release_date_str = entry.release_date.isoformat()
+        dedupe_key = theater_calendar.dedupe_key(release_date_str, entry.title)
+        if dedupe_key in sheets.get_existing_theater_keys():
+            stats["duplicate"] = 1
+            logger.info("既存のためスキップ: %s (%s)", entry.title, release_date_str)
+    else:
+        release_date_str = ""
+        memo = "公開日をAI抽出できず。シートで補完してください"
+
+    if not stats["duplicate"]:
+        sheets.append_theater_item(
+            release_date=release_date_str,
+            title=entry.title,
+            dedupe_key=dedupe_key,
+            distributor=entry.distributor,
+            official_url=entry.url,
+            source=entry.source,
+            post_status="承認待ち",
+            memo=memo,
+        )
+        stats["saved"] = 1
+
+    try:
+        approval.notify_theater_added(entry, input_url=url, duplicate=bool(stats["duplicate"]))
+        stats["notified"] = 1
+    except Exception:
+        logger.exception("URL追記Slack通知失敗: %s", url)
+
+    logger.info("theater_add_url(%s) 完了: %s", url, stats)
     return stats
 
 
@@ -177,8 +347,19 @@ def process_pending() -> dict:
 
 if __name__ == "__main__":
     # 引数無し: RSS取得（fetch_cycle）。 "x <地域>": 公式Xアカウント取得（fetch_x_cycle）。
+    # "theater": 劇場情報源シート巡回（theater_cycle、現在シート未登録のため実質未使用）。
+    # "theater_discover": AI Web検索による劇場公開作品の発見（theater_discover_cycle）。
+    # "theater_add <URL>": 人間が見つけたURLからの追記（theater_add_url）。
     if len(sys.argv) > 1 and sys.argv[1] == "x":
         fetch_x_cycle(sys.argv[2] if len(sys.argv) > 2 else "日本")
+    elif len(sys.argv) > 1 and sys.argv[1] == "theater":
+        theater_cycle()
+    elif len(sys.argv) > 1 and sys.argv[1] == "theater_discover":
+        theater_discover_cycle()
+    elif len(sys.argv) > 1 and sys.argv[1] == "theater_add":
+        if len(sys.argv) < 3:
+            raise SystemExit("使い方: python -m news_bot.main theater_add <URL>")
+        theater_add_url(sys.argv[2])
     else:
         fetch_cycle()
     # 投稿は手動運用のため自動投稿は呼ばない。自動化を再開する場合はコメントを外す。
