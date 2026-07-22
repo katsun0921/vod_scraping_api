@@ -68,8 +68,12 @@ _AUTO_CREATED_HEADERS = {
 
 
 def _is_active(value) -> bool:
-    """「有効/無効」列（Sheetsのチェックボックス＝真偽値セル）がTRUEかどうかを判定する。"""
-    return value is True
+    """「有効/無効」列（Sheetsのチェックボックス）がTRUEかどうかを判定する。"""
+    if value is True:
+        return True
+    if isinstance(value, str):
+        return value.strip().upper() == "TRUE"
+    return False
 
 
 def _client() -> gspread.Client:
