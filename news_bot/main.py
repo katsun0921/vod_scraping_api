@@ -139,9 +139,11 @@ def fetch_x_cycle(region: str) -> dict:
     """
     sheets = NewsBotSheets()
     accounts = sheets.get_active_x_accounts(region)
+    logger.info("公式X取得対象: region=%s accounts=%d", region, len(accounts))
     existing_urls = sheets.get_existing_urls()
 
     entries, updated_states = fetch_x.fetch_all_x(accounts)
+    logger.info("公式X取得結果: region=%s entries=%d updated_accounts=%d", region, len(entries), len(updated_states))
     stats = _process_entries(entries, sheets, existing_urls)
 
     for handle, state in updated_states.items():
