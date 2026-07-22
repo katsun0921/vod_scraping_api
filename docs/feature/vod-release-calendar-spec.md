@@ -335,7 +335,7 @@ news_bot/
 | 5 | `tmdb_id` ACFフィールドの実在確認 | coming-soon-pipeline / theater と共通の未決定事項。照合精度に影響 |
 | 6 | AI発見の精度検証 | theater側#6と同じく、数週回して網羅性・ハルシネーション・日付誤りの頻度を確認してから公開運用に進む |
 | 7 | X公式アカウントのハンドル確定 | 登録候補6サービスのハンドル実在確認（[vod-sources-candidates.md](vod-sources-candidates.md) A.節）と「VOD情報源」シートへの登録 |
-| 8 | X API読み取りコスト | 週1回・6アカウントの取得が既存news-bot-xの予算内に収まるかの確認。実行頻度（週1 or 日1）の決定 |
+| 8 | X API読み取りコスト | 試算済み（[vod-sources-candidates.md](vod-sources-candidates.md) A.1節）。1日1回・6アカウントで月額$0.5〜$5程度と見込み、既存news-bot-x予算内。実行頻度（週1 or 日1）は本番実績を見て確定する |
 | 9 | U-NEXT / DMM TV 公式サイトの規約確認 | 人間がブラウザで規約原文を確認。自動化禁止条項が無ければこの2サービスのみ公式サイト取得（`html`）を再検討できる |
 
 ## 16. 将来拡張
