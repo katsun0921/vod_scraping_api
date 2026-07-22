@@ -179,10 +179,37 @@ X（7.3）とAI Web検索（7.4）はそれぞれ生のテキスト（Xポスト
 - プロンプトは新規ファイル `news_bot/prompts/vod_extract_system_prompt.md` に切り出し、
   `ai_clients.call_claude()`の`cache_control`でキャッシュを効かせる（news_bot既存パターン踏襲）
 
-**コスト**: 新規AI APIキーの追加は不要（`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`を流用）。
-X抽出は「週1回・6アカウント分のポストをバッチ1リクエストで処理」する設計のため、
-Web検索を使うdiscover_vod.py側のコスト（news-bot-x/theater-calendarと同程度）に対し
-軽微な追加分（バッチ抽出のテキスト入出力トークン分）で収まる見込み。
+### 7.5.1 コスト試算: X抽出のClaude API呼び出し（2026-07-22）
+
+新規AI APIキーの追加は不要（`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`を流用）。ここでは
+**構造化抽出**（`ai_clients.call_claude()`、Web検索なしのテキスト生成呼び出し）のコストのみを
+試算する（統合・重複マージはAI呼び出しを伴わない純粋なコード処理のため無料）。
+
+**前提**
+
+- モデル: `news_bot/ai_clients.py`の既定 `claude-sonnet-5`（$3.00/$15.00 per 1M tokens。
+  2026-08-31まで導入価格 $2.00/$10.00）
+- バッチサイズ: `judge.judge_batch()`と同じく15件/リクエストでチャンク化
+- 1件あたりの目安トークン数: 入力(Xポスト本文+JSON整形) 約110トークン / 出力(構造化JSON) 約100トークン
+- systemプロンプト（抽出指示）は約800トークンで`cache_control`によりバッチ間でキャッシュ（1回目のみフル課金）
+- 対象件数はA.1節（[vod-sources-candidates.md](vod-sources-candidates.md)）の週あたり投稿数試算をそのまま流用
+
+**試算（週次実行1回あたり、キャッシュ効果を見込まない保守的な概算）**
+
+| シナリオ | 週間投稿数 | バッチ数(15件/回) | 週額 | 月額(4.3週換算) |
+|---|---|---|---|---|
+| 少ない週 | 21件 | 2 | 約$0.04 | 約$0.19 |
+| 平均的な週 | 84件 | 6 | 約$0.17 | 約$0.72 |
+| 多い週 | 210件 | 14 | 約$0.42 | 約$1.80 |
+
+**結論**: X抽出（Claude API）単体では月額 概ね **$0.2〜$1.8程度**。prompt cachingを有効化すれば
+（news_bot既存パターンどおり）2バッチ目以降のsystemプロンプト分がさらに圧縮されるため、
+上表は上限寄りの保守的な見積もりである。
+
+**X情報源の総コスト**（読み取り[vod-sources-candidates.md A.1] + 抽出[本節]の合算）は
+月額 概ね **$0.7〜$7程度**となり、既存news-bot-x予算の範囲内に十分収まる。AI Web検索
+（discover_vod.py、Claude/OpenAIのweb_searchツール）側のコストは別途試算が必要
+（theater-calendarの週次実行コストと同程度の規模になる見込み）。
 
 ## 8. Google Sheets
 
@@ -381,6 +408,7 @@ news_bot/
 | 8 | X API読み取りコスト | 試算済み（[vod-sources-candidates.md](vod-sources-candidates.md) A.1節）。1日1回・6アカウントで月額$0.5〜$5程度と見込み、既存news-bot-x予算内。実行頻度（週1 or 日1）は本番実績を見て確定する |
 | 9 | U-NEXT / DMM TV 公式サイトの規約確認 | 人間がブラウザで規約原文を確認。自動化禁止条項が無ければこの2サービスのみ公式サイト取得（`html`）を再検討できる |
 | 10 | X抽出プロンプトの精度検証 | `extract_vod.py`のX投稿構造化抽出（7.5）は宣伝文・キャンペーン告知等を配信開始情報と誤抽出する可能性がある。theater側#6のAI発見精度検証と合わせて数週回して確認する |
+| 11 | AI Web検索（discover_vod.py）のコスト試算 | X抽出（7.5.1、月額$0.2〜$1.8）は試算済みだが、discover_vod.pyのWeb検索（Claude/OpenAI併用）側のコストは未試算。theater-calendarの週次実行実績を参考に別途試算する |
 
 ## 16. 将来拡張
 
