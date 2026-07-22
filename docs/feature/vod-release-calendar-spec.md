@@ -282,6 +282,22 @@ WP REST APIで既存レビュー記事を検索し、ヒットしたら `WP post
   theater / vod の両方から使える共通関数として `news_bot/` に置く
 - 照合できた作品は週次まとめ記事・X投稿の中でレビュー記事へ内部リンクし、回遊を作る
 
+### 10.1 `coming-soon-pipeline.md`（`enrich_events.py`）からの転用
+
+[coming-soon-pipeline.md](../feature/coming-soon-pipeline.md)のWP照合実装
+（`fetch_wp_post_by_tmdb_id()` + `build_auth()`）は、TMDb依存部分を除けば
+そのまま10.の共通WP検索関数の土台として転用できる。
+
+- `build_auth(user, app_pass)` （Basic認証ヘッダー生成）はそのまま流用可能
+- `fetch_wp_post_by_tmdb_id()` のクエリパターン（`meta_key=tmdb_id&meta_value=...`）は
+  照合順1位（`tmdb_id`）にそのまま使える。ただし`tmdb_id`はACFフィールドの実在が
+  未確認（未決定事項#5）のため、**正規化タイトル / 原題での検索にフォールバックする分岐を
+  追加する必要がある**（`meta_query`ではなく`search`パラメータまたはタイトル完全一致検索）
+- `coming_soon_hidden` ACFフラグのチェックは本施策では不要（Coming Soon固有の非表示制御のため）
+
+TMDb API自体（`tmdb_upcoming.py`・`config.py`の`TMDB_API_KEY`/`PROVIDERS`）は
+商用契約が未成立のため使わない（7.2参照）。WP照合部分のみを切り出して再利用する。
+
 ## 11. 週次まとめの展開（要件2: 毎週通知 + WP CPT + SNS）
 
 `vod_publish` は承認済み行から週次まとめを1つ生成し、3経路に展開する。
@@ -356,7 +372,10 @@ news_bot/
 │   └── vod_extract_system_prompt.md  # X抽出用system prompt（cache_control対象）
 ├── vod_calendar.py         # 週範囲計算・正規化・重複キー生成（theater_calendar.py を流用/共通化）
 ├── compose_vod.py          # 週次まとめ本文（WP用HTML）・Xスレッド案の生成
-├── wp_client.py            # WP REST API クライアント（CPT投稿・既存記事照合。theaterと共用）
+├── wp_client.py            # WP REST API クライアント（CPT投稿・既存記事照合。theaterと共用。
+│                            #   照合部分は coming-soon/enrich_events.py の
+│                            #   fetch_wp_post_by_tmdb_id()/build_auth() を土台に
+│                            #   タイトル検索フォールバックを追加して移植、10.1参照）
 ├── sheets.py               # 「VOD情報源」「VOD配信予定」シート対応を追加
 ├── approval.py             # 発見結果の確認依頼・週次まとめ通知を追加
 └── main.py                 # vod_discover / vod_publish サブコマンド追加
@@ -406,7 +425,7 @@ news_bot/
 | 6 | AI発見の精度検証 | theater側#6と同じく、数週回して網羅性・ハルシネーション・日付誤りの頻度を確認してから公開運用に進む |
 | 7 | X公式アカウントのハンドル確定 | 登録候補6サービスのハンドル実在確認（[vod-sources-candidates.md](vod-sources-candidates.md) A.節）と「VOD情報源」シートへの登録 |
 | 8 | X API読み取りコスト | 試算済み（[vod-sources-candidates.md](vod-sources-candidates.md) A.1節）。1日1回・6アカウントで月額$0.5〜$5程度と見込み、既存news-bot-x予算内。実行頻度（週1 or 日1）は本番実績を見て確定する |
-| 9 | U-NEXT / DMM TV 公式サイトの規約確認 | 人間がブラウザで規約原文を確認。自動化禁止条項が無ければこの2サービスのみ公式サイト取得（`html`）を再検討できる |
+| 9 | U-NEXT / DMM TV 公式サイトの規約確認 | 人間がブラウザで規約原文を確認。自動化禁止条項が無ければこの2サービスのみ公式サイト取得（`html`）を再検討できる。U-NEXTは`coming-soon-pipeline.md`の`scrape_official.py`に実装済みのスクレイパーがそのまま転用できる（[vod-sources-candidates.md](vod-sources-candidates.md) B節参照） |
 | 10 | X抽出プロンプトの精度検証 | `extract_vod.py`のX投稿構造化抽出（7.5）は宣伝文・キャンペーン告知等を配信開始情報と誤抽出する可能性がある。theater側#6のAI発見精度検証と合わせて数週回して確認する |
 | 11 | AI Web検索（discover_vod.py）のコスト試算 | X抽出（7.5.1、月額$0.2〜$1.8）は試算済みだが、discover_vod.pyのWeb検索（Claude/OpenAI併用）側のコストは未試算。theater-calendarの週次実行実績を参考に別途試算する |
 
