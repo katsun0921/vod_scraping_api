@@ -2,9 +2,10 @@ name: News Bot - 公式X取得
 
 on:
   # 地域ごとに1日1回、コスト管理のため分ける。
-  schedule:
-    - cron: "0 1 * * *"   # 日本メディア 1日1回
-    - cron: "0 13 * * *"  # アメリカメディア 1日1回
+  # X情報収集を一時停止するためscheduleを無効化（再開時はコメントを外す）。
+  # schedule:
+  #   - cron: "0 1 * * *"   # 日本メディア 1日1回
+  #   - cron: "0 13 * * *"  # アメリカメディア 1日1回
   workflow_dispatch:
     inputs:
       region:

@@ -2,8 +2,9 @@ name: News Bot - RSS取得
 
 on:
   # 仕様書 3.は1〜2時間おき推奨だが、運用判断で1日1回に変更。
-  schedule:
-    - cron: "0 0 * * *"
+  # RSS情報収集を一時停止するためscheduleを無効化（再開時はコメントを外す）。
+  # schedule:
+  #   - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
