@@ -20,6 +20,9 @@ Slack Web API（Bot Token）で chat.postMessage / reactions.get を使用する
     SLACK_THEATER_CHANNEL_ID  : 劇場公開通知(notify_theater_discovered)専用のチャンネルID
                                 （任意。未設定ならSLACK_APPROVAL_CHANNEL_IDに送る。
                                 Botを対象チャンネルに招待しておくこと）
+    SLACK_VOD_CHANNEL_ID      : VOD配信情報通知(notify_vod_discovered/
+                                notify_vod_weekly_summary)専用のチャンネルID
+                                （任意。未設定ならSLACK_APPROVAL_CHANNEL_IDに送る）
 """
 
 import logging
@@ -147,6 +150,64 @@ def notify_theater_added(entry, input_url: str, duplicate: bool = False) -> tupl
         f"入力URL: {input_url}"
     )
     return _post_message(text, channel=theater_channel)
+
+
+def notify_vod_discovered(start: date, end: date, entries: list) -> tuple[str, str]:
+    """AI Web検索・X抽出で発見したVOD配信開始作品を、親メッセージ+作品ごとのスレッド返信で
+    Slackに通知する（仕様書11.1）。
+
+    vod_discover_cycle()が「VOD配信予定」シートへ保存した直後に呼ばれる。
+    notify_theater_discovered()と同型。通知はあくまで確認依頼であり、承認そのものは
+    シート上（投稿状態列の手動書き換え、または編集部おすすめ列への手動チェック）で行う。
+
+    Args:
+        start, end: 対象期間（vod_calendar.next_week_range()）
+        entries: 保存済みのdiscover_vod.VodEntry一覧（available_fromは必ず設定済み）
+    """
+    vod_channel = os.environ.get("SLACK_VOD_CHANNEL_ID") or None
+
+    parent_text = (
+        f"*VOD配信予定 {start.isoformat()}〜{end.isoformat()}: "
+        f"{len(entries)}件を発見し、シートに`承認待ち`で保存しました*\n"
+        f"作品の詳細はこのスレッドに続きます。AI検索・X投稿からの抽出のため誤り得ます — "
+        f"「VOD配信予定」シートで実在・配信開始日を確認し、修正・不要行の削除をお願いします"
+        f"（情報源に複数ソースが含まれる作品は確度高め）。編集部おすすめにしたい作品は"
+        f"`編集部おすすめ`列にチェックを入れ、`編集部コメント`列に一言コメントを入れてください。"
+    )
+    channel, ts = _post_message(parent_text, channel=vod_channel)
+
+    for entry in entries:
+        detail = (
+            f"*{entry.title}*（{entry.service}）\n"
+            f"配信開始日: {entry.available_from.isoformat()} / 配信種別: {entry.availability_type or '不明'}\n"
+            f"公式URL: {entry.url or 'なし'}\n"
+            f"情報源: {entry.source}"
+        )
+        try:
+            _post_message(detail, thread_ts=ts, channel=channel)
+        except Exception:
+            # スレッド返信の1件失敗で残りの作品通知を止めない
+            logger.exception("VOD配信予定スレッド返信失敗: %s", entry.title)
+
+    return channel, ts
+
+
+def notify_vod_weekly_summary(item_count: int, wp_post_url: str, x_thread_parts: list[str]) -> tuple[str, str]:
+    """週次まとめ（`vod_publish`）の結果をSlackへ通知する（仕様書11.1）。
+
+    WP投稿結果（下書きURL）とXスレッド投稿案テンプレートを1回のメッセージで送る。
+    Xへの実際の投稿はx-news-bot仕様書4.4と同じく人間が手動で行う（自動投稿はしない）。
+    """
+    thread_sections = "\n\n".join(
+        f"――― 投稿 {i}/{len(x_thread_parts)} ―――\n{part}" for i, part in enumerate(x_thread_parts, 1)
+    )
+    text = (
+        f"*週次VODまとめを生成しました（{item_count}件）*\n"
+        f"WP投稿（下書き）: {wp_post_url or '投稿失敗（ログを確認してください）'}\n\n"
+        f"以下を1つのXスレッドとして1→2の順に手動で投稿してください"
+        f"（2件目は1件目への返信）。\n\n{thread_sections}"
+    )
+    return _post_message(text, channel=os.environ.get("SLACK_VOD_CHANNEL_ID") or None)
 
 
 def notify_manual_post(entry: NewsEntry, rank: str, honbun: str, reply: str) -> tuple[str, str]:
