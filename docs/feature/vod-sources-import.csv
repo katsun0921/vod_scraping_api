@@ -5,4 +5,4 @@ ID,名称,URL,取得方式,対象サービス,有効/無効,規約確認済み,u
 4,U-NEXT 公式X,https://x.com/watch_UNEXT,x,unext,TRUE,済,,,,要ハンドル実在確認
 5,Disney+ 日本公式X,https://x.com/DisneyPlusJP,x,disney_plus,TRUE,済,,,,要ハンドル実在確認
 6,Hulu Japan 公式X,https://x.com/hulu_japan,x,hulu,TRUE,済,,,,要ハンドル実在確認
-7,DMM TV 公式X,,x,dmm_tv,FALSE,,,,,DMMTV_officialは404で不在を確認済み。正しいハンドルが判明するまで無効
+7,DMM TV アニメPR公式X,https://x.com/DMMTV_ANIME_PR,x,dmm_tv,TRUE,済,,,,アニメ作品のPRアカウント。実写の配信告知は拾えない可能性あり

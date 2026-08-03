@@ -30,7 +30,9 @@ _CANDIDATES: dict[str, list[str]] = {
     "unext": ["watch_UNEXT", "unext_official"],
     "disney_plus": ["DisneyPlusJP", "disneyplusjp"],
     "hulu": ["hulu_japan", "Hulu_Japan"],
-    "dmm_tv": ["DMMTV_official", "dmmtv_info", "DMMTV"],
+    # DMMTV_official は404で不在を確認済み。DMMTV_ANIME_PR はアニメPR専用のため
+    # 実写作品の配信告知を拾えない可能性がある（運用で要確認）
+    "dmm_tv": ["DMMTV_ANIME_PR"],
 }
 
 
