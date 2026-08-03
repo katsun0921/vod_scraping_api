@@ -36,7 +36,7 @@ Katsumascore は Google AdSense で収益化しているため、「商用・有
 | U-NEXT | U-NEXT公式 | 配信開始告知あり |
 | Disney+ | ディズニープラス日本公式 | 配信開始告知あり |
 | Hulu | Hulu Japan公式 | 配信開始告知あり |
-| DMM TV | DMM TV公式 | 配信開始告知あり |
+| DMM TV | [@DMMTV_ANIME_PR](https://x.com/DMMTV_ANIME_PR) | **アニメPR専用アカウント**（2026-08-03に管理者が特定）。`DMMTV_official`は404で不在確認済み。実写作品の配信告知を拾えない可能性があり、運用実績で要確認 |
 
 X公式アカウントのポストは非構造化テキストのため、取得後にAI抽出
 （タイトル・サービス・配信開始日・配信種別の構造化）を挟んでから
