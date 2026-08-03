@@ -1,0 +1,8 @@
+ID,名称,URL,取得方式,対象サービス,有効/無効,規約確認済み,user_id,since_id,最終取得日時,メモ
+1,AI Web検索,,ai,,TRUE,済,,,,Claude/OpenAIのweb_search併用。コード上は無条件実行のため本行は管理用の記録
+2,Netflix Japan 公式X,https://x.com/NetflixJP,x,netflix,TRUE,済,,,,要ハンドル実在確認
+3,Prime Video 日本公式X,https://x.com/PrimeVideo_JP,x,amazon_prime_video,TRUE,済,,,,要ハンドル実在確認
+4,U-NEXT 公式X,https://x.com/watch_UNEXT,x,unext,TRUE,済,,,,要ハンドル実在確認
+5,Disney+ 日本公式X,https://x.com/DisneyPlusJP,x,disney_plus,TRUE,済,,,,要ハンドル実在確認
+6,Hulu Japan 公式X,https://x.com/hulu_japan,x,hulu,TRUE,済,,,,要ハンドル実在確認
+7,DMM TV 公式X,,x,dmm_tv,FALSE,,,,,DMMTV_officialは404で不在を確認済み。正しいハンドルが判明するまで無効
