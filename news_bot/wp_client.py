@@ -10,8 +10,9 @@
 未確認のため、確認が取れ次第tmdb_id完全一致クエリを照合順1位として追加すること）。
 
 環境変数:
-    VOD_NEWS_WP_API_BASE     : WP REST API ベースURL（例: https://example.com/wp-json/wp/v2）
-    WP_USER                  : WordPressユーザー名（vod_bot/wordpress.pyの配信状況チェックと共用）
+    WP_API_URL               : WP REST API ベースURL（例: https://example.com/wp-json/wp/v2。
+                                vod_bot/wordpress.pyの配信状況チェックと共用）
+    WP_USER                  : WordPressユーザー名（同上）
     WP_APP_PASSWORD          : WordPress Application Password（同上）
     VOD_NEWS_CPT_SLUG        : CPTのRESTスラッグ（既定 vod_news。15.未決定事項#1参照。
                                 最終的な名称は管理者がWordPress側で決定・登録する）
@@ -39,7 +40,7 @@ def build_auth(user: str, app_pass: str) -> str:
 
 
 def _base_url() -> str:
-    return os.environ["VOD_NEWS_WP_API_BASE"].rstrip("/")
+    return os.environ["WP_API_URL"].rstrip("/")
 
 
 def _headers() -> dict:

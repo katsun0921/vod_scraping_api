@@ -32,7 +32,7 @@ jobs:
 
       - name: Check WordPress connection
         env:
-          VOD_NEWS_WP_API_BASE: ${{ secrets.VOD_NEWS_WP_API_BASE }}
+          WP_API_URL: ${{ secrets.WP_API_URL }}
           WP_USER: ${{ secrets.WP_USER }}
           WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           VOD_NEWS_CPT_SLUG: ${{ secrets.VOD_NEWS_CPT_SLUG }}
