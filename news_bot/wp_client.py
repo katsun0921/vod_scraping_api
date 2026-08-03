@@ -25,6 +25,12 @@ import requests
 
 _TIMEOUT = 30
 
+# ConoHa WING の WAF が既定の User-Agent（`python-requests/*`）を403でブロックするため、
+# 明示的に本ボットを名乗る。2026-08-03に実測で確認:
+#   UA=python-requests/2.31.0 -> 403 / UA=curl・Mozilla・news_bot -> 200
+# （/wp-json/wp/v2/posts でも同様に発生するため、CPTに限らずWP REST API全体が対象）
+USER_AGENT = "katsumascore-news-bot/1.0 (+https://katsumascore.blog)"
+
 
 def build_auth(user: str, app_pass: str) -> str:
     """WordPress Application Password の Basic 認証ヘッダー値を返す。"""
@@ -39,7 +45,10 @@ def _base_url() -> str:
 def _headers() -> dict:
     user = os.environ["WP_USER"]
     app_pass = os.environ["WP_APP_PASSWORD"]
-    return {"Authorization": build_auth(user, app_pass)}
+    return {
+        "Authorization": build_auth(user, app_pass),
+        "User-Agent": USER_AGENT,
+    }
 
 
 def find_post_by_title(title: str, title_orig: str = "") -> dict | None:

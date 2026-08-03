@@ -59,7 +59,13 @@ def _check_get(cpt_slug: str) -> bool:
     logger.info("=== 2. CPT の REST API 露出確認（GET）===")
     url = f"{os.environ['VOD_NEWS_WP_API_BASE'].rstrip('/')}/{cpt_slug}"
     try:
-        resp = requests.get(url, params={"per_page": 1}, timeout=_TIMEOUT)
+        # UAは wp_client と揃える（既定の python-requests/* はWAFに403で弾かれる）
+        resp = requests.get(
+            url,
+            params={"per_page": 1},
+            headers={"User-Agent": wp_client.USER_AGENT},
+            timeout=_TIMEOUT,
+        )
     except requests.RequestException as exc:
         logger.error("  接続失敗: %s", exc)
         return False
@@ -67,6 +73,9 @@ def _check_get(cpt_slug: str) -> bool:
     logger.info("  GET %s -> %s", url, resp.status_code)
     if resp.status_code == 404:
         logger.error("  404: CPT が未登録か show_in_rest が false。ACF管理画面での同期を確認する")
+        return False
+    if resp.status_code == 403:
+        logger.error("  403: WAF によるブロックの可能性。User-Agent 制限を確認する")
         return False
     if resp.status_code != 200:
         logger.error("  想定外のステータス: %s", resp.text[:200])
@@ -119,7 +128,10 @@ def _delete_test_post(cpt_slug: str, post_id: int | None) -> bool:
         resp = requests.delete(
             url,
             params={"force": "true"},
-            headers={"Authorization": wp_client.build_auth(os.environ["WP_USER"], os.environ["WP_APP_PASSWORD"])},
+            headers={
+                "Authorization": wp_client.build_auth(os.environ["WP_USER"], os.environ["WP_APP_PASSWORD"]),
+                "User-Agent": wp_client.USER_AGENT,
+            },
             timeout=_TIMEOUT,
         )
         if resp.status_code == 200:
