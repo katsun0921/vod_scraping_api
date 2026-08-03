@@ -1,0 +1,59 @@
+name: VOD Calendar
+
+on:
+  # 仕様書5.: 木曜=vod_discover（承認待ちで保存+Slack確認依頼）、
+  # 月曜=vod_publish（承認済み行から週次まとめ生成+WP投稿+Slack通知）
+  # 0 21 * * 3 (UTC) = 毎週木曜 06:00 JST
+  # 0 22 * * 0 (UTC) = 毎週月曜 07:00 JST
+  schedule:
+    - cron: "0 21 * * 3"
+    - cron: "0 22 * * 0"
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "実行するサブコマンド"
+        required: false
+        default: "vod_discover"
+        type: choice
+        options:
+          - "vod_discover"
+          - "vod_publish"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: news_bot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r news_bot/requirements.txt
+
+      - name: Run VOD calendar pipeline
+        env:
+          # workflow_dispatchはinputsのcommandを使う。scheduleはgithub.event.inputsが
+          # 存在しないため、どちらのcronが発火したか(github.event.schedule)で判定する。
+          COMMAND: ${{ github.event.inputs.command || (github.event.schedule == '0 21 * * 3' && 'vod_discover') || (github.event.schedule == '0 22 * * 0' && 'vod_publish') || 'vod_discover' }}
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          VOD_NEWS_WP_API_BASE: ${{ secrets.VOD_NEWS_WP_API_BASE }}
+          VOD_NEWS_WP_USER: ${{ secrets.VOD_NEWS_WP_USER }}
+          VOD_NEWS_WP_APP_PASSWORD: ${{ secrets.VOD_NEWS_WP_APP_PASSWORD }}
+          VOD_NEWS_CPT_SLUG: ${{ secrets.VOD_NEWS_CPT_SLUG }}
+          VOD_NEWS_WP_STATUS: ${{ secrets.VOD_NEWS_WP_STATUS }}
+          SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
+          SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
+          # VOD配信情報通知の専用チャンネル。未設定(空)の場合は上の承認チャンネルに送る
+          SLACK_VOD_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_VOD_CHANNEL_ID }}
+        run: python -m news_bot.main "$COMMAND"

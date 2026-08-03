@@ -1,6 +1,6 @@
 # Coming Soon パイプライン 実装仕様・手順書
 
-作成: 2026-07-13  
+作成: 2026-07-13
 対象ブランチ: `feature/coming-soon`
 
 > **スコープ**: このドキュメントは `vod_scraping_api` リポジトリで対応する  
@@ -9,7 +9,38 @@
 
 ---
 
-## 未決定事項（着手前に確認）
+## ⚠️ 廃止（2026-07-22、`docs/feature/` → `docs/drop/` へ移動）
+
+**本パイプラインは規約上の理由で実装不可と判断し、`docs/feature/`（実装予定）から
+`docs/drop/`（不採用・保留のまま凍結）へ移動した。**
+
+本パイプラインは主に2つの取得手段（TMDb API・各VODサービス公式サイトのスクレイピング）に
+依存していたが、`docs/feature/vod-release-calendar-spec.md`（VOD配信情報収集パイプライン）
+策定にあたっての規約調査（[vod-sources-candidates.md](../feature/vod-sources-candidates.md)）で
+**両方とも使用不可**と判明した。
+
+1. **TMDb API（`tmdb_upcoming.py`・`config.py`のTMDB_API_KEY/PROVIDERS）**:
+   KatsumascoreはGoogle AdSenseで収益化しており、TMDb APIの「Personal Use」申請フォームの
+   非商用・無収益の誓約に反する。商用契約（Commercial APIプラン、年商$1M未満で$149/月〜）を
+   契約しない限り使用できない（`theater-sources-candidates.md` A.節で確定済み）
+2. **各VODサービス公式サイトのスクレイピング（`scrape_official.py`）**:
+   対象3サービス（Netflix / U-NEXT / Prime Video）のうち、Netflix・Prime Videoは
+   利用規約でロボット・スクレイパーによる自動アクセス／データ収集を明示的に禁止しており
+   最初から不採用（`vod-sources-candidates.md` B節）。**唯一保留だったU-NEXTも、
+   人間による規約原文確認の結果、同様に自動化手段を禁止していることが判明し不採用が確定した**
+   （2026-07-22）。これにより本パイプラインが依存していた取得手段は全滅した
+
+WP照合部分（`enrich_events.py`の`fetch_wp_post_by_tmdb_id()`/`build_auth()`）だけは
+規約上の問題がないため、`docs/feature/vod-release-calendar-spec.md` 10.1節の方針で
+（タイトル検索フォールバックを追加した上で）引き続き転用する。
+
+**再開条件**: TMDb商用ライセンス契約が成立した場合のみ、本パイプラインをComing Soonの
+取得レイヤーとして復活を検討する（`docs/feature/vod-release-calendar-spec.md` 16.将来拡張、
+`docs/feature/theater-sources-candidates.md` A.節と同じ判断）。それまでは凍結する。
+
+---
+
+## 未決定事項（着手前に確認、凍結時点のスナップショット）
 
 | # | 項目 | 影響範囲 |
 |---|------|---------|
