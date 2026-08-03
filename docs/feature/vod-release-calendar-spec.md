@@ -433,8 +433,8 @@ news_bot/
 | 変数名 | 用途 | 必須 |
 |---|---|---|
 | `VOD_NEWS_WP_API_BASE` | WP REST API ベースURL | ○ |
-| `VOD_NEWS_WP_USER` | WP Application Password ユーザー名 | ○ |
-| `VOD_NEWS_WP_APP_PASSWORD` | WP Application Password | ○ |
+| `WP_USER` | WP Application Password ユーザー名（`vod_bot/wordpress.py`の配信状況チェックと共用） | ○ |
+| `WP_APP_PASSWORD` | WP Application Password（同上） | ○ |
 | `VOD_NEWS_CPT_SLUG` | CPTのRESTスラッグ（既定 `vod_news`） | 任意 |
 | `VOD_NEWS_WP_STATUS` | 投稿ステータス（既定 `draft`） | 任意 |
 

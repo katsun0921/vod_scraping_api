@@ -11,8 +11,8 @@
 
 環境変数:
     VOD_NEWS_WP_API_BASE     : WP REST API ベースURL（例: https://example.com/wp-json/wp/v2）
-    VOD_NEWS_WP_USER         : WordPress ユーザー名
-    VOD_NEWS_WP_APP_PASSWORD : WordPress Application Password
+    WP_USER                  : WordPressユーザー名（vod_bot/wordpress.pyの配信状況チェックと共用）
+    WP_APP_PASSWORD          : WordPress Application Password（同上）
     VOD_NEWS_CPT_SLUG        : CPTのRESTスラッグ（既定 vod_news。15.未決定事項#1参照。
                                 最終的な名称は管理者がWordPress側で決定・登録する）
     VOD_NEWS_WP_STATUS       : 投稿ステータス（既定 draft）
@@ -37,8 +37,8 @@ def _base_url() -> str:
 
 
 def _headers() -> dict:
-    user = os.environ["VOD_NEWS_WP_USER"]
-    app_pass = os.environ["VOD_NEWS_WP_APP_PASSWORD"]
+    user = os.environ["WP_USER"]
+    app_pass = os.environ["WP_APP_PASSWORD"]
     return {"Authorization": build_auth(user, app_pass)}
 
 

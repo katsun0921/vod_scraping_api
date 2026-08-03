@@ -48,8 +48,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           VOD_NEWS_WP_API_BASE: ${{ secrets.VOD_NEWS_WP_API_BASE }}
-          VOD_NEWS_WP_USER: ${{ secrets.VOD_NEWS_WP_USER }}
-          VOD_NEWS_WP_APP_PASSWORD: ${{ secrets.VOD_NEWS_WP_APP_PASSWORD }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
           VOD_NEWS_CPT_SLUG: ${{ secrets.VOD_NEWS_CPT_SLUG }}
           VOD_NEWS_WP_STATUS: ${{ secrets.VOD_NEWS_WP_STATUS }}
           SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
