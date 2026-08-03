@@ -38,6 +38,10 @@ vod_scraping_api/
 └── README.md                  # セットアップ・実行手順
 ```
 
+## docs/ のメンテナンス
+
+**`docs/` にドキュメントを追加・削除・大幅リライトしたら、Obsidian Vault側の [`../obsidian/vod_scraping_api/_関連マップ.md`](../obsidian/vod_scraping_api/_関連マップ.md) も同じタイミングで更新する**（新規ファイルの関連付け追加、削除ファイルの記載除去）。あわせてリポジトリ横断の関連がある場合は [`../obsidian/_横断マップ.md`](../obsidian/_横断マップ.md) も確認・更新する。これらのマップファイルは本リポジトリではなくObsidian Vault（`katsumscore/obsidian/`）側の管理物。
+
 ## 技術スタック
 
 | レイヤー | 技術 |
