@@ -53,11 +53,14 @@ def build_wp_content(items: list[dict]) -> str:
     """週次まとめ記事のWP投稿本文（HTML）を生成する。
 
     構成: 編集部おすすめ → サービス別セクション（統一フォーマットの作品カード）。
-    「編集部おすすめ」列（チェックボックス）がTrueの行を冒頭にまとめ、
-    それ以外はサービスごとにグルーピングして並べる。
+    「編集部おすすめ」列（チェックボックス）がTrueの行を冒頭にまとめる。
+
+    おすすめに選ばれた作品もサービス別セクションには通常どおり掲載する。
+    冒頭のおすすめは「今週の一覧」に対する強調であって置き換えではないため
+    （vod-release-calendar-improvements.md 1.「記事冒頭に編集部おすすめ作品を設置する」）、
+    ここで除外すると配信一覧としての網羅性が崩れる。
     """
     editor_picks = [item for item in items if item.get("編集部おすすめ") is True]
-    regular_items = [item for item in items if item.get("編集部おすすめ") is not True]
 
     sections: list[str] = []
     if editor_picks:
@@ -65,7 +68,7 @@ def build_wp_content(items: list[dict]) -> str:
         sections.append(f"<section>{picks_html}</section>")
 
     by_service: dict[str, list[dict]] = {}
-    for item in regular_items:
+    for item in items:
         by_service.setdefault(item.get("サービス", ""), []).append(item)
 
     for service_key, service_items in by_service.items():
