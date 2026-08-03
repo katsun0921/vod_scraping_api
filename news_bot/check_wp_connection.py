@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 30
 
-_REQUIRED_ENV = ["VOD_NEWS_WP_API_BASE", "WP_USER", "WP_APP_PASSWORD"]
+_REQUIRED_ENV = ["WP_API_URL", "WP_USER", "WP_APP_PASSWORD"]
 
 
 def _check_env() -> bool:
@@ -57,7 +57,7 @@ def _check_env() -> bool:
 def _check_get(cpt_slug: str) -> bool:
     """CPT が REST API に露出しているかを GET で確認する（認証不要）。"""
     logger.info("=== 2. CPT の REST API 露出確認（GET）===")
-    url = f"{os.environ['VOD_NEWS_WP_API_BASE'].rstrip('/')}/{cpt_slug}"
+    url = f"{wp_client._base_url()}/{cpt_slug}"
     try:
         # UAは wp_client と揃える（既定の python-requests/* はWAFに403で弾かれる）
         resp = requests.get(
@@ -123,7 +123,7 @@ def _delete_test_post(cpt_slug: str, post_id: int | None) -> bool:
         logger.warning("  投稿IDが取得できず削除をスキップ。管理画面から手動で削除すること")
         return True
 
-    url = f"{os.environ['VOD_NEWS_WP_API_BASE'].rstrip('/')}/{cpt_slug}/{post_id}"
+    url = f"{wp_client._base_url()}/{cpt_slug}/{post_id}"
     try:
         resp = requests.delete(
             url,
