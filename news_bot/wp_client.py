@@ -20,11 +20,19 @@
 """
 
 import base64
+import logging
 import os
 
 import requests
 
+from news_bot.theater_calendar import normalize_title
+
+logger = logging.getLogger(__name__)
+
 _TIMEOUT = 30
+# search はあいまい検索のため、完全一致を探す候補数。1件だけ見ると
+# 目的の記事が2位以降にいる場合に取りこぼす。
+_SEARCH_CANDIDATES = 10
 
 # ConoHa WING の WAF が既定の User-Agent（`python-requests/*`）を403でブロックするため、
 # 明示的に本ボットを名乗る。2026-08-03に実測で確認:
@@ -52,27 +60,45 @@ def _headers() -> dict:
     }
 
 
+def _title_matches(candidate_title: str, query: str) -> bool:
+    """WP投稿のタイトルが検索語と実質同一かを判定する。
+
+    WP REST の `search` は部分一致・あいまい検索のため、無関係な記事でも
+    ヒットする。正規化した上で完全一致した場合のみ採用する。
+    """
+    return bool(query) and normalize_title(candidate_title) == normalize_title(query)
+
+
 def find_post_by_title(title: str, title_orig: str = "") -> dict | None:
-    """タイトル（無ければ原題）でWP投稿を検索し、最初の1件を返す。
+    """タイトル（無ければ原題）でWP投稿を検索し、タイトルが一致した1件を返す。
 
     照合順（仕様書10.）は本来 tmdb_id → 正規化タイトル → 原題だが、tmdb_id ACF
     フィールドの実在が未確認（15.未決定事項#5）なため、現状はタイトル検索のみで
     運用する。実在確認が取れ次第、tmdb_id完全一致クエリ
     （?meta_key=tmdb_id&meta_value=...）を優先順位1位として追加すること。
+
+    **誤照合を絶対に避けるため、正規化タイトルが完全一致した場合のみ採用する。**
+    WP REST の `search` はあいまい検索で無関係な記事も返す（実際に「モリア」で
+    『映画大好きポンポさん』が、「リーチャー」で『ウォーマシン』がヒットした）。
+    誤ったレビューURLを週次まとめ記事に載せると読者を無関係な記事へ送ることになり、
+    メディアの信頼性を直接損なうため、照合できない場合は None（＝リンクなし）を返す。
+    取りこぼしは人間が承認時に補える一方、誤リンクは気付かれにくい。
     """
     for query in (title, title_orig):
         if not query:
             continue
         resp = requests.get(
             f"{_base_url()}/posts",
-            params={"search": query, "per_page": 1},
+            params={"search": query, "per_page": _SEARCH_CANDIDATES},
             headers=_headers(),
             timeout=_TIMEOUT,
         )
         resp.raise_for_status()
-        results = resp.json()
-        if results:
-            return results[0]
+        for post in resp.json():
+            rendered = (post.get("title") or {}).get("rendered", "")
+            if _title_matches(rendered, query):
+                return post
+        logger.info("WP照合: タイトル一致なしのためリンクを付与しません: %r", query)
     return None
 
 

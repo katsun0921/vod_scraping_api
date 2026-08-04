@@ -53,7 +53,22 @@ def call_claude(system_prompt: str, user_content: str) -> str:
         response.usage.cache_creation_input_tokens,
         response.usage.input_tokens,
     )
-    return response.content[0].text
+    return _first_text_block(response)
+
+
+def _first_text_block(response) -> str:
+    """応答から最初のテキストブロックの本文を返す。
+
+    extended thinking が有効な応答では content[0] が ThinkingBlock（.text を持たない）
+    になり、テキストは後続の要素に来る。content[0] を決め打ちで読むと
+    AttributeError で落ちるため、type が "text" のブロックを探して返す。
+    """
+    for block in response.content:
+        if getattr(block, "type", None) == "text":
+            return block.text
+    raise ValueError(
+        f"Claude応答にテキストブロックがありません: types={[getattr(b, 'type', None) for b in response.content]}"
+    )
 
 
 def call_openai(system_prompt: str, user_content: str) -> str:
