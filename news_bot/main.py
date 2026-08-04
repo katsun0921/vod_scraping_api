@@ -8,8 +8,9 @@ GitHub Actions cron から呼び出す想定（仕様書 3.: 1〜2時間おき�
                            （レイヤー1データソース撤回により現在シート未登録＝実質未使用）
     theater_discover_cycle(): AI Web検索（Claude/OpenAI併用）による劇場公開作品の発見（週次）
                            → 対象期間フィルタ → 重複チェック → 承認待ちとして保存
-                           （docs/feature/theater-release-calendar-spec.md。人間の承認後の
-                           下流処理（週次サマリー・Slack/WP投稿）は未実装、同spec 17.のTODO参照）
+                           （docs/feature/theater-release-calendar-spec.md）
+    theater_publish_cycle(): 承認済みの劇場公開予定行から週次まとめを生成し、WP CPT投稿+
+                           SNS投稿案のSlack通知まで行う（週次、月曜。同spec 11.）
     vod_discover_cycle():  AI Web検索 + VOD公式Xアカウント投稿の構造化抽出によるVOD配信開始
                            作品の発見（週次、木曜）→ 重複マージ → Katsumascore照合 → 承認待ち
                            として保存（docs/feature/vod-release-calendar-spec.md 7./10.）
@@ -34,6 +35,7 @@ from datetime import date
 from news_bot import (
     approval,
     compose,
+    compose_theater,
     compose_vod,
     dedupe,
     discover_theater,
@@ -311,6 +313,66 @@ def theater_add_url(url: str) -> dict:
     return stats
 
 
+def theater_publish_cycle() -> dict:
+    """承認済みの劇場公開予定行から週次まとめを生成し、WP CPT投稿+SNS投稿案の
+    Slack通知まで行う（docs/feature/theater-release-calendar-spec.md 11.）。
+
+    対象は theater_calendar.week_range() の期間（直近の金曜〜翌週木曜）が公開日、
+    かつ投稿状態=承認済みの行。対象0件の場合は何もしない（空のWP投稿・Slack通知を出さない）。
+
+    vod_publish_cycle()と違い期間計算に専用関数を設けていないのは、week_range()が
+    月曜〜金曜のどの日に実行しても同じ週（直近の金曜起点）を返すため、discover（月曜朝）と
+    publish を同じ週に揃えられるため。ただし土日に実行すると翌週にずれるので、
+    ワークフローのcronは平日に置くこと。
+    """
+    sheets = NewsBotSheets()
+    start, end = theater_calendar.week_range(date.today())
+    items = sheets.get_approved_theater_items(start, end)
+    stats = {"target": len(items), "posted": 0, "notified": 0}
+
+    if not items:
+        logger.info("theater_publish_cycle(%s〜%s): 対象0件", start, end)
+        return stats
+
+    label = compose_theater.week_label(start.year, start.month, start.day)
+    title = compose_theater.build_wp_title(label)
+    content_html = compose_theater.build_wp_content(items)
+
+    wp_post_url = ""
+    try:
+        wp_post = wp_client.create_post(
+            title,
+            content_html,
+            cpt_slug_env="THEATER_NEWS_CPT_SLUG",
+            cpt_slug_default="theater_release",
+            status_env="THEATER_NEWS_WP_STATUS",
+        )
+        wp_post_url = wp_post.get("link", "")
+        stats["posted"] = 1
+    except Exception:
+        logger.exception("劇場公開週次まとめWP投稿失敗")
+
+    try:
+        approval.notify_theater_weekly_summary(
+            len(items),
+            wp_post_url,
+            compose_theater.build_x_thread(items, wp_post_url),
+            compose_theater.build_social_post(items, wp_post_url),
+            compose_theater.build_featured_posts(items),
+        )
+        stats["notified"] = 1
+    except Exception:
+        logger.exception("劇場公開週次まとめSlack通知失敗")
+
+    for item in items:
+        key = item.get("重複キー")
+        if key:
+            sheets.update_theater_item_status(key, post_status="投稿済み")
+
+    logger.info("theater_publish_cycle(%s〜%s) 完了: %s", start, end, stats)
+    return stats
+
+
 def vod_discover_cycle() -> dict:
     """AI Web検索 + VOD公式Xアカウント投稿の構造化抽出で対象週のVOD配信開始作品を発見し、
     承認待ちとして保存する（docs/feature/vod-release-calendar-spec.md 7./9./10.）。
@@ -492,6 +554,7 @@ if __name__ == "__main__":
     # "theater": 劇場情報源シート巡回（theater_cycle、現在シート未登録のため実質未使用）。
     # "theater_discover": AI Web検索による劇場公開作品の発見（theater_discover_cycle）。
     # "theater_add <URL>": 人間が見つけたURLからの追記（theater_add_url）。
+    # "theater_publish": 承認済み劇場公開予定の週次まとめ生成・WP投稿・Slack通知（theater_publish_cycle）。
     # "vod_discover": AI Web検索+VOD公式X投稿抽出によるVOD配信開始作品の発見（vod_discover_cycle）。
     # "vod_publish": 承認済みVOD配信予定の週次まとめ生成・WP投稿・Slack通知（vod_publish_cycle）。
     if len(sys.argv) > 1 and sys.argv[1] == "x":
@@ -504,6 +567,8 @@ if __name__ == "__main__":
         if len(sys.argv) < 3:
             raise SystemExit("使い方: python -m news_bot.main theater_add <URL>")
         theater_add_url(sys.argv[2])
+    elif len(sys.argv) > 1 and sys.argv[1] == "theater_publish":
+        theater_publish_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_discover":
         vod_discover_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_publish":

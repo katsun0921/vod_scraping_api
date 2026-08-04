@@ -1,11 +1,29 @@
 name: Theater Calendar
 
 on:
-  # 仕様書は毎週月曜実行のみが初期MVPスコープ（docs/feature/theater-release-calendar-spec.md 5.）。
+  # 仕様書5.: 月曜=theater_discover（承認待ちで保存+Slack確認依頼）、
+  # 金曜=theater_publish（承認済み行から週次まとめ生成+WP投稿+Slack通知）
   # 0 21 * * 0 (UTC) = 毎週月曜 06:00 JST
+  # 0 22 * * 4 (UTC) = 毎週金曜 07:00 JST（公開日当日の朝に記事を出す）
+  #
+  # publish を金曜にしているのは2つの理由による。
+  #  1. 日本の劇場公開は金曜が基準日のため、公開初日の朝に記事が出るのが読者にとって最も有用
+  #  2. theater_calendar.week_range() は土日に実行すると翌週にずれる。月〜金なら同じ週
+  #     （直近の金曜起点）を返すため、月曜のdiscoverと同じ週を対象にできる
+  # 月曜discover → 人間が承認（月〜木） → 金曜publish の流れになる。
   schedule:
     - cron: "0 21 * * 0"
+    - cron: "0 22 * * 4"
   workflow_dispatch:
+    inputs:
+      command:
+        description: "実行するサブコマンド"
+        required: false
+        default: "theater_discover"
+        type: choice
+        options:
+          - "theater_discover"
+          - "theater_publish"
 
 jobs:
   run:
@@ -25,20 +43,31 @@ jobs:
       - name: Install dependencies
         run: pip install -r news_bot/requirements.txt
 
-      # AI Web検索（Claude/OpenAI併用）で対象週の劇場公開作品を発見し、
-      # 「劇場公開予定」シートに投稿状態="承認待ち"で保存する。新規保存分は
-      # Slackに親メッセージ+作品ごとのスレッド返信で確認依頼を通知する。
-      # 人間がシートを確認・修正・承認するまで下流処理には流れない。
+      # theater_discover: AI Web検索（Claude/OpenAI併用）で対象週の劇場公開作品を発見し、
+      #   「劇場公開予定」シートに投稿状態="承認待ち"で保存する。新規保存分は Slack に
+      #   親メッセージ+作品ごとのスレッド返信で確認依頼を通知する。
+      #   人間がシートを確認・修正・承認（投稿状態="承認済み"）するまで下流には流れない。
+      # theater_publish: 承認済み行から週次まとめを生成し、theater_release CPT へ下書き投稿。
+      #   X スレッド案・Facebook等向けテキスト・注目作の個別投稿案を Slack へ送る（投稿は手動）。
       # （旧: 「劇場情報源」シート巡回の `theater` コマンド。レイヤー1データソース
       #  撤回によりシート未登録のため、cronからは外した。手動実行は引き続き可能）
-      - name: Discover theater releases via AI web search
+      - name: Run theater calendar pipeline
         env:
+          # workflow_dispatchはinputsのcommandを使う。scheduleはgithub.event.inputsが
+          # 存在しないため、どちらのcronが発火したか(github.event.schedule)で判定する。
+          COMMAND: ${{ github.event.inputs.command || (github.event.schedule == '0 21 * * 0' && 'theater_discover') || (github.event.schedule == '0 22 * * 4' && 'theater_publish') || 'theater_discover' }}
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          WP_API_URL: ${{ secrets.WP_API_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          # 劇場公開情報CPT。未設定でもコード側の既定値 theater_release が使われる
+          THEATER_NEWS_CPT_SLUG: ${{ secrets.THEATER_NEWS_CPT_SLUG }}
+          THEATER_NEWS_WP_STATUS: ${{ secrets.THEATER_NEWS_WP_STATUS }}
           SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           # 劇場公開通知の専用チャンネル。未設定(空)の場合は上の承認チャンネルに送る
           SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
-        run: python -m news_bot.main theater_discover
+        run: python -m news_bot.main "$COMMAND"

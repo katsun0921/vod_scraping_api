@@ -334,8 +334,30 @@ news_bot/
   **規約上の理由でいずれも現在未使用**（コードは残存）
 - `main.py`: `theater_discover_cycle()` — AI発見→対象期間フィルタ→重複チェック→保存
   （投稿状態=`承認待ち`）。旧`theater_cycle()`（劇場情報源シート巡回）も残存するが実質未使用
-- `.github/workflows/theater-calendar.yml`: 毎週月曜 06:00 JST に`theater_discover`を実行
-  （`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`を渡す）
+- `compose_theater.py`: 週次まとめ本文（WP用HTML）・SNS投稿案の生成（11.）。
+  公開日別に区切り、SNS優先度=`S`を注目作として冒頭に置く。X（スレッド2分割）/
+  Facebook等（1投稿完結）/ 注目作の個別投稿 の3種類を生成する
+- `main.py`: `theater_publish_cycle()` — 承認済み行→まとめ生成→`theater_release` CPTへ
+  下書き投稿→SNS投稿案をSlack送信→投稿状態を`投稿済み`へ更新（11.）
+- `sheets.py`: `get_approved_theater_items()` / `update_theater_item_status()`
+- `approval.py`: `notify_theater_weekly_summary()` — 親メッセージ（WP投稿結果+Xスレッド）+
+  スレッド返信（他SNS用・注目作個別）
+- `.github/workflows/theater-calendar.yml`: 毎週月曜 06:00 JST に`theater_discover`、
+  毎週金曜 07:00 JST に`theater_publish`を実行（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`を渡す）
+
+### 投稿状態の実際の値
+
+仕様書8.の投稿状態テーブル（`未判定`/`投稿候補`/`保存のみ`/`投稿案送信済み`/`手動投稿済み`/`除外`）は
+初期設計時のもので、**実装では VOD 側と揃えた3値で運用している**。
+
+| 値 | 意味 | 誰が設定するか |
+|---|---|---|
+| `承認待ち` | AI発見直後。人間の確認前 | `theater_discover_cycle()` |
+| `承認済み` | 人間が実在・公開日を確認した | 人間（シート上で手動） |
+| `投稿済み` | 週次まとめに掲載しWP投稿済み | `theater_publish_cycle()` |
+
+`theater_publish` の対象は `承認済み` のみ。SNS優先度=`C` の行は承認済みでも本文・投稿案から
+除外する（対象外・情報不足・重複のため）。
 
 ### 設計変更: レイヤー1データソースの決め方
 
@@ -406,9 +428,11 @@ TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates
 | 2 | Googleカレンダー同期 | 確定行をGoogle Calendar APIでイベント化する（サービスアカウントにスコープ追加・重複防止はextendedPropertiesに重複キーを保持）。未実装 |
 | 2b | URL入力ツールの改善 | 現状はActionsタブの`Theater Add URL` workflow（`workflow_dispatch`）でURLを入力する。Slackチャンネル巡回（投稿されたURLをcronで拾う。要`channels:history`スコープ+since管理）やGoogle Form経由は将来の選択肢。いずれも`theater_add_url()`をそのまま流用できる |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/drop/coming-soon-pipeline.md`（2026-07-22に`docs/drop/`へ移動・凍結）の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
-| 4 | Katsumascore照合（10.） | WP REST API検索の実装が必要（`vod_bot/wordpress.py` にタイトル/tmdb_id検索関数が無い）。現状 `Katsumascore URL` / `WP post_id` は常に空欄 |
-| 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。現状は常に空欄で保存される |
+| 4 | Katsumascore照合（10.） | **`theater_publish`の効果を直接制約している最優先項目。** `news_bot/wp_client.py` の `find_post_by_title()`（VOD側で実装済み・正規化タイトル完全一致）を `theater_discover_cycle()` から呼べば流用できる。現状 `Katsumascore URL` は常に空欄のため、週次まとめ記事から自サイトのレビューへの内部リンクが1本も張られず、注目作の個別投稿案も0件になる（`build_featured_posts()` はURLがある作品のみ対象） |
+| 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。**現状は常に空欄で保存されるため、`compose_theater.featured_items()` が常に0件を返し、記事冒頭の注目作セクションが出ない。** 当面は人間がシート上で`S`を手入力する運用で回せる（承認作業と同時に行える） |
 | 6 | AI発見の精度検証 | `theater_discover_cycle()`を実データで数週回し、取りこぼし（網羅性）・実在しない作品（ハルシネーション）・公開日誤りの頻度を確認する。プロンプトや`_MAX_WEB_SEARCHES`の調整はこの結果を見て行う |
-| 7 | `compose_theater.py`（11.） | 週次まとめ・個別投稿案の生成は未実装 |
-| 8 | Slack通知（11.） | 週次まとめ投稿案のSlack送信は未実装（`approval.py` のテンプレート送信パターンを流用予定） |
+| ~~7~~ | ~~`compose_theater.py`（11.）~~ | **実装済み**（2026-08-04）。公開日別セクション+注目作。X/Facebook等/個別投稿の3種類 |
+| ~~8~~ | ~~Slack通知（11.）~~ | **実装済み**（2026-08-04）。`approval.notify_theater_weekly_summary()` |
+| 10 | Facebook API連携 | 現状は未対応。`build_social_post()` が生成した完成形テキストをSlackから人間が手動投稿する。API連携にはMeta開発者アプリの審査（`pages_manage_posts`権限）とFacebookページの管理者権限が必要で、週1回の投稿頻度に対して運用コストが見合わないため見送った。Threads / Bluesky も同じテキストを流用できる |
+| 11 | フロント側の`/theater-release/`実装 | `katsumascore-front` に単体ページ・アーカイブ・サイトマップ登録が必要。`feature/vod-release-page`ブランチの`/vod-release/`実装を流用できる。**未実装の間はWP投稿しても閲覧できるURLが無い**ため、`THEATER_NEWS_WP_STATUS=draft`（既定値）のまま運用すること |
 | 9 | 旧取得方式の再開条件 | `fetch_theater.py`（RSS/TMDb）と「劇場情報源」シート巡回は、PR TIMESパートナーメディア提携またはTMDb商用ライセンス契約が成立した場合のみ再開する（[theater-sources-candidates.md](theater-sources-candidates.md)） |
