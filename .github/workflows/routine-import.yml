@@ -1,0 +1,124 @@
+name: Routine Import
+
+# ルーティン（Claudeのスケジュール実行）が作成したPRのマージを検知し、
+# 成果物JSONをシートへ取り込む（docs/feature/routine-discovery.md）。
+#
+# pathsフィルタにより、該当JSONが実際に変更されたpushでのみ起動する。
+# 他の変更でmainにpushするたびに再取り込みが走ると、シート側は重複キーで
+# 弾かれるとはいえSlack通知が無駄に飛ぶため。
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "news_bot/routine_data/theater_latest.json"
+      - "news_bot/routine_data/vod_latest.json"
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "実行するサブコマンド（手動での再取り込み用）"
+        required: false
+        default: "theater_import"
+        type: choice
+        options:
+          - "theater_import"
+          - "vod_import"
+
+jobs:
+  detect:
+    # push時にどちらのJSONが変更されたかを判定する。両方変わっていれば両方を取り込む。
+    runs-on: ubuntu-latest
+    outputs:
+      theater: ${{ steps.changes.outputs.theater }}
+      vod: ${{ steps.changes.outputs.vod }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # 直前のコミットとの差分を取るため2コミット分必要
+          fetch-depth: 2
+
+      - name: Detect changed routine data
+        id: changes
+        env:
+          # workflow_dispatchの場合はpushの差分が無いため、選択されたコマンドで判定する
+          MANUAL_COMMAND: ${{ github.event.inputs.command }}
+        run: |
+          if [ -n "$MANUAL_COMMAND" ]; then
+            [ "$MANUAL_COMMAND" = "theater_import" ] && echo "theater=true" >> "$GITHUB_OUTPUT" || echo "theater=false" >> "$GITHUB_OUTPUT"
+            [ "$MANUAL_COMMAND" = "vod_import" ] && echo "vod=true" >> "$GITHUB_OUTPUT" || echo "vod=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed=$(git diff --name-only HEAD^ HEAD)
+          echo "変更ファイル:"; echo "$changed"
+          echo "$changed" | grep -q "news_bot/routine_data/theater_latest.json" && echo "theater=true" >> "$GITHUB_OUTPUT" || echo "theater=false" >> "$GITHUB_OUTPUT"
+          echo "$changed" | grep -q "news_bot/routine_data/vod_latest.json" && echo "vod=true" >> "$GITHUB_OUTPUT" || echo "vod=false" >> "$GITHUB_OUTPUT"
+
+  theater:
+    needs: detect
+    if: needs.detect.outputs.theater == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: news_bot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r news_bot/requirements.txt
+
+      # ルーティン成果物を「劇場公開予定」シートへ投稿状態="承認待ち"で追記し、
+      # Slackへ確認依頼を通知する。PRレビュー（1次承認）を経ていても承認待ちで保存するのは、
+      # PRレビューが「情報が事実として妥当か」の確認、シート承認が「記事に載せるか」の
+      # 判断であり目的が異なるため。
+      - name: Import theater routine data
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          WP_API_URL: ${{ secrets.WP_API_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
+          SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
+          SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
+        run: python -m news_bot.main theater_import
+
+  vod:
+    needs: detect
+    if: needs.detect.outputs.vod == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: news_bot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r news_bot/requirements.txt
+
+      # ルーティン成果物に加え、VOD公式Xアカウントからの抽出も実行して統合する
+      # （X API v2の認証が必要でルーティンでは代替できないため、この経路に残している）。
+      # ANTHROPIC_API_KEY はX投稿の構造化抽出（extract_vod.py）で使う。
+      - name: Import VOD routine data
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          WP_API_URL: ${{ secrets.WP_API_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
+          SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
+          SLACK_VOD_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_VOD_CHANNEL_ID }}
+        run: python -m news_bot.main vod_import

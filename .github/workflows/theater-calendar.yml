@@ -1,25 +1,27 @@
 name: Theater Calendar
 
 on:
-  # 仕様書5.: 月曜=theater_discover（承認待ちで保存+Slack確認依頼）、
-  # 金曜=theater_publish（承認済み行から週次まとめ生成+WP投稿+Slack通知）
-  # 0 21 * * 0 (UTC) = 毎週月曜 06:00 JST
   # 0 22 * * 4 (UTC) = 毎週金曜 07:00 JST（公開日当日の朝に記事を出す）
   #
   # publish を金曜にしているのは2つの理由による。
   #  1. 日本の劇場公開は金曜が基準日のため、公開初日の朝に記事が出るのが読者にとって最も有用
   #  2. theater_calendar.week_range() は土日に実行すると翌週にずれる。月〜金なら同じ週
-  #     （直近の金曜起点）を返すため、月曜のdiscoverと同じ週を対象にできる
-  # 月曜discover → 人間が承認（月〜木） → 金曜publish の流れになる。
+  #     （直近の金曜起点）を返すため、ルーティンのdiscoverと同じ週を対象にできる
+  #
+  # theater_discover（AI Web検索）のcronは外した。Claudeのルーティンが週次で調査して
+  # PRを作る方式へ移行し、従量課金のAPI呼び出しをサブスクリプション内に収めたため
+  # （docs/feature/routine-discovery.md）。取り込みは routine-import.yml が担当する。
+  # theater_discover はルーティンが止まった場合のフォールバックとして手動実行のみ残す。
   schedule:
-    - cron: "0 21 * * 0"
     - cron: "0 22 * * 4"
   workflow_dispatch:
     inputs:
       command:
         description: "実行するサブコマンド"
         required: false
-        default: "theater_discover"
+        # 既定はpublish。discoverはAI APIの従量課金が発生するため明示的に選ばせる
+        # （通常はルーティンが担当。docs/feature/routine-discovery.md）
+        default: "theater_publish"
         type: choice
         options:
           - "theater_discover"
@@ -53,9 +55,9 @@ jobs:
       #  撤回によりシート未登録のため、cronからは外した。手動実行は引き続き可能）
       - name: Run theater calendar pipeline
         env:
-          # workflow_dispatchはinputsのcommandを使う。scheduleはgithub.event.inputsが
-          # 存在しないため、どちらのcronが発火したか(github.event.schedule)で判定する。
-          COMMAND: ${{ github.event.inputs.command || (github.event.schedule == '0 21 * * 0' && 'theater_discover') || (github.event.schedule == '0 22 * * 4' && 'theater_publish') || 'theater_discover' }}
+          # workflow_dispatchはinputsのcommandを使う。cronはpublishの1本だけなので
+          # scheduleで起動した場合は常にtheater_publish。
+          COMMAND: ${{ github.event.inputs.command || 'theater_publish' }}
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
