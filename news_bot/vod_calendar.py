@@ -7,11 +7,48 @@
 計算方法（金曜始まりではなく月曜始まり）と、重複判定キーにサービスを含める点。
 """
 
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from news_bot.theater_calendar import in_range, normalize_title
 
-__all__ = ["next_week_range", "current_week_range", "normalize_title", "in_range", "dedupe_key"]
+__all__ = [
+    "next_week_range",
+    "current_week_range",
+    "normalize_title",
+    "in_range",
+    "dedupe_key",
+    "SERVICES",
+    "VodEntry",
+]
+
+# 対象サービス（仕様書6.）。キーは vod_bot/wordpress.py の VOD_TERM_IDS と揃えた命名規則。
+# 表示名はAIへの検索プロンプト用、discover_vod._service_key()で応答テキストをキーへ逆変換する。
+#
+# discover_vod.py ではなく本モジュールに置いているのは、SERVICES と VodEntry が
+# AI SDK（anthropic / openai）に依存しない純粋なデータ定義であるため。discover_vod に
+# 置くと、ルーティン成果物を読むだけの import_routine.py や、シートの値を検証するだけの
+# check_vod_sources.py までSDKのインストールを要求してしまう。
+SERVICES = {
+    "netflix": "Netflix",
+    "amazon_prime_video": "Amazon Prime Video",
+    "unext": "U-NEXT",
+    "disney_plus": "Disney+",
+    "hulu": "Hulu",
+    "dmm_tv": "DMM TV",
+}
+
+
+@dataclass
+class VodEntry:
+    title: str
+    service: str  # SERVICESのキー（netflix / unext 等）
+    available_from: date
+    source: str
+    title_orig: str = ""
+    availability_type: str = ""  # 見放題・レンタル・購入・独占 等
+    url: str = ""
+    category: str = ""  # 映画・ドラマ・アニメ
 
 
 def next_week_range(today: date) -> tuple[date, date]:

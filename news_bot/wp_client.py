@@ -102,14 +102,30 @@ def find_post_by_title(title: str, title_orig: str = "") -> dict | None:
     return None
 
 
-def create_post(title: str, content_html: str, *, excerpt: str = "") -> dict:
-    """VOD配信情報CPTへ新規投稿を作成する（仕様書11.2）。
+def create_post(
+    title: str,
+    content_html: str,
+    *,
+    excerpt: str = "",
+    cpt_slug_env: str = "VOD_NEWS_CPT_SLUG",
+    cpt_slug_default: str = "vod_news",
+    status_env: str = "VOD_NEWS_WP_STATUS",
+) -> dict:
+    """CPTへ新規投稿を作成する（VOD: 仕様書11.2 / 劇場: 劇場仕様書11.）。
 
     投稿タイプ（スラッグ）・ステータスは環境変数で注入するため、CPT名称・
     公開運用の最終決定（15.未決定事項#1・#4）を待たずに実装できる。
+
+    参照する環境変数名を引数で差し替えられるようにしているのは、VOD配信情報
+    （vod_release）と劇場公開情報（theater_release）が別CPTであり、公開運用の
+    切り替え（draft→publish）も独立して判断したいため。既定値はVOD側のままなので
+    既存の呼び出しは変更不要。
     """
-    cpt_slug = os.environ.get("VOD_NEWS_CPT_SLUG", "vod_news")
-    status = os.environ.get("VOD_NEWS_WP_STATUS", "draft")
+    # GitHub Actions は未登録のsecretを「空文字」として渡すため、os.environ.get()の
+    # 既定値では拾えない（キー自体は存在する）。空文字は未設定として扱わないと、
+    # 投稿先URLが .../wp/v2/ になって別のエンドポイントを叩いてしまう。
+    cpt_slug = os.environ.get(cpt_slug_env) or cpt_slug_default
+    status = os.environ.get(status_env) or "draft"
     payload = {"title": title, "content": content_html, "status": status}
     if excerpt:
         payload["excerpt"] = excerpt

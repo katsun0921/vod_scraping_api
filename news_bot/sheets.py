@@ -372,6 +372,37 @@ class NewsBotSheets:
         ]
         self._worksheet("劇場公開予定").append_row(row, value_input_option="USER_ENTERED")
 
+    def get_approved_theater_items(self, start: date, end: date) -> list[dict]:
+        """投稿状態=承認済み、かつ公開日が対象期間内の行を返す（`theater_publish`対象、劇場仕様書11.）。
+
+        get_approved_vod_items()と同型。VOD側にある「編集部おすすめ」列の正規化が無いのは、
+        劇場公開予定シートにこの列が存在せず、注目作の判定を「SNS優先度(S/A/B/C)」列の
+        文字列比較で行うため（compose_theater.featured_items()）。
+        """
+        rows = self._worksheet("劇場公開予定").get_all_records()
+        result = []
+        for row in rows:
+            if row.get("投稿状態") != "承認済み":
+                continue
+            try:
+                release_date = date.fromisoformat(str(row.get("公開日", "")))
+            except ValueError:
+                continue
+            if not (start <= release_date <= end):
+                continue
+            result.append(row)
+        return result
+
+    def update_theater_item_status(self, dedupe_key: str, *, post_status: str) -> None:
+        """重複キーをキーに「劇場公開予定」シートの投稿状態列を更新する。"""
+        ws = self._worksheet("劇場公開予定")
+        cell = ws.find(dedupe_key, in_column=_THEATER_ITEMS_HEADER.index("重複キー") + 1)
+        if cell is None:
+            logger.warning("劇場公開予定に重複キーが見つかりません: %s", dedupe_key)
+            return
+        status_col = _THEATER_ITEMS_HEADER.index("投稿状態") + 1
+        ws.update_cell(cell.row, status_col, post_status)
+
     def get_active_vod_x_accounts(self) -> list[dict]:
         """「VOD情報源」シートから取得方式=xで有効な公式Xアカウントを取得する
         （fetch_vod_x.fetch_all_vod_x()へ渡す形に整形。仕様書7.3）。

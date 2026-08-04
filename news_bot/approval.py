@@ -210,6 +210,52 @@ def notify_vod_weekly_summary(item_count: int, wp_post_url: str, x_thread_parts:
     return _post_message(text, channel=os.environ.get("SLACK_VOD_CHANNEL_ID") or None)
 
 
+def notify_theater_weekly_summary(
+    item_count: int,
+    wp_post_url: str,
+    x_thread_parts: list[str],
+    social_post: str,
+    featured_posts: list[str],
+) -> tuple[str, str]:
+    """週次まとめ（`theater_publish`）の結果をSlackへ通知する（劇場仕様書11.）。
+
+    notify_vod_weekly_summary()と同型だが、投稿先ごとに文面が異なるため
+    親メッセージ（WP投稿結果+Xスレッド）とスレッド返信（他SNS用・注目作個別）に分ける。
+    1メッセージに全部入れると長すぎてコピーしづらいため。
+
+    Facebook / Threads / Bluesky はAPI連携せず、ここに出した完成形テキストを
+    人間が手動投稿する運用とする（アプリ審査・ページ権限の取得コストが投稿頻度に
+    見合わないため）。
+    """
+    theater_channel = os.environ.get("SLACK_THEATER_CHANNEL_ID") or None
+
+    thread_sections = "\n\n".join(
+        f"――― 投稿 {i}/{len(x_thread_parts)} ―――\n{part}" for i, part in enumerate(x_thread_parts, 1)
+    )
+    parent_text = (
+        f"*今週公開の映画まとめを生成しました（{item_count}件）*\n"
+        f"WP投稿（下書き）: {wp_post_url or '投稿失敗（ログを確認してください）'}\n\n"
+        f"*X（スレッド）* — 1→2の順に手動で投稿してください（2件目は1件目への返信）。\n\n"
+        f"{thread_sections}"
+    )
+    channel, ts = _post_message(parent_text, channel=theater_channel)
+
+    _post_message(
+        f"*Facebook / Threads / Bluesky 用*（1投稿で完結。そのままコピーして使えます）\n\n{social_post}",
+        channel=channel,
+        thread_ts=ts,
+    )
+
+    for i, post in enumerate(featured_posts, 1):
+        _post_message(
+            f"*注目作の個別投稿案 {i}/{len(featured_posts)}*（SNS優先度=S・レビュー記事あり）\n\n{post}",
+            channel=channel,
+            thread_ts=ts,
+        )
+
+    return channel, ts
+
+
 def notify_manual_post(entry: NewsEntry, rank: str, honbun: str, reply: str) -> tuple[str, str]:
     """[未使用・1記事単独投稿用] 手動投稿用のテンプレートをSlackに送信する（自動投稿は行わない）。
 

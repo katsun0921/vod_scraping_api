@@ -46,18 +46,39 @@ Katsumascore への流入を増やすため、毎週公開される劇場映画�
 
 ## 5. 実行方式
 
-`news_bot.main` に `theater` サブコマンドを追加する。
+`news_bot.main` のサブコマンド:
 
 ```bash
-python -m news_bot.main theater
+python -m news_bot.main theater_import        # ルーティン成果物を取り込み（承認待ちで保存）
+python -m news_bot.main theater_publish       # 承認済み行から週次まとめを展開
+python -m news_bot.main theater_add <URL>     # 人間が見つけたURLから1件追記
+python -m news_bot.main theater_discover      # [フォールバック] AI Web検索で発見（従量課金）
+python -m news_bot.main theater               # [実質未使用] 「劇場情報源」シート巡回
 ```
 
-想定スケジュール:
+### 現行: ルーティン方式
 
-- 毎週月曜: 今週金曜〜翌週木曜公開作品を収集し、週次まとめ投稿案を作る
-- 毎週木曜または金曜朝: 「本日公開」「週末に観たい」系の投稿案を作る
+**AI Web検索部分は Claude のルーティンへ移行した**（[routine-discovery.md](./routine-discovery.md)）。
+Claude APIを従量課金で呼ぶ代わりに、ルーティンが週次で調査してPRを作り、人間のレビュー（1次承認）を
+経てマージされたものを取り込む。
 
-初期MVPでは月曜実行のみを実装する。
+| ジョブ | タイミング | 内容 |
+|---|---|---|
+| ルーティン | 毎週金曜 09:00 JST | 対象週の公開作品を調査し、`routine_data/theater_latest.json` を更新してPR作成 |
+| `theater_import` | PRマージ時（`routine-import.yml`） | 成果物JSONを取り込み、Katsumascore照合の上で承認待ちで保存。Slackに確認依頼を通知 |
+| `theater_publish` | 毎週金曜 07:00 JST | 対象週の承認済み行から週次まとめを生成し、WP CPT投稿・SNS投稿案をSlackへ送信 |
+
+`theater_publish` を金曜にしているのは2つの理由による。
+
+1. **日本の劇場公開は金曜が基準日**のため、公開初日の朝に記事が出るのが読者にとって最も有用
+2. `week_range()` は**土日に実行すると翌週にずれる**。月〜金なら同じ週（直近の金曜起点）を
+   返すため、発見と publish を同じ週に揃えられる
+
+### フォールバック: API方式
+
+`theater_discover`（Claude/OpenAI併用のAI Web検索）は**cronを停止したがコードは残している**。
+ルーティンが止まった場合に `theater-calendar.yml` の `workflow_dispatch` から手動実行できる。
+従量課金が発生するため、`workflow_dispatch` の既定値は `theater_publish` にしてある。
 
 ## 6. 取得対象期間
 
@@ -269,35 +290,61 @@ SNS優先度(S/A/B/C)
 
 ```text
 news_bot/
-├── fetch_theater.py        # 劇場公開情報の取得
-├── theater_calendar.py     # 週範囲計算・正規化・重複キー生成
-├── compose_theater.py      # 週次まとめ/個別投稿案生成
-├── main.py                 # theater サブコマンド追加
-└── sheets.py               # 劇場公開予定シート対応
+├── fetch_theater.py        # 劇場公開情報の取得（RSS/TMDb。規約上の理由で現在未使用）
+├── discover_theater.py     # AI Web検索による発見（フォールバック）+ URLからの個別抽出
+├── theater_calendar.py     # 週範囲計算・正規化・重複キー生成 + TheaterEntry のデータ定義
+│                            #   （AI SDK非依存にするため fetch_theater.py から移動。
+│                            #     fetch_theater.py 側で再エクスポート）
+├── import_routine.py       # ルーティン成果物JSONの読み込み（VODと共用）
+├── routine_data/
+│   └── theater_latest.json # ルーティンが週次で上書きコミットする成果物
+├── compose_theater.py      # 週次まとめ本文（WP用HTML）・SNS投稿案生成
+├── wp_client.py            # WP REST API クライアント（CPT投稿・既存記事照合。VODと共用）
+├── main.py                 # theater_import / theater_publish / theater_discover /
+│                            #   theater_add / theater サブコマンド
+├── sheets.py               # 劇場公開予定シート対応
+└── approval.py             # 発見結果の確認依頼・週次まとめ通知
+
+.github/workflows/
+├── routine-import.yml      # ルーティンPRのマージを検知して theater_import を実行
+├── theater-calendar.yml    # 金曜=theater_publish（cron 1本）。theater_discover は手動のみ
+└── theater-add-url.yml     # URLからの手動追記（workflow_dispatch）
 ```
 
 ## 13. 環境変数
 
-初期MVPでは既存のGoogle Sheets / Slack / AI関連環境変数を流用する。
+既存のGoogle Sheets / Slack / AI関連環境変数を流用する。
 
-追加候補:
+追加分:
 
 | 変数名 | 用途 | 必須 |
 |---|---|---|
-| `THEATER_FETCH_WEEKS_AHEAD` | 何週先まで取得するか | 任意 |
-| `THEATER_SUMMARY_URL` | Katsumascore側の公開予定まとめページURL | 任意 |
-| `TMDB_API_KEY` | TMDb補完を使う場合 | 任意 |
+| `WP_API_URL` | WP REST API ベースURL（VOD・`vod_bot`と共用） | ○ |
+| `WP_USER` | WP Application Password ユーザー名（同上） | ○ |
+| `WP_APP_PASSWORD` | WP Application Password（同上） | ○ |
+| `THEATER_NEWS_CPT_SLUG` | CPTのRESTスラッグ（既定 `theater_release`） | 任意 |
+| `THEATER_NEWS_WP_STATUS` | 投稿ステータス（既定 `draft`） | 任意 |
+| `SLACK_THEATER_CHANNEL_ID` | 劇場公開通知の専用チャンネル（未設定なら承認チャンネル） | 任意 |
+
+> **未登録のGitHub Secretは空文字で渡る**ため、`os.environ.get(k, default)` では既定値に
+> フォールバックしない。`wp_client.create_post()` は空文字を未設定として扱うよう修正済み
+> （2026-08-05）。
+
+投稿先CPTは VOD（`vod_release`）とは**別**にした。理由は
+[THEATER_RELEASE_CPT_SPEC.md](../../../katsumascore_wordpress_theme/docs/feature/THEATER_RELEASE_CPT_SPEC.md)
+を参照（「映画館で観たい」と「家で観たい」は別の検索意図であるため）。
 
 ## 14. MVPスコープ
 
-- [ ] `劇場公開予定` シートを自動作成する
-- [ ] 今週金曜〜翌週木曜の対象期間を計算する
-- [ ] 劇場公開情報を1ソースから取得する
-- [ ] タイトル・公開日・公式URL・情報源を保存する
-- [ ] `公開日 + 正規化タイトル` で重複判定する
-- [ ] Katsumascore URLの手動入力または簡易照合に対応する
-- [ ] SNS優先度をAIまたはルールで判定する
-- [ ] 週次まとめ投稿案をSlackに送る
+- [x] `劇場公開予定` シートを自動作成する
+- [x] 今週金曜〜翌週木曜の対象期間を計算する
+- [x] 劇場公開情報を取得する（ルーティン方式 + AI Web検索フォールバック + URL手動追記）
+- [x] タイトル・公開日・公式URL・情報源を保存する
+- [x] `公開日 + 正規化タイトル` で重複判定する
+- [x] Katsumascore照合（正規化タイトルの完全一致。一致しなければ空欄＝誤リンクを作らない）
+- [ ] SNS優先度をAIまたはルールで判定する（**現状は承認時に人間が`S`を手入力**）
+- [x] 週次まとめ投稿案をSlackに送る（X / Facebook等 / 注目作個別の3種類）
+- [x] WP CPT（`theater_release`）へ下書き投稿する
 
 ## 15. 将来拡張
 
@@ -334,8 +381,30 @@ news_bot/
   **規約上の理由でいずれも現在未使用**（コードは残存）
 - `main.py`: `theater_discover_cycle()` — AI発見→対象期間フィルタ→重複チェック→保存
   （投稿状態=`承認待ち`）。旧`theater_cycle()`（劇場情報源シート巡回）も残存するが実質未使用
-- `.github/workflows/theater-calendar.yml`: 毎週月曜 06:00 JST に`theater_discover`を実行
-  （`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`を渡す）
+- `compose_theater.py`: 週次まとめ本文（WP用HTML）・SNS投稿案の生成（11.）。
+  公開日別に区切り、SNS優先度=`S`を注目作として冒頭に置く。X（スレッド2分割）/
+  Facebook等（1投稿完結）/ 注目作の個別投稿 の3種類を生成する
+- `main.py`: `theater_publish_cycle()` — 承認済み行→まとめ生成→`theater_release` CPTへ
+  下書き投稿→SNS投稿案をSlack送信→投稿状態を`投稿済み`へ更新（11.）
+- `sheets.py`: `get_approved_theater_items()` / `update_theater_item_status()`
+- `approval.py`: `notify_theater_weekly_summary()` — 親メッセージ（WP投稿結果+Xスレッド）+
+  スレッド返信（他SNS用・注目作個別）
+- `.github/workflows/theater-calendar.yml`: 毎週月曜 06:00 JST に`theater_discover`、
+  毎週金曜 07:00 JST に`theater_publish`を実行（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`を渡す）
+
+### 投稿状態の実際の値
+
+仕様書8.の投稿状態テーブル（`未判定`/`投稿候補`/`保存のみ`/`投稿案送信済み`/`手動投稿済み`/`除外`）は
+初期設計時のもので、**実装では VOD 側と揃えた3値で運用している**。
+
+| 値 | 意味 | 誰が設定するか |
+|---|---|---|
+| `承認待ち` | AI発見直後。人間の確認前 | `theater_discover_cycle()` |
+| `承認済み` | 人間が実在・公開日を確認した | 人間（シート上で手動） |
+| `投稿済み` | 週次まとめに掲載しWP投稿済み | `theater_publish_cycle()` |
+
+`theater_publish` の対象は `承認済み` のみ。SNS優先度=`C` の行は承認済みでも本文・投稿案から
+除外する（対象外・情報不足・重複のため）。
 
 ### 設計変更: レイヤー1データソースの決め方
 
@@ -406,9 +475,11 @@ TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates
 | 2 | Googleカレンダー同期 | 確定行をGoogle Calendar APIでイベント化する（サービスアカウントにスコープ追加・重複防止はextendedPropertiesに重複キーを保持）。未実装 |
 | 2b | URL入力ツールの改善 | 現状はActionsタブの`Theater Add URL` workflow（`workflow_dispatch`）でURLを入力する。Slackチャンネル巡回（投稿されたURLをcronで拾う。要`channels:history`スコープ+since管理）やGoogle Form経由は将来の選択肢。いずれも`theater_add_url()`をそのまま流用できる |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/drop/coming-soon-pipeline.md`（2026-07-22に`docs/drop/`へ移動・凍結）の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
-| 4 | Katsumascore照合（10.） | WP REST API検索の実装が必要（`vod_bot/wordpress.py` にタイトル/tmdb_id検索関数が無い）。現状 `Katsumascore URL` / `WP post_id` は常に空欄 |
-| 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。現状は常に空欄で保存される |
+| 4 | Katsumascore照合（10.） | **`theater_publish`の効果を直接制約している最優先項目。** `news_bot/wp_client.py` の `find_post_by_title()`（VOD側で実装済み・正規化タイトル完全一致）を `theater_discover_cycle()` から呼べば流用できる。現状 `Katsumascore URL` は常に空欄のため、週次まとめ記事から自サイトのレビューへの内部リンクが1本も張られず、注目作の個別投稿案も0件になる（`build_featured_posts()` はURLがある作品のみ対象） |
+| 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。**現状は常に空欄で保存されるため、`compose_theater.featured_items()` が常に0件を返し、記事冒頭の注目作セクションが出ない。** 当面は人間がシート上で`S`を手入力する運用で回せる（承認作業と同時に行える） |
 | 6 | AI発見の精度検証 | `theater_discover_cycle()`を実データで数週回し、取りこぼし（網羅性）・実在しない作品（ハルシネーション）・公開日誤りの頻度を確認する。プロンプトや`_MAX_WEB_SEARCHES`の調整はこの結果を見て行う |
-| 7 | `compose_theater.py`（11.） | 週次まとめ・個別投稿案の生成は未実装 |
-| 8 | Slack通知（11.） | 週次まとめ投稿案のSlack送信は未実装（`approval.py` のテンプレート送信パターンを流用予定） |
+| ~~7~~ | ~~`compose_theater.py`（11.）~~ | **実装済み**（2026-08-04）。公開日別セクション+注目作。X/Facebook等/個別投稿の3種類 |
+| ~~8~~ | ~~Slack通知（11.）~~ | **実装済み**（2026-08-04）。`approval.notify_theater_weekly_summary()` |
+| 10 | Facebook API連携 | 現状は未対応。`build_social_post()` が生成した完成形テキストをSlackから人間が手動投稿する。API連携にはMeta開発者アプリの審査（`pages_manage_posts`権限）とFacebookページの管理者権限が必要で、週1回の投稿頻度に対して運用コストが見合わないため見送った。Threads / Bluesky も同じテキストを流用できる |
+| 11 | フロント側の`/theater-release/`実装 | `katsumascore-front` に単体ページ・アーカイブ・サイトマップ登録が必要。`feature/vod-release-page`ブランチの`/vod-release/`実装を流用できる。**未実装の間はWP投稿しても閲覧できるURLが無い**ため、`THEATER_NEWS_WP_STATUS=draft`（既定値）のまま運用すること |
 | 9 | 旧取得方式の再開条件 | `fetch_theater.py`（RSS/TMDb）と「劇場情報源」シート巡回は、PR TIMESパートナーメディア提携またはTMDb商用ライセンス契約が成立した場合のみ再開する（[theater-sources-candidates.md](theater-sources-candidates.md)） |

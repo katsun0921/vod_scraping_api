@@ -1,19 +1,24 @@
 name: VOD Calendar
 
 on:
-  # 仕様書5.: 木曜=vod_discover（承認待ちで保存+Slack確認依頼）、
-  # 月曜=vod_publish（承認済み行から週次まとめ生成+WP投稿+Slack通知）
-  # 0 21 * * 3 (UTC) = 毎週木曜 06:00 JST
   # 0 22 * * 0 (UTC) = 毎週月曜 07:00 JST
+  # 月曜=vod_publish（承認済み行から週次まとめ生成+WP投稿+Slack通知、仕様書5.）
+  #
+  # vod_discover（AI Web検索）のcronは外した。Claudeのルーティンが週次で調査して
+  # PRを作る方式へ移行し、従量課金のAPI呼び出しをサブスクリプション内に収めたため
+  # （docs/feature/routine-discovery.md）。取り込みは routine-import.yml が担当し、
+  # X公式アカウントからの抽出（X API v2の認証が必要でルーティンでは代替不可）も
+  # そちらで実行する。vod_discover はフォールバックとして手動実行のみ残す。
   schedule:
-    - cron: "0 21 * * 3"
     - cron: "0 22 * * 0"
   workflow_dispatch:
     inputs:
       command:
         description: "実行するサブコマンド"
         required: false
-        default: "vod_discover"
+        # 既定はpublish。discoverはAI APIの従量課金が発生するため明示的に選ばせる
+        # （通常はルーティンが担当。docs/feature/routine-discovery.md）
+        default: "vod_publish"
         type: choice
         options:
           - "vod_discover"
@@ -39,9 +44,9 @@ jobs:
 
       - name: Run VOD calendar pipeline
         env:
-          # workflow_dispatchはinputsのcommandを使う。scheduleはgithub.event.inputsが
-          # 存在しないため、どちらのcronが発火したか(github.event.schedule)で判定する。
-          COMMAND: ${{ github.event.inputs.command || (github.event.schedule == '0 21 * * 3' && 'vod_discover') || (github.event.schedule == '0 22 * * 0' && 'vod_publish') || 'vod_discover' }}
+          # workflow_dispatchはinputsのcommandを使う。cronはpublishの1本だけなので
+          # scheduleで起動した場合は常にvod_publish。
+          COMMAND: ${{ github.event.inputs.command || 'vod_publish' }}
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
           GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

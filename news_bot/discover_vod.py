@@ -18,13 +18,14 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
 from datetime import date
 
 from anthropic import Anthropic
 from openai import OpenAI
 
-from news_bot.vod_calendar import dedupe_key
+from news_bot.vod_calendar import SERVICES, VodEntry, dedupe_key
+
+__all__ = ["SERVICES", "VodEntry", "discover_all", "discover_claude", "discover_openai"]
 
 logger = logging.getLogger(__name__)
 
@@ -36,28 +37,10 @@ _MAX_CONTINUATIONS = 3  # サーバー側ツールのpause_turn継続上限
 
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
-# 対象サービス（仕様書6.）。キーは vod_bot/wordpress.py の VOD_TERM_IDS と揃えた命名規則。
-# 表示名はAIへの検索プロンプト用、_service_key()で応答テキストをキーへ逆変換する。
-SERVICES = {
-    "netflix": "Netflix",
-    "amazon_prime_video": "Amazon Prime Video",
-    "unext": "U-NEXT",
-    "disney_plus": "Disney+",
-    "hulu": "Hulu",
-    "dmm_tv": "DMM TV",
-}
-
-
-@dataclass
-class VodEntry:
-    title: str
-    service: str  # SERVICESのキー（netflix / unext 等）
-    available_from: date
-    source: str
-    title_orig: str = ""
-    availability_type: str = ""  # 見放題・レンタル・購入・独占 等
-    url: str = ""
-    category: str = ""  # 映画・ドラマ・アニメ
+# SERVICES / VodEntry の定義は vod_calendar.py へ移した（AI SDKに依存しない純粋な
+# データ定義であり、import_routine.py や check_vod_sources.py がSDK抜きで参照できるように
+# するため）。既存の `from news_bot.discover_vod import SERVICES, VodEntry` を壊さないよう
+# ここで再エクスポートする。
 
 
 def _build_prompt(start: date, end: date) -> str:

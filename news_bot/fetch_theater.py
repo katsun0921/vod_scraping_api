@@ -22,12 +22,15 @@ TMDb取得時は release_date がAPIレスポンスの構造化データから�
 import logging
 import os
 import re
-from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
 import feedparser
 import requests
+
+from news_bot.theater_calendar import TheaterEntry
+
+__all__ = ["TheaterEntry", "fetch_all"]
 
 logger = logging.getLogger(__name__)
 
@@ -47,16 +50,10 @@ _TMDB_GENRE_JA = {
 }
 
 
-@dataclass
-class TheaterEntry:
-    title: str
-    url: str
-    source: str
-    summary: str = ""
-    release_date: Optional[date] = None
-    original_title: str = ""
-    category: str = ""
-    distributor: str = ""
+# TheaterEntry の定義は theater_calendar.py へ移した（AI SDK・feedparser・requests に
+# 依存しない純粋なデータ定義であり、import_routine.py がRSS取得系の依存抜きで参照できる
+# ようにするため）。既存の `from news_bot.fetch_theater import TheaterEntry` を壊さないよう
+# ここで再エクスポートする。
 
 
 def _infer_year(month: int, day: int, today: date) -> int:
