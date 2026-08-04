@@ -45,3 +45,29 @@ def test_raises_when_no_text_block_exists():
     response = _response(types.SimpleNamespace(type="thinking", thinking="..."))
     with pytest.raises(ValueError, match="テキストブロックがありません"):
         ai_clients._first_text_block(response)
+
+
+def test_call_claude_disables_thinking(monkeypatch):
+    """thinkingを無効化して呼ぶ（max_tokensを思考で使い切る事故を防ぐ）。
+
+    claude-sonnet-5 はthinking省略時にadaptive thinkingで動作し、max_tokensは
+    thinking+テキストの合計に効く。実運用では思考だけで4096を使い切り、応答が
+    types=['thinking']のみになってX投稿の構造化抽出が全バッチ失敗した。
+    """
+    captured = {}
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        resp = _response(_block("text", "[]"))
+        resp.usage = types.SimpleNamespace(
+            cache_read_input_tokens=0, cache_creation_input_tokens=0, input_tokens=10
+        )
+        return resp
+
+    client = types.SimpleNamespace(messages=types.SimpleNamespace(create=fake_create))
+    monkeypatch.setattr(ai_clients, "Anthropic", lambda **_: client)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+
+    ai_clients.call_claude("system", "user")
+
+    assert captured["thinking"] == {"type": "disabled"}
