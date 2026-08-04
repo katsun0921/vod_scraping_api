@@ -24,7 +24,13 @@ _ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 _OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 _GROK_MODEL = os.environ.get("GROK_MODEL", "grok-4")
 _GROK_BASE_URL = "https://api.x.ai/v1"
+# claude-sonnet-5 は thinking を省略すると adaptive thinking で動作し、max_tokens は
+# 「thinking + 応答テキスト」の合計に効く。4096では思考だけで使い切ってテキストブロックが
+# 生成されず、応答が thinking のみ（types=['thinking']）になる事象が実際に発生した
+# （2026-08-04 の vod_discover 実行でX投稿抽出が全バッチ失敗）。
+# 本用途（JSON配列を返す構造化抽出・判定）は思考を必要としないため明示的に無効化する。
 _MAX_TOKENS = 4096  # judge.judge_batch()が最大_BATCH_SIZE件分のJSON配列を1レスポンスで返すため
+_THINKING = {"type": "disabled"}
 
 
 def call_claude(system_prompt: str, user_content: str) -> str:
@@ -33,11 +39,14 @@ def call_claude(system_prompt: str, user_content: str) -> str:
     1回のrunでjudge()が記事ごとに同じsystem_prompt（judge_system_prompt.md）を
     繰り返し送るため、cache_controlを付けて2件目以降の入力コストを圧縮する
     （ヒットは`usage.cache_read_input_tokens`で確認できる）。
+
+    thinkingは明示的に無効化する（上の_THINKING定義のコメント参照）。
     """
     client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
     response = client.messages.create(
         model=_ANTHROPIC_MODEL,
         max_tokens=_MAX_TOKENS,
+        thinking=_THINKING,
         system=[
             {
                 "type": "text",
