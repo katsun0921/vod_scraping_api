@@ -18,7 +18,7 @@ X APIもClaude APIも呼ばないため課金は発生せず、シートへの�
 import logging
 import sys
 
-from news_bot.discover_vod import SERVICES
+from news_bot.vod_calendar import SERVICES
 from news_bot.sheets import NewsBotSheets
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")

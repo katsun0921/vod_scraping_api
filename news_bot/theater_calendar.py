@@ -9,7 +9,29 @@ tmdb_id・類似度判定によるあいまい一致は将来拡張（仕様書9
 
 import re
 import unicodedata
+from dataclasses import dataclass
 from datetime import date, timedelta
+from typing import Optional
+
+
+@dataclass
+class TheaterEntry:
+    """劇場公開作品1件。取得元（RSS / AI Web検索 / ルーティン成果物）によらず共通。
+
+    fetch_theater.py ではなく本モジュールに置いているのは、AI SDK・feedparser・requests に
+    依存しない純粋なデータ定義であるため。fetch_theater に置くと、ルーティン成果物を
+    読むだけの import_routine.py までRSS取得系の依存を要求してしまう。
+    """
+
+    title: str
+    url: str
+    source: str
+    summary: str = ""
+    release_date: Optional[date] = None
+    original_title: str = ""
+    category: str = ""
+    distributor: str = ""
+
 
 # 副題区切り等で表記が揺れやすい記号を軽く吸収する（仕様書9.正規化ルール）。
 # NFKC正規化で全角/半角の大半は統一されるが、波ダッシュ(U+301C)や各種ダッシュ記号は

@@ -44,6 +44,7 @@ from news_bot import (
     fetch_theater,
     fetch_vod_x,
     fetch_x,
+    import_routine,
     judge,
     post_x,
     theater_calendar,
@@ -213,19 +214,18 @@ def theater_cycle() -> dict:
     return stats
 
 
-def theater_discover_cycle() -> dict:
-    """AIのWeb検索で対象週の劇場公開作品を発見し、承認待ちとして保存する。
+def _save_theater_entries(entries: list, start: date, end: date, label: str) -> dict:
+    """劇場公開エントリを対象期間・重複でフィルタし、承認待ちとしてシートへ保存する。
 
-    レイヤー1データソース（特定サイトの自動取得）が規約上すべて撤回されたため、
-    Claude/OpenAIのWeb検索併用で事実情報のみを収集する方式（discover_theater.py）。
-    AIの結果は誤り得るため投稿状態="承認待ち"で保存し、人間がシートを確認・
-    修正・承認する。承認後の下流処理（週次サマリー・Slack/WP投稿）は未実装。
+    エントリの供給元（AI Web検索 / ルーティン成果物JSON）によらず共通の保存処理。
+    AI・ルーティンいずれの結果も誤り得るため投稿状態="承認待ち"で保存し、人間が
+    シートを確認・修正・承認するまで下流（theater_publish）には流れない。
+
+    Args:
+        label: ログ表示用の呼び出し元名（theater_discover_cycle 等）
     """
     sheets = NewsBotSheets()
-    start, end = theater_calendar.week_range(date.today())
     existing_keys = sheets.get_existing_theater_keys()
-
-    entries = discover_theater.discover_all(start, end)
     stats = {"discovered": len(entries), "out_of_range": 0, "duplicate": 0, "saved": 0, "notified": 0}
 
     saved_entries = []
@@ -240,13 +240,30 @@ def theater_discover_cycle() -> dict:
             stats["duplicate"] += 1
             continue
 
+        # Katsumascore照合（仕様書10.）。既存レビュー記事が見つかれば週次まとめから
+        # 内部リンクを張れる。照合はタイトル完全一致のみで、一致しなければ空欄のまま
+        # （誤リンクを作らないことを優先する）。
+        katsumascore_url = ""
+        wp_post_id = ""
+        try:
+            post = wp_client.find_post_by_title(entry.title, entry.original_title)
+            if post:
+                katsumascore_url = post.get("link", "")
+                wp_post_id = str(post.get("id", "")) if post.get("id") else ""
+        except Exception:
+            logger.exception("Katsumascore照合失敗: %s", entry.title)
+
         sheets.append_theater_item(
             release_date=release_date_str,
             title=entry.title,
             dedupe_key=key,
+            original_title=entry.original_title,
+            category=entry.category,
             distributor=entry.distributor,
             official_url=entry.url,
             source=entry.source,
+            katsumascore_url=katsumascore_url,
+            wp_post_id=wp_post_id,
             post_status="承認待ち",
         )
         existing_keys.add(key)
@@ -262,8 +279,38 @@ def theater_discover_cycle() -> dict:
         except Exception:
             logger.exception("劇場公開Slack通知失敗（%d件）", len(saved_entries))
 
-    logger.info("theater_discover_cycle(%s〜%s) 完了: %s", start, end, stats)
+    logger.info("%s(%s〜%s) 完了: %s", label, start, end, stats)
     return stats
+
+
+def theater_discover_cycle() -> dict:
+    """AIのWeb検索で対象週の劇場公開作品を発見し、承認待ちとして保存する。
+
+    レイヤー1データソース（特定サイトの自動取得）が規約上すべて撤回されたため、
+    Claude/OpenAIのWeb検索併用で事実情報のみを収集する方式（discover_theater.py）。
+
+    ルーティン方式（theater_import）へ移行後もコードを残しているのは、ルーティンが
+    止まった場合のフォールバックとして手動実行できるようにするため
+    （docs/feature/routine-discovery.md）。
+    """
+    start, end = theater_calendar.week_range(date.today())
+    entries = discover_theater.discover_all(start, end)
+    return _save_theater_entries(entries, start, end, "theater_discover_cycle")
+
+
+def theater_import_cycle() -> dict:
+    """ルーティンが出力した劇場公開JSONを取り込み、承認待ちとして保存する。
+
+    Claude APIのWeb検索を従量課金で呼ぶ代わりに、Claudeのルーティンが週次で調査して
+    リポジトリにJSONをコミットし、そのPRを人間がレビュー（＝1次承認）してマージする。
+    本サイクルはマージ後に走り、既存の保存処理へ流す（docs/feature/routine-discovery.md）。
+
+    PRレビューを通っていても投稿状態は"承認待ち"で保存する。PRレビューは「AIが拾った
+    情報が妥当か」の確認であり、シート上の承認は「記事に載せるか」の判断で目的が異なるため。
+    """
+    start, end = theater_calendar.week_range(date.today())
+    entries = import_routine.load_theater_entries(import_routine.latest_path("theater"))
+    return _save_theater_entries(entries, start, end, "theater_import_cycle")
 
 
 def theater_add_url(url: str) -> dict:
@@ -383,29 +430,53 @@ def vod_discover_cycle() -> dict:
     保存前にKatsumascore照合（10.）を行い、既存レビュー記事が見つかればURL/post_idを付与する。
     1ソースの失敗は他方に伝播させない。
     """
-    sheets = NewsBotSheets()
-    start, end = vod_calendar.next_week_range(date.today())
-    existing_keys = sheets.get_existing_vod_keys()
-
     ai_entries: list = []
     try:
-        ai_entries = discover_vod.discover_all(start, end)
+        start_tmp, end_tmp = vod_calendar.next_week_range(date.today())
+        ai_entries = discover_vod.discover_all(start_tmp, end_tmp)
     except Exception:
         logger.exception("VOD AI Web検索失敗")
 
-    x_entries: list = []
+    return _save_vod_entries(ai_entries, "vod_discover_cycle")
+
+
+def _fetch_vod_x_entries(sheets: NewsBotSheets) -> list:
+    """VOD公式Xアカウントの投稿から配信開始情報を抽出する（仕様書7.3/7.4）。
+
+    X API v2 の認証が必要なためルーティンでは代替できず、AI Web検索をルーティンへ
+    移行した後もGitHub Actions側に残す処理（docs/feature/routine-discovery.md）。
+    失敗しても呼び出し元のサイクルは止めない。
+    """
     try:
         x_accounts = sheets.get_active_vod_x_accounts()
         x_posts, updated_states = fetch_vod_x.fetch_all_vod_x(x_accounts)
-        x_entries = extract_vod.extract_from_x_posts(x_posts)
+        entries = extract_vod.extract_from_x_posts(x_posts)
         for handle, state in updated_states.items():
             if state["user_id"] is None:
                 continue
             sheets.update_vod_x_account_state(handle, user_id=state["user_id"], since_id=state["since_id"])
+        return entries
     except Exception:
         logger.exception("VOD公式Xアカウント取得・抽出失敗")
+        return []
 
-    merged = extract_vod.merge_all(x_entries, ai_entries)
+
+def _save_vod_entries(source_entries: list, label: str) -> dict:
+    """VOD配信エントリをX抽出結果と統合し、対象期間・重複でフィルタして保存する。
+
+    エントリの供給元（AI Web検索 / ルーティン成果物JSON）によらず共通の保存処理。
+    X抽出はどちらの経路でも実行するため、ここで統合する（仕様書7.5）。
+
+    Args:
+        source_entries: AI Web検索またはルーティンJSON由来のVodEntry一覧
+        label: ログ表示用の呼び出し元名
+    """
+    sheets = NewsBotSheets()
+    start, end = vod_calendar.next_week_range(date.today())
+    existing_keys = sheets.get_existing_vod_keys()
+
+    x_entries = _fetch_vod_x_entries(sheets)
+    merged = extract_vod.merge_all(x_entries, source_entries)
     stats = {"discovered": len(merged), "out_of_range": 0, "duplicate": 0, "saved": 0, "notified": 0}
 
     saved_entries = []
@@ -456,8 +527,19 @@ def vod_discover_cycle() -> dict:
         except Exception:
             logger.exception("VOD配信予定Slack通知失敗（%d件）", len(saved_entries))
 
-    logger.info("vod_discover_cycle(%s〜%s) 完了: %s", start, end, stats)
+    logger.info("%s(%s〜%s) 完了: %s", label, start, end, stats)
     return stats
+
+
+def vod_import_cycle() -> dict:
+    """ルーティンが出力したVOD配信JSONを取り込み、承認待ちとして保存する。
+
+    AI Web検索部分のみをルーティンへ移行したもの。X公式アカウントからの抽出は
+    X API v2の認証が必要でルーティンでは代替できないため、本サイクル内で
+    引き続き実行し、ルーティンの結果と統合する（docs/feature/routine-discovery.md）。
+    """
+    entries = import_routine.load_vod_entries(import_routine.latest_path("vod"))
+    return _save_vod_entries(entries, "vod_import_cycle")
 
 
 def vod_publish_cycle() -> dict:
@@ -555,6 +637,8 @@ if __name__ == "__main__":
     # "theater_discover": AI Web検索による劇場公開作品の発見（theater_discover_cycle）。
     # "theater_add <URL>": 人間が見つけたURLからの追記（theater_add_url）。
     # "theater_publish": 承認済み劇場公開予定の週次まとめ生成・WP投稿・Slack通知（theater_publish_cycle）。
+    # "theater_import": ルーティン成果物JSONの取り込み（theater_import_cycle）。
+    # "vod_import": ルーティン成果物JSON+X抽出の取り込み（vod_import_cycle）。
     # "vod_discover": AI Web検索+VOD公式X投稿抽出によるVOD配信開始作品の発見（vod_discover_cycle）。
     # "vod_publish": 承認済みVOD配信予定の週次まとめ生成・WP投稿・Slack通知（vod_publish_cycle）。
     if len(sys.argv) > 1 and sys.argv[1] == "x":
@@ -569,6 +653,10 @@ if __name__ == "__main__":
         theater_add_url(sys.argv[2])
     elif len(sys.argv) > 1 and sys.argv[1] == "theater_publish":
         theater_publish_cycle()
+    elif len(sys.argv) > 1 and sys.argv[1] == "theater_import":
+        theater_import_cycle()
+    elif len(sys.argv) > 1 and sys.argv[1] == "vod_import":
+        vod_import_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_discover":
         vod_discover_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_publish":
