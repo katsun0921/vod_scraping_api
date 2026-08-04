@@ -46,18 +46,39 @@ Katsumascore への流入を増やすため、毎週公開される劇場映画�
 
 ## 5. 実行方式
 
-`news_bot.main` に `theater` サブコマンドを追加する。
+`news_bot.main` のサブコマンド:
 
 ```bash
-python -m news_bot.main theater
+python -m news_bot.main theater_import        # ルーティン成果物を取り込み（承認待ちで保存）
+python -m news_bot.main theater_publish       # 承認済み行から週次まとめを展開
+python -m news_bot.main theater_add <URL>     # 人間が見つけたURLから1件追記
+python -m news_bot.main theater_discover      # [フォールバック] AI Web検索で発見（従量課金）
+python -m news_bot.main theater               # [実質未使用] 「劇場情報源」シート巡回
 ```
 
-想定スケジュール:
+### 現行: ルーティン方式
 
-- 毎週月曜: 今週金曜〜翌週木曜公開作品を収集し、週次まとめ投稿案を作る
-- 毎週木曜または金曜朝: 「本日公開」「週末に観たい」系の投稿案を作る
+**AI Web検索部分は Claude のルーティンへ移行した**（[routine-discovery.md](./routine-discovery.md)）。
+Claude APIを従量課金で呼ぶ代わりに、ルーティンが週次で調査してPRを作り、人間のレビュー（1次承認）を
+経てマージされたものを取り込む。
 
-初期MVPでは月曜実行のみを実装する。
+| ジョブ | タイミング | 内容 |
+|---|---|---|
+| ルーティン | 毎週金曜 09:00 JST | 対象週の公開作品を調査し、`routine_data/theater_latest.json` を更新してPR作成 |
+| `theater_import` | PRマージ時（`routine-import.yml`） | 成果物JSONを取り込み、Katsumascore照合の上で承認待ちで保存。Slackに確認依頼を通知 |
+| `theater_publish` | 毎週金曜 07:00 JST | 対象週の承認済み行から週次まとめを生成し、WP CPT投稿・SNS投稿案をSlackへ送信 |
+
+`theater_publish` を金曜にしているのは2つの理由による。
+
+1. **日本の劇場公開は金曜が基準日**のため、公開初日の朝に記事が出るのが読者にとって最も有用
+2. `week_range()` は**土日に実行すると翌週にずれる**。月〜金なら同じ週（直近の金曜起点）を
+   返すため、発見と publish を同じ週に揃えられる
+
+### フォールバック: API方式
+
+`theater_discover`（Claude/OpenAI併用のAI Web検索）は**cronを停止したがコードは残している**。
+ルーティンが止まった場合に `theater-calendar.yml` の `workflow_dispatch` から手動実行できる。
+従量課金が発生するため、`workflow_dispatch` の既定値は `theater_publish` にしてある。
 
 ## 6. 取得対象期間
 
@@ -269,35 +290,61 @@ SNS優先度(S/A/B/C)
 
 ```text
 news_bot/
-├── fetch_theater.py        # 劇場公開情報の取得
-├── theater_calendar.py     # 週範囲計算・正規化・重複キー生成
-├── compose_theater.py      # 週次まとめ/個別投稿案生成
-├── main.py                 # theater サブコマンド追加
-└── sheets.py               # 劇場公開予定シート対応
+├── fetch_theater.py        # 劇場公開情報の取得（RSS/TMDb。規約上の理由で現在未使用）
+├── discover_theater.py     # AI Web検索による発見（フォールバック）+ URLからの個別抽出
+├── theater_calendar.py     # 週範囲計算・正規化・重複キー生成 + TheaterEntry のデータ定義
+│                            #   （AI SDK非依存にするため fetch_theater.py から移動。
+│                            #     fetch_theater.py 側で再エクスポート）
+├── import_routine.py       # ルーティン成果物JSONの読み込み（VODと共用）
+├── routine_data/
+│   └── theater_latest.json # ルーティンが週次で上書きコミットする成果物
+├── compose_theater.py      # 週次まとめ本文（WP用HTML）・SNS投稿案生成
+├── wp_client.py            # WP REST API クライアント（CPT投稿・既存記事照合。VODと共用）
+├── main.py                 # theater_import / theater_publish / theater_discover /
+│                            #   theater_add / theater サブコマンド
+├── sheets.py               # 劇場公開予定シート対応
+└── approval.py             # 発見結果の確認依頼・週次まとめ通知
+
+.github/workflows/
+├── routine-import.yml      # ルーティンPRのマージを検知して theater_import を実行
+├── theater-calendar.yml    # 金曜=theater_publish（cron 1本）。theater_discover は手動のみ
+└── theater-add-url.yml     # URLからの手動追記（workflow_dispatch）
 ```
 
 ## 13. 環境変数
 
-初期MVPでは既存のGoogle Sheets / Slack / AI関連環境変数を流用する。
+既存のGoogle Sheets / Slack / AI関連環境変数を流用する。
 
-追加候補:
+追加分:
 
 | 変数名 | 用途 | 必須 |
 |---|---|---|
-| `THEATER_FETCH_WEEKS_AHEAD` | 何週先まで取得するか | 任意 |
-| `THEATER_SUMMARY_URL` | Katsumascore側の公開予定まとめページURL | 任意 |
-| `TMDB_API_KEY` | TMDb補完を使う場合 | 任意 |
+| `WP_API_URL` | WP REST API ベースURL（VOD・`vod_bot`と共用） | ○ |
+| `WP_USER` | WP Application Password ユーザー名（同上） | ○ |
+| `WP_APP_PASSWORD` | WP Application Password（同上） | ○ |
+| `THEATER_NEWS_CPT_SLUG` | CPTのRESTスラッグ（既定 `theater_release`） | 任意 |
+| `THEATER_NEWS_WP_STATUS` | 投稿ステータス（既定 `draft`） | 任意 |
+| `SLACK_THEATER_CHANNEL_ID` | 劇場公開通知の専用チャンネル（未設定なら承認チャンネル） | 任意 |
+
+> **未登録のGitHub Secretは空文字で渡る**ため、`os.environ.get(k, default)` では既定値に
+> フォールバックしない。`wp_client.create_post()` は空文字を未設定として扱うよう修正済み
+> （2026-08-05）。
+
+投稿先CPTは VOD（`vod_release`）とは**別**にした。理由は
+[THEATER_RELEASE_CPT_SPEC.md](../../../katsumascore_wordpress_theme/docs/feature/THEATER_RELEASE_CPT_SPEC.md)
+を参照（「映画館で観たい」と「家で観たい」は別の検索意図であるため）。
 
 ## 14. MVPスコープ
 
-- [ ] `劇場公開予定` シートを自動作成する
-- [ ] 今週金曜〜翌週木曜の対象期間を計算する
-- [ ] 劇場公開情報を1ソースから取得する
-- [ ] タイトル・公開日・公式URL・情報源を保存する
-- [ ] `公開日 + 正規化タイトル` で重複判定する
-- [ ] Katsumascore URLの手動入力または簡易照合に対応する
-- [ ] SNS優先度をAIまたはルールで判定する
-- [ ] 週次まとめ投稿案をSlackに送る
+- [x] `劇場公開予定` シートを自動作成する
+- [x] 今週金曜〜翌週木曜の対象期間を計算する
+- [x] 劇場公開情報を取得する（ルーティン方式 + AI Web検索フォールバック + URL手動追記）
+- [x] タイトル・公開日・公式URL・情報源を保存する
+- [x] `公開日 + 正規化タイトル` で重複判定する
+- [x] Katsumascore照合（正規化タイトルの完全一致。一致しなければ空欄＝誤リンクを作らない）
+- [ ] SNS優先度をAIまたはルールで判定する（**現状は承認時に人間が`S`を手入力**）
+- [x] 週次まとめ投稿案をSlackに送る（X / Facebook等 / 注目作個別の3種類）
+- [x] WP CPT（`theater_release`）へ下書き投稿する
 
 ## 15. 将来拡張
 

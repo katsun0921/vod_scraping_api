@@ -80,28 +80,42 @@ Katsumascoreを「レビューサイト」から「映画・アニメ総合メ�
 
 ## 5. 実行方式
 
-`news_bot.main` にサブコマンドを2つ追加する。
+`news_bot.main` のサブコマンド:
 
 ```bash
-python -m news_bot.main vod_discover   # 発見・保存（承認待ちにする）
+python -m news_bot.main vod_import     # ルーティン成果物+X抽出を取り込み（承認待ちで保存）
 python -m news_bot.main vod_publish    # 承認済み行から週次まとめを展開
+python -m news_bot.main vod_discover   # [フォールバック] AI Web検索で発見（従量課金）
 ```
 
-想定スケジュール（GitHub Actions cron）:
+### 現行: ルーティン方式
+
+**AI Web検索部分は Claude のルーティンへ移行した**（[routine-discovery.md](./routine-discovery.md)）。
+Claude APIを従量課金で呼ぶ代わりに、ルーティンが週次で調査してPRを作り、人間のレビュー（1次承認）を
+経てマージされたものを取り込む。
 
 | ジョブ | タイミング | 内容 |
 |---|---|---|
-| `vod_discover` | 毎週木曜 06:00 JST | **翌週月曜〜日曜**に配信開始する作品を発見し、承認待ちで保存。Slackに確認依頼を通知 |
+| ルーティン | 毎週水曜 09:00 JST | **翌週月曜〜日曜**に配信開始する作品を調査し、`routine_data/vod_latest.json` を更新してPR作成 |
+| `vod_import` | PRマージ時（`routine-import.yml`） | 成果物JSON + X公式アカウント抽出を統合し、承認待ちで保存。Slackに確認依頼を通知 |
 | `vod_publish` | 毎週月曜 07:00 JST | **当週月曜〜日曜**の承認済み行から週次まとめを生成し、Slack通知・WP CPT投稿・X投稿案送信 |
 
-木曜発見→月曜展開とすることで、人間の承認作業に金〜日の3日間の猶予を持たせる。
-承認されなかった行（承認待ちのまま）は `vod_publish` の対象外とし、誤情報の公開を防ぐ
-（theater仕様のAI発見方式と同じ人間承認前提）。
+**X公式アカウントからの抽出はルーティンで代替できない**（X API v2の認証が必要）ため、
+`vod_import` 内でActionsが実行し、ルーティンのWeb検索結果と `extract_vod.merge_all()` で統合する。
+
+水曜にルーティンを置くことで、PRレビュー（1次承認）とシート承認（2次承認）に月曜まで猶予を持たせる。
+承認されなかった行（承認待ちのまま）は `vod_publish` の対象外とし、誤情報の公開を防ぐ。
+
+### フォールバック: API方式
+
+`vod_discover`（Claude/OpenAI併用のAI Web検索）は**cronを停止したがコードは残している**。
+ルーティンが止まった場合に `vod-calendar.yml` の `workflow_dispatch` から手動実行できる。
+従量課金が発生するため、`workflow_dispatch` の既定値は `vod_publish` にしてある。
 
 ## 6. 取得対象期間
 
 - 基準日は実行日とする
-- `vod_discover`: 翌週月曜 00:00 〜 翌週日曜 23:59（JST）に配信開始する作品
+- ルーティン / `vod_import`: 翌週月曜 00:00 〜 翌週日曜 23:59（JST）に配信開始する作品
 - `vod_publish`: 当週月曜〜日曜が対象の承認済み行
 
 対象サービス（初期MVP）は Netflix / Prime Video / U-NEXT / Disney+ / Hulu / DMM TV の6サービスとし、
@@ -410,6 +424,11 @@ news_bot/
 ├── prompts/
 │   └── vod_extract_system_prompt.md  # X抽出用system prompt（cache_control対象）
 ├── vod_calendar.py         # 週範囲計算・正規化・重複キー生成（theater_calendar.py を流用/共通化）
+│                            #   + SERVICES / VodEntry のデータ定義（AI SDK非依存にするため
+│                            #     discover_vod.py から移動。discover_vod.py 側で再エクスポート）
+├── import_routine.py       # ルーティン成果物JSONの読み込み（theaterと共用）
+├── routine_data/
+│   └── vod_latest.json     # ルーティンが週次で上書きコミットする成果物
 ├── compose_vod.py          # 週次まとめ本文（WP用HTML）・Xスレッド案の生成
 ├── wp_client.py            # WP REST API クライアント（CPT投稿・既存記事照合。theaterと共用。
 │                            #   照合部分は coming-soon/enrich_events.py の
@@ -417,10 +436,11 @@ news_bot/
 │                            #   タイトル検索フォールバックを追加して移植、10.1参照）
 ├── sheets.py               # 「VOD情報源」「VOD配信予定」シート対応を追加
 ├── approval.py             # 発見結果の確認依頼・週次まとめ通知を追加
-└── main.py                 # vod_discover / vod_publish サブコマンド追加
+└── main.py                 # vod_import / vod_publish / vod_discover サブコマンド
 
 .github/workflows/
-└── vod-calendar.yml        # 木曜=vod_discover / 月曜=vod_publish（cron 2本）
+├── routine-import.yml      # ルーティンPRのマージを検知して vod_import を実行
+└── vod-calendar.yml        # 月曜=vod_publish（cron 1本）。vod_discover は手動のみ
 ```
 
 ## 13. 環境変数
@@ -435,14 +455,17 @@ news_bot/
 | `WP_API_URL` | WP REST API ベースURL（`vod_bot/wordpress.py`の配信状況チェックと共用） | ○ |
 | `WP_USER` | WP Application Password ユーザー名（`vod_bot/wordpress.py`の配信状況チェックと共用） | ○ |
 | `WP_APP_PASSWORD` | WP Application Password（同上） | ○ |
-| `VOD_NEWS_CPT_SLUG` | CPTのRESTスラッグ（既定 `vod_news`） | 任意 |
+| `VOD_NEWS_CPT_SLUG` | CPTのRESTスラッグ。**実際のCPTは `vod_release` のため設定必須**（コード側の既定値は `vod_news` で不一致） | ○ |
 | `VOD_NEWS_WP_STATUS` | 投稿ステータス（既定 `draft`） | 任意 |
+
+> **未登録のGitHub Secretは空文字で渡る**ため、`os.environ.get(k, default)` では既定値に
+> フォールバックしない。`wp_client.create_post()` は空文字を未設定として扱うよう修正済み
+> （2026-08-05。修正前は投稿先URLが `.../wp/v2/` になり別のエンドポイントを叩いていた）。
 
 ## 14. MVPスコープ
 
-**実装済み（2026-07-23）**: 12.実装ファイル案のとおり`news_bot/`配下にコード実装済み。
-未実施なのは外部セットアップ（GitHub Secrets登録・WordPress側のCPT登録・Application
-Password発行・「VOD情報源」シートへのXアカウント登録）のみ（15.未決定事項参照）。
+**実装済み**: 12.実装ファイル案のとおり`news_bot/`配下にコード実装済み。
+発見部分はルーティン方式へ移行した（[routine-discovery.md](./routine-discovery.md)）。
 
 - [x] 「VOD情報源」「VOD配信予定」シートを自動作成する
 - [x] 翌週月曜〜日曜の対象期間を計算する
@@ -454,7 +477,8 @@ Password発行・「VOD情報源」シートへのXアカウント登録）の�
 - [x] 承認済み行から週次まとめを生成する（`vod_publish`）
 - [x] WP CPTへ下書き投稿する（編集部おすすめ + 統一フォーマットの作品カードを含む記事構成、11.2）
 - [x] Xスレッド投稿案をSlackへ送信する（手動投稿）
-- [x] GitHub Actions cron（木曜・月曜）を設定する
+- [x] GitHub Actions cron（月曜=`vod_publish`）を設定する
+- [x] 発見をルーティン方式へ移行する（`vod_import` + `routine-import.yml`。`vod_discover`は手動フォールバック）
 
 ## 15. 未決定事項（着手前に確認）
 
