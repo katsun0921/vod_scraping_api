@@ -24,6 +24,10 @@ on:
         description: "特定 slug のみ処理（空欄で全件）"
         required: false
         default: ""
+      post_id:
+        description: "特定 post ID のみ処理（空欄で全件、slug より優先）"
+        required: false
+        default: ""
       limit:
         description: "最大処理件数（空欄でバッジ内全件）"
         required: false
@@ -77,6 +81,9 @@ jobs:
           fi
           if [ -n "${{ inputs.slug }}" ]; then
             ARGS="$ARGS --slug ${{ inputs.slug }}"
+          fi
+          if [ -n "${{ inputs.post_id }}" ]; then
+            ARGS="$ARGS --post-id ${{ inputs.post_id }}"
           fi
           if [ -n "${{ inputs.limit }}" ]; then
             ARGS="$ARGS --limit ${{ inputs.limit }}"
