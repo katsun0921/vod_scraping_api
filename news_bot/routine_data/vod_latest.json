@@ -1,1 +1,56 @@
-[]
+[
+  {
+    "title": "リーチャー ～正義のアウトロー～ シーズン4",
+    "title_orig": "Reacher",
+    "service": "amazon_prime_video",
+    "available_from": "2026-08-12",
+    "availability_type": "独占",
+    "category": "ドラマ",
+    "url": "https://www.amazon.co.jp/dp/B0H8N5TZG3"
+  },
+  {
+    "title": "タイヤーズ ～それでも回るよ人生は～ シーズン3",
+    "title_orig": "Tires",
+    "service": "netflix",
+    "available_from": "2026-08-13",
+    "availability_type": "独占",
+    "category": "ドラマ",
+    "url": "https://www.netflix.com/title/81758875"
+  },
+  {
+    "title": "わが青春の輝き",
+    "title_orig": "My Brilliant Career",
+    "service": "netflix",
+    "available_from": "2026-08-13",
+    "availability_type": "独占",
+    "category": "映画",
+    "url": "https://www.netflix.com/jp/title/81655060"
+  },
+  {
+    "title": "トラヴィス・バーカー：ラウダー・ザン・フェアー",
+    "title_orig": "Travis Barker: Louder Than Fear",
+    "service": "disney_plus",
+    "available_from": "2026-08-13",
+    "availability_type": "独占",
+    "category": "映画",
+    "url": ""
+  },
+  {
+    "title": "モリア",
+    "title_orig": "Moria",
+    "service": "netflix",
+    "available_from": "2026-08-14",
+    "availability_type": "独占",
+    "category": "ドラマ",
+    "url": "https://www.netflix.com/title/81958141"
+  },
+  {
+    "title": "ウムテト－法の支配－",
+    "title_orig": "Umthetho",
+    "service": "netflix",
+    "available_from": "2026-08-14",
+    "availability_type": "独占",
+    "category": "ドラマ",
+    "url": "https://www.netflix.com/title/81717938"
+  }
+]
