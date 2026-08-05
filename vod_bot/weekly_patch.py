@@ -44,6 +44,7 @@ Usage:
     python weekly_patch.py --dry-run    # 対象の確認のみ（更新なし）
     python weekly_patch.py --limit 50   # 上限50件に制限（デバッグ用）
     python weekly_patch.py --slug john-wick  # 特定 slug のみ
+    python weekly_patch.py --post-id 123     # 特定 post_id のみ（巡回対象を1件指定）
 """
 
 import argparse
@@ -303,25 +304,27 @@ def _select_targets(candidates: list[dict], quota: int) -> tuple[list[dict], int
 def _get_batch_targets(
     batch: int,
     slug: Optional[str],
+    post_id: Optional[int],
     limit: Optional[int],
     force: bool,
 ) -> tuple[list[dict], dict]:
     """バッチ番号に対応する処理対象投稿リストを返す。
 
     Args:
-        batch: バッチ番号（0〜BATCH_COUNT-1）。
-        slug : 指定した場合、該当 slug のみ（バッジフィルタ不適用）。
-        limit: 最大件数。None の場合はバッジ内全件を処理する。
-        force: True のとき cooldown フィルタをスキップして全件候補とする。
+        batch  : バッチ番号（0〜BATCH_COUNT-1）。
+        slug   : 指定した場合、該当 slug のみ（バッジフィルタ不適用）。
+        post_id: 指定した場合、該当 post_id のみ（バッジフィルタ不適用、slug より優先）。
+        limit  : 最大件数。None の場合はバッジ内全件を処理する。
+        force  : True のとき cooldown フィルタをスキップして全件候補とする。
 
     Returns:
         (targets, badge_stats) のタプル。
         badge_stats は各バッチの件数サマリ辞書。
     """
-    all_posts = get_all_posts_for_patch(slug=slug)
+    all_posts = get_all_posts_for_patch(slug=slug, post_id=post_id)
 
-    if slug:
-        # slug 指定時はバッジフィルタ・クォータ不要
+    if slug or post_id is not None:
+        # slug/post_id 指定時はバッジフィルタ・クォータ不要
         return (all_posts if limit is None else all_posts[:limit]), {}
 
     # バッジ別件数を集計（レポート用）
@@ -359,6 +362,7 @@ def run(
     dry_run: bool = False,
     force: bool = False,
     slug: Optional[str] = None,
+    post_id: Optional[int] = None,
 ) -> dict:
     """週次パッチを実行する。
 
@@ -381,6 +385,7 @@ def run(
         dry_run: True の場合、対象の確認のみ（更新なし）。
         force  : True の場合、直近更新チェックをスキップして強制処理。
         slug   : 指定した場合、該当 slug のみ処理する。
+        post_id: 指定した場合、該当 post_id のみ処理する（slug より優先）。
 
     Returns:
         週次パッチの実行結果と予算レポートの辞書。
@@ -419,7 +424,7 @@ def run(
 
     # ── 対象投稿を取得 ──────────────────────────────────────────
     targets, badge_distribution = _get_batch_targets(
-        batch=batch, slug=slug, limit=limit, force=force,
+        batch=batch, slug=slug, post_id=post_id, limit=limit, force=force,
     )
     logger.info("対象投稿数: %d件（batch=%d）", len(targets), batch)
 
@@ -843,6 +848,12 @@ def main() -> None:
         default=None,
         help="特定の slug のみ処理",
     )
+    parser.add_argument(
+        "--post-id",
+        type=int,
+        default=None,
+        help="特定の post_id のみ処理（slug より優先、バッジフィルタ不適用）",
+    )
     args = parser.parse_args()
 
     result = run(
@@ -851,6 +862,7 @@ def main() -> None:
         dry_run=args.dry_run,
         force=args.force,
         slug=args.slug,
+        post_id=args.post_id,
     )
     import json
     print(json.dumps(result, ensure_ascii=False, indent=2))

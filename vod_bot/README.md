@@ -62,9 +62,15 @@ python weekly_patch.py --force
 # 特定の slug のみ処理
 python weekly_patch.py --slug john-wick
 
+# 特定の post ID のみ処理（バッジフィルタ不適用、slug より優先）
+python weekly_patch.py --post-id 123
+
 # 上限を指定（デバッグ用）
 python weekly_patch.py --limit 50
 ```
+
+GitHub Actions（`weekly-patch.yml`）の手動実行（`workflow_dispatch`）では `post_id` 入力欄に
+post ID を指定すると、その投稿のみを巡回して配信状況を確認・更新できる。
 
 ## ステータス値
 

@@ -748,6 +748,7 @@ def get_posts_missing_url(
 
 def get_all_posts_for_patch(
     slug: Optional[str] = None,
+    post_id: Optional[int] = None,
     limit: Optional[int] = None,
 ) -> list[dict]:
     """週次パッチ用: 全 publish 投稿を取得する（scraping_url 有無問わず）。
@@ -763,48 +764,60 @@ def get_all_posts_for_patch(
     バッチ番号フィルタ（post_id % BATCH_COUNT）は呼び出し元で適用する。
 
     Args:
-        slug : 指定した場合、該当 slug の投稿のみ取得する。
-        limit: 返す最大件数。None の場合は全件返す。
+        slug   : 指定した場合、該当 slug の投稿のみ取得する（post_id 未指定時のみ有効）。
+        post_id: 指定した場合、該当 post_id の投稿のみ取得する（slug より優先）。
+        limit  : 返す最大件数。None の場合は全件返す。
 
     Returns:
         投稿データのリスト（id, slug, title, acf, vod, categories を含む）。
     """
-    url = f"{_base_url()}/posts"
-    posts: list[dict] = []
-    page = 1
     session = _session()
+    fields = "id,slug,title,acf,vod,categories,link"
 
-    while True:
-        params: dict = {
-            "status": "publish",
-            "_fields": "id,slug,title,acf,vod,categories,link",
-        }
-        if slug:
-            params["slug"] = slug
-            params["per_page"] = 1
-        else:
-            params["per_page"] = PER_PAGE
-            params["page"] = page
-
-        for attempt in range(3):
-            resp = session.get(url, params=params, timeout=30)
-            logger.info(
-                "GET posts(patch) page=%d status=%d (attempt=%d)",
-                page, resp.status_code, attempt + 1,
-            )
-            if resp.status_code < 500:
-                break
-            logger.warning("GET posts(patch) page=%d server error, retrying in 5s...", page)
-            time.sleep(5)
+    if post_id is not None:
+        url = f"{_base_url()}/posts/{post_id}"
+        resp = session.get(url, params={"_fields": fields}, timeout=30)
+        if resp.status_code == 404:
+            logger.warning("GET posts(patch) post_id=%d が見つかりません（404）", post_id)
+            return []
         resp.raise_for_status()
-        batch = resp.json()
-        if not batch:
-            break
-        posts.extend(batch)
-        if slug or len(batch) < PER_PAGE:
-            break
-        page += 1
-        logger.info("GET posts(patch) page=%d (%d件取得済み)", page - 1, len(posts))
+        posts: list[dict] = [resp.json()]
+    else:
+        url = f"{_base_url()}/posts"
+        posts = []
+        page = 1
+
+        while True:
+            params: dict = {
+                "status": "publish",
+                "_fields": fields,
+            }
+            if slug:
+                params["slug"] = slug
+                params["per_page"] = 1
+            else:
+                params["per_page"] = PER_PAGE
+                params["page"] = page
+
+            for attempt in range(3):
+                resp = session.get(url, params=params, timeout=30)
+                logger.info(
+                    "GET posts(patch) page=%d status=%d (attempt=%d)",
+                    page, resp.status_code, attempt + 1,
+                )
+                if resp.status_code < 500:
+                    break
+                logger.warning("GET posts(patch) page=%d server error, retrying in 5s...", page)
+                time.sleep(5)
+            resp.raise_for_status()
+            batch = resp.json()
+            if not batch:
+                break
+            posts.extend(batch)
+            if slug or len(batch) < PER_PAGE:
+                break
+            page += 1
+            logger.info("GET posts(patch) page=%d (%d件取得済み)", page - 1, len(posts))
 
     # scraping_disabled=true の投稿を除外
     filtered = [
