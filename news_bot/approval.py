@@ -86,19 +86,27 @@ def notify_manual_thread(postable: list[tuple[NewsEntry, str]], thread_parts: li
     return _post_message(text)
 
 
-def notify_theater_discovered(start: date, end: date, entries: list) -> tuple[str, str]:
+def notify_theater_discovered(start: date, end: date, entries: list) -> dict[str, tuple[str, str]]:
     """AI発見した劇場公開作品を、親メッセージ+作品ごとのスレッド返信でSlackに通知する。
 
     theater_discover_cycle()が「劇場公開予定」シートへ保存した直後に呼ばれる。
-    通知はあくまで確認依頼であり、承認そのものはシート上で行う（仕様書17. TODO#1）。
+    通知はあくまで確認依頼であり、承認そのものはシート上で行うか、このスレッド返信に
+    :white_check_mark: で反応する（ワンクリック承認、theater_resolve_approvals_cycle()が
+    定期的にリアクションを確認して自動反映する）。notify_vod_discovered()と同型。
 
     Args:
         start, end: 対象期間（theater_calendar.week_range()）
         entries: 保存済みのfetch_theater.TheaterEntry一覧（release_dateは必ず設定済み）
 
     Returns:
-        親メッセージの (channel_id, ts)
+        重複キー（theater_calendar.dedupe_key()） -> (channel, ts) の対応表。
+        作品ごとのスレッド返信メッセージを指し、呼び出し元がシートのSlack参照列
+        （update_theater_item_slack_ref()）へ書き込むのに使う。返信の送信自体に失敗した
+        作品はこの対応表に含まれない（ワンクリック承認の対象外になるだけで、シートへの
+        保存自体には影響しない）。
     """
+    from news_bot.theater_calendar import dedupe_key as _theater_dedupe_key
+
     # 劇場公開専用チャンネルが設定されていればそちらへ、なければ承認チャンネルへ送る
     theater_channel = os.environ.get("SLACK_THEATER_CHANNEL_ID") or None
 
@@ -111,21 +119,25 @@ def notify_theater_discovered(start: date, end: date, entries: list) -> tuple[st
     )
     channel, ts = _post_message(parent_text, channel=theater_channel)
 
+    refs: dict[str, tuple[str, str]] = {}
     for entry in entries:
         detail = (
             f"*{entry.title}*\n"
             f"公開日: {entry.release_date.isoformat()} / 配給: {entry.distributor or '不明'}\n"
             f"公式URL: {entry.url or 'なし'}\n"
-            f"情報源: {entry.source}"
+            f"情報源: {entry.source}\n\n"
+            f"承認するにはこのメッセージに :{APPROVE_EMOJI}: で反応してください。"
         )
         try:
             # 親メッセージの投稿先チャンネル（解決済みID）に返信をぶら下げる
-            _post_message(detail, thread_ts=ts, channel=channel)
+            reply_channel, reply_ts = _post_message(detail, thread_ts=ts, channel=channel)
+            key = _theater_dedupe_key(entry.release_date.isoformat(), entry.title)
+            refs[key] = (reply_channel, reply_ts)
         except Exception:
             # スレッド返信の1件失敗で残りの作品通知を止めない
             logger.exception("劇場公開スレッド返信失敗: %s", entry.title)
 
-    return channel, ts
+    return refs
 
 
 def notify_theater_added(entry, input_url: str, duplicate: bool = False) -> tuple[str, str]:
@@ -159,8 +171,8 @@ def notify_vod_discovered(start: date, end: date, entries: list) -> dict[str, tu
     vod_discover_cycle()が「VOD配信予定」シートへ保存した直後に呼ばれる。
     notify_theater_discovered()と同型。通知はあくまで確認依頼であり、承認そのものは
     シート上（投稿状態列の手動書き換え、または編集部おすすめ列への手動チェック）で行うか、
-    このスレッド返信に :white_check_mark: で反応する（ワンクリック承認、resolve_vod_approvals()
-    が定期的にリアクションを確認して自動反映する）。
+    このスレッド返信に :white_check_mark: で反応する（ワンクリック承認、
+    vod_resolve_approvals_cycle()が定期的にリアクションを確認して自動反映する）。
 
     Args:
         start, end: 対象期間（vod_calendar.next_week_range()）
@@ -338,16 +350,21 @@ def resolve(pending: dict) -> str:
     return "approved" if APPROVE_EMOJI in reactions else "pending"
 
 
-def resolve_vod_approvals(pending: list[dict]) -> list[str]:
-    """「VOD配信予定」シートの承認待ち行のうち、Slackで承認スタンプ（:white_check_mark:）が
-    付いた行の重複キー一覧を返す（ワンクリック承認）。
+def resolve_approvals(pending: list[dict]) -> list[str]:
+    """承認待ち行のうち、Slackで承認スタンプ（:white_check_mark:）が付いた行の
+    重複キー一覧を返す（ワンクリック承認）。
 
-    resolve()と異なりキャンセル絵文字は見ない。VODシートの投稿状態は
+    「VOD配信予定」「劇場公開予定」の両シートで共用する。どちらも重複キーと
+    Slack参照の列名が同じで、判定はリアクションの有無だけのため、シートごとに
+    実装を分ける理由がない（呼び出し元が対象シートに応じた行一覧を渡す）。
+
+    resolve()と異なりキャンセル絵文字は見ない。両シートの投稿状態は
     承認待ち/承認済み/投稿済みの3値運用（CLAUDE.md）で「却下」に相当する状態が無く、
     不要な行はシート上で直接削除する運用のため。
 
     Args:
-        pending: sheets.get_pending_vod_items_with_slack_ref() の行一覧
+        pending: sheets.get_pending_vod_items_with_slack_ref() または
+            get_pending_theater_items_with_slack_ref() の行一覧
             （重複キー / SlackチャンネルID / Slackメッセージts を含む）
 
     Returns:
