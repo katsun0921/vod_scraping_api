@@ -32,3 +32,31 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -v
+
+  # news_bot は Cloud Run へデプロイしないため、deploy.yml からの workflow_call
+  # 時はスキップする（デプロイのゲートは vod_bot のテストのみ）。
+  test-news-bot:
+    if: github.event_name != 'workflow_call'
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ".."
+    defaults:
+      run:
+        working-directory: news_bot
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: news_bot/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest tests/ -v

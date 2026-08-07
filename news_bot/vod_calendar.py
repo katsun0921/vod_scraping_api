@@ -27,8 +27,8 @@ __all__ = [
 #
 # discover_vod.py ではなく本モジュールに置いているのは、SERVICES と VodEntry が
 # AI SDK（anthropic / openai）に依存しない純粋なデータ定義であるため。discover_vod に
-# 置くと、ルーティン成果物を読むだけの import_routine.py や、シートの値を検証するだけの
-# check_vod_sources.py までSDKのインストールを要求してしまう。
+# 置くと、ルーティン成果物を読むだけの import_routine.py までSDKのインストールを
+# 要求してしまう。
 SERVICES = {
     "netflix": "Netflix",
     "amazon_prime_video": "Amazon Prime Video",

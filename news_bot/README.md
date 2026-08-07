@@ -100,7 +100,7 @@ theater_publish / vod_publish → WP CPT投稿 + SNS投稿案をSlackへ
 - **承認後の展開先（3経路）**：①Slack週次まとめ通知 ②WordPress CPT（`vod_release`、下書き投稿。編集部おすすめ + 統一フォーマットの作品カードで構成、`wp_client.py`） ③X投稿案生成（Slackテンプレート→人間が手動投稿、リプライURLは外部媒体ではなくCPT記事URL）
 - **実行方式**：`vod_import`（ルーティン成果物のマージ時）/ `python -m news_bot.main vod_publish`（毎週月曜07:00 JST、承認済み分を展開）
 - **規約判断は劇場施策と同一基準を継承**：VOD各社公式サイトのスクレイピングは対象6サービス全てで自動化アクセス禁止が規約上確定しているため不採用。TMDb APIも商用契約未成立のため不採用。サービスごとの一次情報を機械取得できるのは公式Xアカウントのみという位置づけ
-- 補助ツール：WP接続確認用の`check_wp_connection.py`（`.github/workflows/vod-wp-connection-test.yml`）、公式Xハンドルの実在確認用の`verify_x_handles.py`（`.github/workflows/verify-x-handles.yml`）、「VOD情報源」シートの読み取り確認用の`check_vod_sources.py`（`.github/workflows/check-vod-sources.yml`）を用意している
+- 初期セットアップ時に使っていた補助ツール（WP接続確認`check_wp_connection.py` / 公式Xハンドルの実在確認`verify_x_handles.py` / 「VOD情報源」シートの読み取り確認`check_vod_sources.py`）と対応するworkflowは、パイプラインが本番稼働に入り役割を終えたため削除した。再確認が必要になった場合はgit履歴から復元する
 
 ## ディレクトリ構成
 
@@ -126,9 +126,6 @@ news_bot/
 ├── vod_calendar.py      # 週範囲計算・正規化・重複キー生成 + SERVICES / VodEntry 定義（VOD）
 ├── compose_vod.py       # VOD週次まとめ本文（WP用HTML）・Xスレッド案の生成（サービス別に区切る）
 ├── wp_client.py         # WordPress REST APIクライアント（CPT投稿・既存記事照合。theater/vod共用）
-├── check_wp_connection.py  # WP接続確認用スクリプト
-├── verify_x_handles.py     # 公式Xハンドルの実在確認用スクリプト
-├── check_vod_sources.py    # 「VOD情報源」シートの読み取り確認用スクリプト
 ├── dedupe.py            # URL完全一致の重複チェック（ニュース記事）
 ├── judge.py             # S/A/B/D判定（複数AIプロバイダーの並列実行・複数記事のバッチ判定に対応）
 ├── ai_clients.py        # Claude/ChatGPT/Grokへの個別API呼び出しラッパー
@@ -148,7 +145,7 @@ news_bot/
 
 プロンプトは`judge.py` / `compose.py`にハードコードせず、`prompts/*.md`で管理する。judge/compose用のfew-shot例やトーンの調整はコードを触らずMarkdownファイルの編集だけで完結する。
 
-データクラス（`TheaterEntry` / `VodEntry`）と定数（`SERVICES`）は`*_calendar.py`に置き、`discover_*.py`には置かない。**これらはAI SDKに依存しない純粋なデータ定義であり、`discover_*`に置くと、ルーティン成果物を読むだけの`import_routine.py`やシートの値を検証するだけの`check_vod_sources.py`まで`anthropic`/`openai`のインストールを要求してしまうため。** `discover_*.py`側では後方互換のため再エクスポートしている。
+データクラス（`TheaterEntry` / `VodEntry`）と定数（`SERVICES`）は`*_calendar.py`に置き、`discover_*.py`には置かない。**これらはAI SDKに依存しない純粋なデータ定義であり、`discover_*`に置くと、ルーティン成果物を読むだけの`import_routine.py`まで`anthropic`/`openai`のインストールを要求してしまうため。** `discover_*.py`側では後方互換のため再エクスポートしている。
 
 ## 必要なアカウント
 
