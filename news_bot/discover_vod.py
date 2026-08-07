@@ -38,7 +38,7 @@ _MAX_CONTINUATIONS = 3  # サーバー側ツールのpause_turn継続上限
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
 
 # SERVICES / VodEntry の定義は vod_calendar.py へ移した（AI SDKに依存しない純粋な
-# データ定義であり、import_routine.py や check_vod_sources.py がSDK抜きで参照できるように
+# データ定義であり、import_routine.py がSDK抜きで参照できるように
 # するため）。既存の `from news_bot.discover_vod import SERVICES, VodEntry` を壊さないよう
 # ここで再エクスポートする。
 
