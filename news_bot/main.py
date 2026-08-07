@@ -229,7 +229,10 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
     """
     sheets = NewsBotSheets()
     existing_keys = sheets.get_existing_theater_keys()
-    stats = {"discovered": len(entries), "out_of_range": 0, "duplicate": 0, "saved": 0, "notified": 0}
+    stats = {
+        "discovered": len(entries), "out_of_range": 0, "duplicate": 0,
+        "filled": 0, "saved": 0, "notified": 0,
+    }
 
     saved_entries = []
     for entry in entries:
@@ -241,6 +244,22 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
         key = theater_calendar.dedupe_key(release_date_str, entry.title)
         if key in existing_keys:
             stats["duplicate"] += 1
+            # 重複でも捨てずに既存行の空欄補完へ回す。AI検索は配給・公式URLが欠けた
+            # 結果を返しがちで、あとからルーティンがより完全な情報を持ってくるため
+            # （既存値は上書きしない。sheets._fill_blank_cells参照）。
+            try:
+                filled = sheets.fill_blank_theater_item(key, {
+                    "原題": entry.original_title,
+                    "カテゴリ": entry.category,
+                    "配給": entry.distributor,
+                    "公式URL": entry.url,
+                })
+                if filled:
+                    stats["filled"] += 1
+                    logger.info("既存行の空欄を補完: %s (%s)", entry.title, "/".join(filled))
+            except Exception:
+                # 補完はあくまで改善であり、失敗しても取り込み自体は続行する
+                logger.exception("既存行の空欄補完に失敗: %s", entry.title)
             continue
 
         # Katsumascore照合（仕様書10.）。既存レビュー記事が見つかれば週次まとめから
@@ -487,7 +506,10 @@ def _save_vod_entries(source_entries: list, label: str) -> dict:
 
     x_entries = _fetch_vod_x_entries(sheets)
     merged = extract_vod.merge_all(x_entries, source_entries)
-    stats = {"discovered": len(merged), "out_of_range": 0, "duplicate": 0, "saved": 0, "notified": 0}
+    stats = {
+        "discovered": len(merged), "out_of_range": 0, "duplicate": 0,
+        "filled": 0, "saved": 0, "notified": 0,
+    }
 
     saved_entries = []
     for entry in merged:
@@ -498,6 +520,20 @@ def _save_vod_entries(source_entries: list, label: str) -> dict:
         key = vod_calendar.dedupe_key(entry.available_from.isoformat(), entry.service, entry.title)
         if key in existing_keys:
             stats["duplicate"] += 1
+            # 劇場側と同じく、重複でも既存行の空欄だけは補完する
+            # （既存値は上書きしない。sheets._fill_blank_cells参照）。
+            try:
+                filled = sheets.fill_blank_vod_item(key, {
+                    "原題": entry.title_orig,
+                    "カテゴリ": entry.category,
+                    "配信種別": entry.availability_type,
+                    "公式URL": entry.url,
+                })
+                if filled:
+                    stats["filled"] += 1
+                    logger.info("既存行の空欄を補完: %s (%s)", entry.title, "/".join(filled))
+            except Exception:
+                logger.exception("既存行の空欄補完に失敗: %s", entry.title)
             continue
 
         katsumascore_url = ""

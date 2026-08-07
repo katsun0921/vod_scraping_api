@@ -334,6 +334,46 @@ class NewsBotSheets:
         rows = self._worksheet("劇場公開予定").get_all_records()
         return {row["重複キー"] for row in rows if row.get("重複キー")}
 
+    def _fill_blank_cells(self, sheet: str, header: list[str], dedupe_key: str, values: dict[str, str]) -> list[str]:
+        """重複キーで行を特定し、**空欄のセルだけ**を新しい値で埋める（既存値は上書きしない）。
+
+        取り込みは追記のみで、同じ重複キーの作品が再発見されても既存行は放置していた。
+        そのため後から配給・公式URLが判明しても永久に空欄のままだった（AI検索は
+        欠損の多い結果を返しがちで、あとからルーティンがより完全な情報を持ってくる）。
+
+        既に値が入っているセルに触れないのは、人間がシート上で手修正した値を
+        AIの出力で壊さないため。誤った値の訂正は引き続き人間の手作業とする。
+
+        Returns:
+            実際に埋めた列名の一覧（空なら変更なし）
+        """
+        ws = self._worksheet(sheet)
+        cell = ws.find(dedupe_key, in_column=header.index("重複キー") + 1)
+        if cell is None:
+            logger.warning("%sに重複キーが見つかりません: %s", sheet, dedupe_key)
+            return []
+
+        # row_values() は末尾の空セルを詰めて返すため、列数を超える添字は空欄扱いにする
+        current = ws.row_values(cell.row)
+        updates = []
+        filled = []
+        for name, value in values.items():
+            if not value:
+                continue
+            col = header.index(name)
+            if col < len(current) and str(current[col]).strip():
+                continue
+            updates.append({"range": rowcol_to_a1(cell.row, col + 1), "values": [[value]]})
+            filled.append(name)
+
+        if updates:
+            ws.batch_update(updates, value_input_option="USER_ENTERED")
+        return filled
+
+    def fill_blank_theater_item(self, dedupe_key: str, values: dict[str, str]) -> list[str]:
+        """「劇場公開予定」シートの既存行の空欄を埋める（_fill_blank_cells参照）。"""
+        return self._fill_blank_cells("劇場公開予定", _THEATER_ITEMS_HEADER, dedupe_key, values)
+
     def append_theater_item(
         self,
         *,
@@ -493,6 +533,10 @@ class NewsBotSheets:
         """「VOD配信予定」シートに既に保存済みの重複キー集合を返す。"""
         rows = self._worksheet("VOD配信予定").get_all_records()
         return {row["重複キー"] for row in rows if row.get("重複キー")}
+
+    def fill_blank_vod_item(self, dedupe_key: str, values: dict[str, str]) -> list[str]:
+        """「VOD配信予定」シートの既存行の空欄を埋める（_fill_blank_cells参照）。"""
+        return self._fill_blank_cells("VOD配信予定", _VOD_ITEMS_HEADER, dedupe_key, values)
 
     def append_vod_item(
         self,
