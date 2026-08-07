@@ -2,7 +2,7 @@
 
 > 対象: Claude のルーティン（スケジュール実行）に貼り付けるプロンプト
 > 設計の背景: [routine-discovery.md](./routine-discovery.md)
-> 最終更新: 2026-08-05
+> 最終更新: 2026-08-07
 
 ルーティンは Claude Code の `/schedule` から**人間が設定する**（AIからは起動できない）。
 以下のプロンプトをそのまま登録する。
@@ -114,6 +114,10 @@ Web 検索で調べてください。
 - 配信開始日が対象期間内で、日付が確認できた作品のみを含める
 - 配信開始日が確認できない作品は含めない（推測で日付を埋めない）
 - 既に配信中の作品は含めない（新規配信開始のみ）
+- 各作品の配信ページ（タイトルURL。例: Netflixなら `netflix.com/jp/title/...`、Prime Video
+  なら該当作品の視聴ページ）を必ず Web 検索で特定して `url` に記載すること。ニュース記事や
+  プレスリリースのURLでは代用しない。Web 検索の結果から配信ページのURLが特定できない作品は
+  含めない（`url` を空文字のまま出力しない）
 
 ## 出力形式
 
@@ -135,7 +139,8 @@ news_bot/routine_data/vod_latest.json を以下の JSON 配列で上書きして
   netflix / amazon_prime_video / unext / disney_plus / hulu / dmm_tv
 - availability_type は 見放題 / レンタル / 購入 / 独占 のいずれか
 - category は 映画 / ドラマ / アニメ のいずれか
-- title_orig / url / availability_type / category が不明な場合は空文字 "" にする
+- title_orig / availability_type / category が不明な場合は空文字 "" にする
+- url は必須。配信ページが特定できない作品は一覧に含めない（詳細は上記「調べること」参照）
 - 対象期間に該当作品が見つからない場合は空配列 [] を書く
 
 ## 最後にすること
