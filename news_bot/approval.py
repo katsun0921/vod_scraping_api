@@ -152,18 +152,29 @@ def notify_theater_added(entry, input_url: str, duplicate: bool = False) -> tupl
     return _post_message(text, channel=theater_channel)
 
 
-def notify_vod_discovered(start: date, end: date, entries: list) -> tuple[str, str]:
+def notify_vod_discovered(start: date, end: date, entries: list) -> dict[str, tuple[str, str]]:
     """AI Web検索・X抽出で発見したVOD配信開始作品を、親メッセージ+作品ごとのスレッド返信で
     Slackに通知する（仕様書11.1）。
 
     vod_discover_cycle()が「VOD配信予定」シートへ保存した直後に呼ばれる。
     notify_theater_discovered()と同型。通知はあくまで確認依頼であり、承認そのものは
-    シート上（投稿状態列の手動書き換え、または編集部おすすめ列への手動チェック）で行う。
+    シート上（投稿状態列の手動書き換え、または編集部おすすめ列への手動チェック）で行うか、
+    このスレッド返信に :white_check_mark: で反応する（ワンクリック承認、resolve_vod_approvals()
+    が定期的にリアクションを確認して自動反映する）。
 
     Args:
         start, end: 対象期間（vod_calendar.next_week_range()）
         entries: 保存済みのdiscover_vod.VodEntry一覧（available_fromは必ず設定済み）
+
+    Returns:
+        重複キー（vod_calendar.dedupe_key()） -> (channel, ts) の対応表。
+        作品ごとのスレッド返信メッセージを指し、呼び出し元がシートのSlack参照列
+        （update_vod_item_slack_ref()）へ書き込むのに使う。返信の送信自体に失敗した
+        作品はこの対応表に含まれない（ワンクリック承認の対象外になるだけで、シートへの
+        保存自体には影響しない）。
     """
+    from news_bot.vod_calendar import dedupe_key as _vod_dedupe_key
+
     vod_channel = os.environ.get("SLACK_VOD_CHANNEL_ID") or None
 
     parent_text = (
@@ -176,20 +187,24 @@ def notify_vod_discovered(start: date, end: date, entries: list) -> tuple[str, s
     )
     channel, ts = _post_message(parent_text, channel=vod_channel)
 
+    refs: dict[str, tuple[str, str]] = {}
     for entry in entries:
         detail = (
             f"*{entry.title}*（{entry.service}）\n"
             f"配信開始日: {entry.available_from.isoformat()} / 配信種別: {entry.availability_type or '不明'}\n"
             f"公式URL: {entry.url or 'なし'}\n"
-            f"情報源: {entry.source}"
+            f"情報源: {entry.source}\n\n"
+            f"承認するにはこのメッセージに :{APPROVE_EMOJI}: で反応してください。"
         )
         try:
-            _post_message(detail, thread_ts=ts, channel=channel)
+            reply_channel, reply_ts = _post_message(detail, thread_ts=ts, channel=channel)
+            key = _vod_dedupe_key(entry.available_from.isoformat(), entry.service, entry.title)
+            refs[key] = (reply_channel, reply_ts)
         except Exception:
             # スレッド返信の1件失敗で残りの作品通知を止めない
             logger.exception("VOD配信予定スレッド返信失敗: %s", entry.title)
 
-    return channel, ts
+    return refs
 
 
 def notify_vod_weekly_summary(item_count: int, wp_post_url: str, x_thread_parts: list[str]) -> tuple[str, str]:
@@ -321,3 +336,31 @@ def resolve(pending: dict) -> str:
     if CANCEL_EMOJI in reactions:
         return "cancelled"
     return "approved" if APPROVE_EMOJI in reactions else "pending"
+
+
+def resolve_vod_approvals(pending: list[dict]) -> list[str]:
+    """「VOD配信予定」シートの承認待ち行のうち、Slackで承認スタンプ（:white_check_mark:）が
+    付いた行の重複キー一覧を返す（ワンクリック承認）。
+
+    resolve()と異なりキャンセル絵文字は見ない。VODシートの投稿状態は
+    承認待ち/承認済み/投稿済みの3値運用（CLAUDE.md）で「却下」に相当する状態が無く、
+    不要な行はシート上で直接削除する運用のため。
+
+    Args:
+        pending: sheets.get_pending_vod_items_with_slack_ref() の行一覧
+            （重複キー / SlackチャンネルID / Slackメッセージts を含む）
+
+    Returns:
+        承認スタンプが付いていた行の重複キー一覧
+    """
+    approved = []
+    for row in pending:
+        channel = row.get("SlackチャンネルID")
+        ts = row.get("Slackメッセージts")
+        key = row.get("重複キー")
+        if not channel or not ts or not key:
+            continue
+        reactions = _get_reaction_names(channel, ts)
+        if APPROVE_EMOJI in reactions:
+            approved.append(key)
+    return approved

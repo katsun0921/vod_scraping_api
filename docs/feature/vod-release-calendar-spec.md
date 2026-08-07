@@ -66,9 +66,12 @@ Katsumascoreを「レビューサイト」から「映画・アニメ総合メ�
                               ↓
                     [Google Sheets: VOD配信予定]（投稿状態=承認待ち）
                               ↓
-                    [Slack: 発見結果の確認依頼通知]
+                    [Slack: 発見結果の確認依頼通知（作品ごとにスレッド返信）]
                               ↓
-                    【人間: シートで確認・修正・承認】
+        【人間: シートで確認・修正・承認 or Slackスレッドに:white_check_mark:で反応】
+                              ↓
+                    [vod_resolve_approvals（時間単位のcron）が承認スタンプを検知し
+                     投稿状態=承認済みへ自動更新。8.1参照]
                               ↓
               ┌───────────────┼───────────────┐
               ↓               ↓               ↓
@@ -268,7 +271,33 @@ SNS優先度(S/A/B/C)
 編集部コメント
 重複キー
 メモ
+SlackチャンネルID
+Slackメッセージts
 ```
+
+`SlackチャンネルID`/`Slackメッセージts`はワンクリック承認用の内部管理列（8.1参照）。
+「承認キュー」シートの同名列と同じ役割で、発見通知の作品ごとのスレッド返信を指す。
+
+### 8.1 ワンクリック承認（Slack承認スタンプ）
+
+`vod_import`/`vod_discover` の発見通知（`approval.notify_vod_discovered`）は、親メッセージ1件
++ 作品ごとのスレッド返信で送る。各スレッド返信の `channel`/`ts` を「VOD配信予定」シートの
+`SlackチャンネルID`/`Slackメッセージts` 列に記録し（`sheets.update_vod_item_slack_ref`）、
+そのメッセージに人間が :white_check_mark: で反応すると、`vod_resolve_approvals`
+（`news_bot.main.vod_resolve_approvals_cycle`、`.github/workflows/vod-approval-check.yml`で
+毎時実行）が `reactions.get` でリアクションを確認し、投稿状態を`承認待ち`→`承認済み`へ
+自動更新する。
+
+- news_bot（GitHub Actions駆動、常時起動サーバー無し）という制約上、Slackの
+  Interactivity（ボタン）はRequest URLを受けるサーバーが要るため採用せず、
+  X投稿承認フロー（`approval.resolve`/`notify_pending`）と同じ**リアクション+ポーリング方式**
+  を踏襲した（15.未決定事項#2）
+- キャンセル絵文字は見ない。投稿状態は`承認待ち`/`承認済み`/`投稿済み`の3値運用
+  （CLAUDE.md）で「却下」に相当する状態が無く、不要な行はシート上で直接削除する運用のため
+- シート上での直接書き換え（`投稿状態`列を手動で`承認済み`にする）も引き続き有効。
+  Slackスタンプはその代替・簡易手段という位置付け
+- 対象は「VOD配信予定」のみ（劇場公開予定は未対応。同じ仕組みを入れる場合は
+  `theater_calendar.dedupe_key`・「劇場公開予定」シートに同様の列追加が必要）
 
 サービスのキー名は `vod_bot`（CLAUDE.mdの対応VODサービス表）と揃え、
 将来 `vod_bot` 側の配信状況データと突合できるようにする。
@@ -474,6 +503,7 @@ news_bot/
 - [x] AI統合レイヤー（`extract_vod.py`）でXポストを構造化抽出し、Web検索結果と重複マージする
 - [x] `配信開始日 + サービス + 正規化タイトル` で重複判定し、承認待ちで保存する
 - [x] 発見結果の確認依頼をSlackに通知する
+- [x] Slack承認スタンプ（:white_check_mark:）でのワンクリック承認（`vod_resolve_approvals`、8.1参照）
 - [x] 承認済み行から週次まとめを生成する（`vod_publish`）
 - [x] WP CPTへ下書き投稿する（編集部おすすめ + 統一フォーマットの作品カードを含む記事構成、11.2）
 - [x] Xスレッド投稿案をSlackへ送信する（手動投稿）
@@ -485,7 +515,7 @@ news_bot/
 | # | 項目 | 内容 |
 |---|---|---|
 | 1 | ~~CPTスラッグ・WP側登録~~（実装をブロックしない） | 最終的な名称（`vod_news`/`vod_calendar`/`vod_release`/`vod_schedule`等）は管理者がWordPress側で決定・登録する運用とする。コード側は13.の`VOD_NEWS_CPT_SLUG`環境変数でスラッグを注入するため、名称未確定でも実装は進められる（既定値`vod_news`） |
-| 2 | 承認フローの具体化 | theater側の未決定事項#1と共通。承認列のチェックボックス方式か、投稿状態列の手動書き換えか。将来的にはSlack通知に承認ボタンを設置し、Google Sheets更新→WP投稿までワンクリックで完結させる方式も検討する（[vod-release-calendar-improvements.md](vod-release-calendar-improvements.md)8.節） |
+| 2 | ~~承認フローの具体化~~（VODは運用方針確定） | **VODは投稿状態列の手動書き換え、またはSlackスレッドへの:white_check_mark:リアクション（ワンクリック承認、8.1参照）の二本立てとする。** Slackボタン（Interactivity）は常時起動サーバーが要るため見送り、X投稿承認フローと同じリアクション+ポーリング方式を採用した。theater側の未決定事項#1は未対応（同じ仕組みを入れる場合は8.1のシート列追加が「劇場公開予定」にも要る） |
 | 3 | 対象サービスの範囲 | 初期6サービス（6.）で良いか。Apple TV / YouTube / Crunchyrollを含めるか |
 | 4 | CPT記事の公開運用 | 下書き→人間公開の運用をいつまで続けるか。テーマ側のCPTアーカイブ・単体テンプレートの用意 |
 | 5 | `tmdb_id` ACFフィールドの実在確認 | coming-soon-pipeline / theater と共通の未決定事項。照合精度に影響 |

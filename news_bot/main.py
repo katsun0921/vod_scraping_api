@@ -16,6 +16,8 @@ GitHub Actions cron から呼び出す想定（仕様書 3.: 1〜2時間おき�
                            として保存（docs/feature/vod-release-calendar-spec.md 7./10.）
     vod_publish_cycle():   承認済みのVOD配信予定行から週次まとめを生成し、WP CPT投稿+
                            Xスレッド案のSlack通知まで行う（週次、月曜。同spec 11.）
+    vod_resolve_approvals_cycle(): 承認待ち行のSlack承認スタンプ（ワンクリック承認）を確認し、
+                           付いていれば投稿状態を承認済みへ自動更新する（高頻度、時間単位）
 
 1回のrunでS/A判定になった記事は個別に投稿する代わりに1つのXスレッド（連投）にまとめる
 （`compose.compose_headline()` + `compose.pack_thread()` + `approval.notify_manual_thread()`）。
@@ -522,7 +524,14 @@ def _save_vod_entries(source_entries: list, label: str) -> dict:
     # サイクル自体は失敗させない（theater_discover_cycle()と同じ方針）。
     if saved_entries:
         try:
-            approval.notify_vod_discovered(start, end, saved_entries)
+            slack_refs = approval.notify_vod_discovered(start, end, saved_entries)
+            for entry in saved_entries:
+                key = vod_calendar.dedupe_key(entry.available_from.isoformat(), entry.service, entry.title)
+                ref = slack_refs.get(key)
+                if ref is None:
+                    continue
+                # ワンクリック承認（vod_resolve_approvals_cycle）がリアクションを見に行く宛先を記録する。
+                sheets.update_vod_item_slack_ref(key, slack_channel=ref[0], slack_ts=ref[1])
             stats["notified"] = len(saved_entries)
         except Exception:
             logger.exception("VOD配信予定Slack通知失敗（%d件）", len(saved_entries))
@@ -540,6 +549,23 @@ def vod_import_cycle() -> dict:
     """
     entries = import_routine.load_vod_entries(import_routine.latest_path("vod"))
     return _save_vod_entries(entries, "vod_import_cycle")
+
+
+def vod_resolve_approvals_cycle() -> dict:
+    """「VOD配信予定」シートの承認待ち行を確認し、Slackで承認スタンプ（:white_check_mark:）が
+    付いていれば投稿状態を承認済みへ自動更新する（ワンクリック承認）。
+
+    `vod_publish`（週次・月曜のみ）と違い、承認してからシートに反映されるまでのラグを
+    抑えるため高頻度（時間単位）で回す想定。対象0件・承認0件でも正常終了する。
+    """
+    sheets = NewsBotSheets()
+    pending = sheets.get_pending_vod_items_with_slack_ref()
+    approved_keys = approval.resolve_vod_approvals(pending)
+    for key in approved_keys:
+        sheets.update_vod_item_status(key, post_status="承認済み")
+    stats = {"checked": len(pending), "approved": len(approved_keys)}
+    logger.info("vod_resolve_approvals_cycle 完了: %s", stats)
+    return stats
 
 
 def vod_publish_cycle() -> dict:
@@ -641,6 +667,7 @@ if __name__ == "__main__":
     # "vod_import": ルーティン成果物JSON+X抽出の取り込み（vod_import_cycle）。
     # "vod_discover": AI Web検索+VOD公式X投稿抽出によるVOD配信開始作品の発見（vod_discover_cycle）。
     # "vod_publish": 承認済みVOD配信予定の週次まとめ生成・WP投稿・Slack通知（vod_publish_cycle）。
+    # "vod_resolve_approvals": 承認待ち行のSlack承認スタンプを確認し自動承認（vod_resolve_approvals_cycle）。
     if len(sys.argv) > 1 and sys.argv[1] == "x":
         fetch_x_cycle(sys.argv[2] if len(sys.argv) > 2 else "日本")
     elif len(sys.argv) > 1 and sys.argv[1] == "theater":
@@ -661,6 +688,8 @@ if __name__ == "__main__":
         vod_discover_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_publish":
         vod_publish_cycle()
+    elif len(sys.argv) > 1 and sys.argv[1] == "vod_resolve_approvals":
+        vod_resolve_approvals_cycle()
     else:
         fetch_cycle()
     # 投稿は手動運用のため自動投稿は呼ばない。自動化を再開する場合はコメントを外す。
