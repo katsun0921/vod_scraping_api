@@ -1,50 +1,8 @@
 [
   {
-    "title": "ブルーロック",
-    "release_date": "2026-08-07",
-    "distributor": "東宝",
-    "official_url": "https://bluelock-movie.jp/"
-  },
-  {
-    "title": "ミニオンズ＆モンスターズ",
-    "release_date": "2026-08-07",
-    "distributor": "東宝東和",
-    "official_url": "https://minions.jp/"
-  },
-  {
-    "title": "あの星が降る丘で、君とまた出会いたい。",
-    "release_date": "2026-08-07",
-    "distributor": "松竹",
-    "official_url": "https://movies.shochiku.co.jp/anohoshi-movie/"
-  },
-  {
-    "title": "白パンと独裁者",
-    "release_date": "2026-08-07",
-    "distributor": "ビターズ・エンド",
-    "official_url": "https://www.bitters.co.jp/shiropan/"
-  },
-  {
-    "title": "プリミティヴ・ウォー 恐竜戦争",
-    "release_date": "2026-08-07",
-    "distributor": "オンリー・ハーツ",
-    "official_url": "https://primitivewar-jp.com/"
-  },
-  {
-    "title": "叛逆のサウンドトラック",
-    "release_date": "2026-08-07",
-    "distributor": "オンリー・ハーツ",
-    "official_url": "https://hangyaku.onlyhearts.co.jp/"
-  },
-  {
-    "title": "ニホンジン",
-    "release_date": "2026-08-07",
-    "distributor": "２ミーターテインメント",
-    "official_url": "https://nihonjin.2-meter.net/"
-  },
-  {
-    "title": "WE HAVE A DREAM ウィー・ハブ・ア・ドリーム",
-    "release_date": "2026-08-07",
-    "distributor": "ユナイテッドピープル",
-    "official_url": "https://unitedpeople.jp/dream/"
+    "title": "ゴースト・オブ・ウエノ",
+    "release_date": "2026-08-08",
+    "distributor": "NAKACHIKA",
+    "official_url": "https://ghostofueno.com/"
   }
 ]
