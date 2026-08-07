@@ -1,0 +1,38 @@
+name: VOD Approval Check
+
+# 「VOD配信予定」シートの承認待ち行を定期的に確認し、Slackのスレッド返信に
+# 承認スタンプ（:white_check_mark:）が付いていれば投稿状態を自動的に承認済みへ
+# 更新する（ワンクリック承認）。承認そのものはシート上の手動書き換えでも可能で、
+# 本ワークフローはその代替手段。
+#
+# vod-calendar.yml（vod_publish、週1回）より高頻度に回し、承認してから
+# シートに反映されるまでのラグを抑える。
+on:
+  schedule:
+    - cron: "0 * * * *" # 毎時0分（UTC）
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: news_bot/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r news_bot/requirements.txt
+
+      - name: Resolve VOD approvals
+        env:
+          GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
+          GOOGLE_SHEETS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_SHEETS_CREDENTIALS_JSON }}
+          SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
+        run: python -m news_bot.main vod_resolve_approvals

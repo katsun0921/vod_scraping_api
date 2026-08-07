@@ -80,6 +80,7 @@ _VOD_ITEMS_HEADER = [
     "取得日時", "配信開始日", "タイトル", "原題", "サービス", "カテゴリ", "配信種別",
     "公式URL", "情報源", "Katsumascore URL", "WP post_id", "SNS優先度(S/A/B/C)",
     "投稿状態", "編集部おすすめ", "編集部コメント", "重複キー", "メモ",
+    "SlackチャンネルID", "Slackメッセージts",
 ]
 
 # main.py が実際に読み書きするシートのみ自動作成する。
@@ -507,6 +508,8 @@ class NewsBotSheets:
             "",
             dedupe_key,
             memo,
+            "",
+            "",
         ]
         self._worksheet("VOD配信予定").append_row(row, value_input_option="USER_ENTERED")
 
@@ -541,6 +544,30 @@ class NewsBotSheets:
             return
         status_col = _VOD_ITEMS_HEADER.index("投稿状態") + 1
         ws.update_cell(cell.row, status_col, post_status)
+
+    def update_vod_item_slack_ref(self, dedupe_key: str, *, slack_channel: str, slack_ts: str) -> None:
+        """重複キーをキーに「VOD配信予定」シートのSlack参照列を書き込む。
+
+        ワンクリック承認（承認スタンプの自動検知）用。発見通知（`notify_vod_discovered`）で
+        作品ごとに送ったスレッド返信の channel/ts を記録し、`get_pending_vod_items_with_slack_ref()`
+        が後で `reactions.get` を呼ぶ際の宛先にする。
+        """
+        ws = self._worksheet("VOD配信予定")
+        cell = ws.find(dedupe_key, in_column=_VOD_ITEMS_HEADER.index("重複キー") + 1)
+        if cell is None:
+            logger.warning("VOD配信予定に重複キーが見つかりません: %s", dedupe_key)
+            return
+        ws.update_cell(cell.row, _VOD_ITEMS_HEADER.index("SlackチャンネルID") + 1, slack_channel)
+        ws.update_cell(cell.row, _VOD_ITEMS_HEADER.index("Slackメッセージts") + 1, slack_ts)
+
+    def get_pending_vod_items_with_slack_ref(self) -> list[dict]:
+        """投稿状態=承認待ち、かつSlack参照が記録済みの行を返す（承認スタンプの自動チェック対象）。"""
+        rows = self._worksheet("VOD配信予定").get_all_records()
+        return [
+            row
+            for row in rows
+            if row.get("投稿状態") == "承認待ち" and row.get("SlackチャンネルID") and row.get("Slackメッセージts")
+        ]
 
     def update_vod_item_katsumascore(self, dedupe_key: str, *, katsumascore_url: str, wp_post_id: str) -> None:
         """Katsumascore照合結果（仕様書10.）を重複キーをキーに書き込む。"""
