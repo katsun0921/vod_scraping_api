@@ -1,1 +1,47 @@
-[]
+[
+  {
+    "title": "わが青春の輝き",
+    "title_orig": "My Brilliant Career",
+    "service": "netflix",
+    "available_from": "2026-08-13",
+    "availability_type": "独占",
+    "category": "ドラマ",
+    "url": "https://www.netflix.com/jp/title/81655060"
+  },
+  {
+    "title": "タイヤーズ ～それでも回るよ人生は～ シーズン3",
+    "title_orig": "Tires",
+    "service": "netflix",
+    "available_from": "2026-08-13",
+    "availability_type": "独占",
+    "category": "ドラマ",
+    "url": "https://www.netflix.com/jp/title/81758875"
+  },
+  {
+    "title": "ミステリー・アリーナ",
+    "title_orig": "",
+    "service": "amazon_prime_video",
+    "available_from": "2026-08-14",
+    "availability_type": "独占",
+    "category": "映画",
+    "url": ""
+  },
+  {
+    "title": "キャンプ・ロック3",
+    "title_orig": "Camp Rock 3",
+    "service": "disney_plus",
+    "available_from": "2026-08-14",
+    "availability_type": "独占",
+    "category": "映画",
+    "url": "https://www.disneyplus.com/ja-jp/browse/entity-db450dbe-0450-473e-ad79-a89ad39d2aa7"
+  },
+  {
+    "title": "スター・ウォーズ：ビジョンズ／九人目のジェダイ",
+    "title_orig": "Star Wars: Visions Presents – The Ninth Jedi",
+    "service": "disney_plus",
+    "available_from": "2026-08-05",
+    "availability_type": "独占",
+    "category": "アニメ",
+    "url": "https://www.disneyplus.com/ja-jp/browse/entity-921588f0-9a3b-4cd6-80d6-0a7cc9ed388a"
+  }
+]
