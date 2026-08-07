@@ -50,6 +50,7 @@ Katsumascore への流入を増やすため、毎週公開される劇場映画�
 
 ```bash
 python -m news_bot.main theater_import        # ルーティン成果物を取り込み（承認待ちで保存）
+python -m news_bot.main theater_resolve_approvals  # Slack承認スタンプを反映（ワンクリック承認）
 python -m news_bot.main theater_publish       # 承認済み行から週次まとめを展開
 python -m news_bot.main theater_add <URL>     # 人間が見つけたURLから1件追記
 python -m news_bot.main theater_discover      # [フォールバック] AI Web検索で発見（従量課金）
@@ -66,6 +67,7 @@ Claude APIを従量課金で呼ぶ代わりに、ルーティンが週次で調�
 |---|---|---|
 | ルーティン | 毎週金曜 09:00 JST | 対象週の公開作品を調査し、`routine_data/theater_latest.json` を更新してPR作成 |
 | `theater_import` | PRマージ時（`routine-import.yml`） | 成果物JSONを取り込み、Katsumascore照合の上で承認待ちで保存。Slackに確認依頼を通知 |
+| `theater_resolve_approvals` | 毎時（`approval-check.yml`） | 承認待ち行のSlack承認スタンプを確認し、投稿状態を承認済みへ自動更新（8.1） |
 | `theater_publish` | 毎週金曜 07:00 JST | 対象週の承認済み行から週次まとめを生成し、WP CPT投稿・SNS投稿案をSlackへ送信 |
 
 `theater_publish` を金曜にしているのは2つの理由による。
@@ -166,7 +168,33 @@ SNS優先度(S/A/B/C)
 投稿状態
 重複キー
 メモ
+SlackチャンネルID
+Slackメッセージts
 ```
+
+`SlackチャンネルID`/`Slackメッセージts`はワンクリック承認用の内部管理列（8.1参照）。
+「承認キュー」シートの同名列と同じ役割で、発見通知の作品ごとのスレッド返信を指す。
+
+### 8.1 ワンクリック承認（Slack承認スタンプ）
+
+VOD側（[vod-release-calendar-spec.md](vod-release-calendar-spec.md) 8.1）と同型の仕組みを
+劇場公開にも用意する。
+
+`theater_import`/`theater_discover` の発見通知（`approval.notify_theater_discovered`）は、
+親メッセージ1件+作品ごとのスレッド返信で送る。各スレッド返信の `channel`/`ts` を
+「劇場公開予定」シートの `SlackチャンネルID`/`Slackメッセージts` 列に記録し
+（`sheets.update_theater_item_slack_ref`）、そのメッセージに人間が :white_check_mark: で
+反応すると、`theater_resolve_approvals`（`news_bot.main.theater_resolve_approvals_cycle`、
+`.github/workflows/approval-check.yml`で毎時実行）が `reactions.get` でリアクションを確認し、
+投稿状態を`承認待ち`→`承認済み`へ自動更新する。
+
+- リアクション判定（`approval.resolve_approvals`）はVODと共用する。両シートで重複キーと
+  Slack参照の列名が同じで、判定はリアクションの有無だけのため、実装を分ける理由がない
+- キャンセル絵文字は見ない。投稿状態は`承認待ち`/`承認済み`/`投稿済み`の3値運用
+  （CLAUDE.md）で「却下」に相当する状態が無く、不要な行はシート上で直接削除する運用のため
+- シート上での直接書き換え（`投稿状態`列を手動で`承認済み`にする）も引き続き有効
+- **既存シートには列が無いため、手動で2列を追加する必要がある。** 列が無いままだと
+  `get_pending_theater_items_with_slack_ref()`が常に空を返し、承認スタンプが反映されない
 
 ### 投稿状態
 
@@ -308,7 +336,8 @@ news_bot/
 .github/workflows/
 ├── routine-import.yml      # ルーティンPRのマージを検知して theater_import を実行
 ├── theater-calendar.yml    # 金曜=theater_publish（cron 1本）。theater_discover は手動のみ
-└── theater-add-url.yml     # URLからの手動追記（workflow_dispatch）
+├── theater-add-url.yml     # URLからの手動追記（workflow_dispatch）
+└── approval-check.yml      # 毎時=theater_resolve_approvals（VODと共用。8.1）
 ```
 
 ## 13. 環境変数
@@ -471,7 +500,7 @@ TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates
 
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | 承認フローの具体化 | AI発見結果（投稿状態=`承認待ち`）を人間がどう承認するか（承認列のチェックボックス追加、承認済み行のみ下流処理対象にする等）が未設計。Slackへの確認依頼通知（親メッセージ+作品ごとのスレッド返信、`approval.notify_theater_discovered()`）は実装済み |
+| 1 | ~~承認フローの具体化~~（運用方針確定） | **投稿状態列の手動書き換え、またはSlackスレッドへの:white_check_mark:リアクション（ワンクリック承認、8.1参照）の二本立てとする。** Slackボタン（Interactivity）は常時起動サーバーが要るため見送り、X投稿承認フローと同じリアクション+ポーリング方式を採用した（VOD側の未決定事項#2と共通） |
 | 2 | Googleカレンダー同期 | 確定行をGoogle Calendar APIでイベント化する（サービスアカウントにスコープ追加・重複防止はextendedPropertiesに重複キーを保持）。未実装 |
 | 2b | URL入力ツールの改善 | 現状はActionsタブの`Theater Add URL` workflow（`workflow_dispatch`）でURLを入力する。Slackチャンネル巡回（投稿されたURLをcronで拾う。要`channels:history`スコープ+since管理）やGoogle Form経由は将来の選択肢。いずれも`theater_add_url()`をそのまま流用できる |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/drop/coming-soon-pipeline.md`（2026-07-22に`docs/drop/`へ移動・凍結）の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |

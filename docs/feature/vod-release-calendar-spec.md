@@ -284,7 +284,7 @@ Slackメッセージts
 + 作品ごとのスレッド返信で送る。各スレッド返信の `channel`/`ts` を「VOD配信予定」シートの
 `SlackチャンネルID`/`Slackメッセージts` 列に記録し（`sheets.update_vod_item_slack_ref`）、
 そのメッセージに人間が :white_check_mark: で反応すると、`vod_resolve_approvals`
-（`news_bot.main.vod_resolve_approvals_cycle`、`.github/workflows/vod-approval-check.yml`で
+（`news_bot.main.vod_resolve_approvals_cycle`、`.github/workflows/approval-check.yml`で
 毎時実行）が `reactions.get` でリアクションを確認し、投稿状態を`承認待ち`→`承認済み`へ
 自動更新する。
 
@@ -296,8 +296,8 @@ Slackメッセージts
   （CLAUDE.md）で「却下」に相当する状態が無く、不要な行はシート上で直接削除する運用のため
 - シート上での直接書き換え（`投稿状態`列を手動で`承認済み`にする）も引き続き有効。
   Slackスタンプはその代替・簡易手段という位置付け
-- 対象は「VOD配信予定」のみ（劇場公開予定は未対応。同じ仕組みを入れる場合は
-  `theater_calendar.dedupe_key`・「劇場公開予定」シートに同様の列追加が必要）
+- 劇場公開予定にも同じ仕組みを実装済み（[theater-release-calendar-spec.md](theater-release-calendar-spec.md) 8.1）。
+  リアクション判定（`approval.resolve_approvals`）は両者で共用する
 
 サービスのキー名は `vod_bot`（CLAUDE.mdの対応VODサービス表）と揃え、
 将来 `vod_bot` 側の配信状況データと突合できるようにする。
@@ -469,7 +469,8 @@ news_bot/
 
 .github/workflows/
 ├── routine-import.yml      # ルーティンPRのマージを検知して vod_import を実行
-└── vod-calendar.yml        # 月曜=vod_publish（cron 1本）。vod_discover は手動のみ
+├── vod-calendar.yml        # 月曜=vod_publish（cron 1本）。vod_discover は手動のみ
+└── approval-check.yml      # 毎時=vod_resolve_approvals（劇場と共用。8.1）
 ```
 
 ## 13. 環境変数
@@ -515,7 +516,7 @@ news_bot/
 | # | 項目 | 内容 |
 |---|---|---|
 | 1 | ~~CPTスラッグ・WP側登録~~（実装をブロックしない） | 最終的な名称（`vod_news`/`vod_calendar`/`vod_release`/`vod_schedule`等）は管理者がWordPress側で決定・登録する運用とする。コード側は13.の`VOD_NEWS_CPT_SLUG`環境変数でスラッグを注入するため、名称未確定でも実装は進められる（既定値`vod_news`） |
-| 2 | ~~承認フローの具体化~~（VODは運用方針確定） | **VODは投稿状態列の手動書き換え、またはSlackスレッドへの:white_check_mark:リアクション（ワンクリック承認、8.1参照）の二本立てとする。** Slackボタン（Interactivity）は常時起動サーバーが要るため見送り、X投稿承認フローと同じリアクション+ポーリング方式を採用した。theater側の未決定事項#1は未対応（同じ仕組みを入れる場合は8.1のシート列追加が「劇場公開予定」にも要る） |
+| 2 | ~~承認フローの具体化~~（VODは運用方針確定） | **VODは投稿状態列の手動書き換え、またはSlackスレッドへの:white_check_mark:リアクション（ワンクリック承認、8.1参照）の二本立てとする。** Slackボタン（Interactivity）は常時起動サーバーが要るため見送り、X投稿承認フローと同じリアクション+ポーリング方式を採用した。劇場公開側（theater側の未決定事項#1）にも同型の仕組みを実装済み |
 | 3 | 対象サービスの範囲 | 初期6サービス（6.）で良いか。Apple TV / YouTube / Crunchyrollを含めるか |
 | 4 | CPT記事の公開運用 | 下書き→人間公開の運用をいつまで続けるか。テーマ側のCPTアーカイブ・単体テンプレートの用意 |
 | 5 | `tmdb_id` ACFフィールドの実在確認 | coming-soon-pipeline / theater と共通の未決定事項。照合精度に影響 |

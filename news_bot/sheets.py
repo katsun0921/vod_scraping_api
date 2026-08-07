@@ -64,6 +64,7 @@ _THEATER_ITEMS_HEADER = [
     "取得日時", "公開日", "タイトル", "原題", "カテゴリ", "国", "配給",
     "公式URL", "予告URL", "情報源", "Katsumascore URL", "WP post_id",
     "SNS優先度(S/A/B/C)", "投稿状態", "重複キー", "メモ",
+    "SlackチャンネルID", "Slackメッセージts",
 ]
 # 「劇場情報源」はレイヤー1データソースを未確定のままコード変更なしで追加できるよう、
 # RSS一覧と同じ「シートに参照を記述すれば取得対象になる」方式で新設した管理用シート
@@ -370,6 +371,8 @@ class NewsBotSheets:
             post_status,
             dedupe_key,
             memo,
+            "",
+            "",
         ]
         self._worksheet("劇場公開予定").append_row(row, value_input_option="USER_ENTERED")
 
@@ -403,6 +406,30 @@ class NewsBotSheets:
             return
         status_col = _THEATER_ITEMS_HEADER.index("投稿状態") + 1
         ws.update_cell(cell.row, status_col, post_status)
+
+    def update_theater_item_slack_ref(self, dedupe_key: str, *, slack_channel: str, slack_ts: str) -> None:
+        """重複キーをキーに「劇場公開予定」シートのSlack参照列を書き込む。
+
+        update_vod_item_slack_ref()と同型。発見通知（`notify_theater_discovered`）で
+        作品ごとに送ったスレッド返信の channel/ts を記録し、
+        `get_pending_theater_items_with_slack_ref()`が後で`reactions.get`を呼ぶ際の宛先にする。
+        """
+        ws = self._worksheet("劇場公開予定")
+        cell = ws.find(dedupe_key, in_column=_THEATER_ITEMS_HEADER.index("重複キー") + 1)
+        if cell is None:
+            logger.warning("劇場公開予定に重複キーが見つかりません: %s", dedupe_key)
+            return
+        ws.update_cell(cell.row, _THEATER_ITEMS_HEADER.index("SlackチャンネルID") + 1, slack_channel)
+        ws.update_cell(cell.row, _THEATER_ITEMS_HEADER.index("Slackメッセージts") + 1, slack_ts)
+
+    def get_pending_theater_items_with_slack_ref(self) -> list[dict]:
+        """投稿状態=承認待ち、かつSlack参照が記録済みの行を返す（承認スタンプの自動チェック対象）。"""
+        rows = self._worksheet("劇場公開予定").get_all_records()
+        return [
+            row
+            for row in rows
+            if row.get("投稿状態") == "承認待ち" and row.get("SlackチャンネルID") and row.get("Slackメッセージts")
+        ]
 
     def get_active_vod_x_accounts(self) -> list[dict]:
         """「VOD情報源」シートから取得方式=xで有効な公式Xアカウントを取得する
