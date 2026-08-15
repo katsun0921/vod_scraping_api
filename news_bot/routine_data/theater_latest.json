@@ -1,8 +1,44 @@
 [
   {
-    "title": "ゴースト・オブ・ウエノ",
-    "release_date": "2026-08-08",
-    "distributor": "NAKACHIKA",
-    "official_url": "https://ghostofueno.com/"
+    "title": "機動警察パトレイバー EZY File 2",
+    "slug": "theater-release-2026-08-14",
+    "release_date": "2026-08-14",
+    "distributor": "松竹ODS事業室・バンダイナムコフィルムワークス",
+    "official_url": "https://ezy.patlabor.tokyo/"
+  },
+  {
+    "title": "レディ・オア・ノット2",
+    "slug": "theater-release-2026-08-14",
+    "release_date": "2026-08-14",
+    "distributor": "ウォルト・ディズニー・ジャパン",
+    "official_url": "https://www.searchlightpictures.jp/movies/readyornot2"
+  },
+  {
+    "title": "オークストリートの異変",
+    "slug": "theater-release-2026-08-14",
+    "release_date": "2026-08-14",
+    "distributor": "東和ピクチャーズ・東宝",
+    "official_url": "https://oak-street.jp/"
+  },
+  {
+    "title": "戦いの向こう 侍たちの記録 2026 WORLD BASEBALL CLASSIC",
+    "slug": "theater-release-2026-08-14",
+    "release_date": "2026-08-14",
+    "distributor": "J SPORTS・アスミック・エース",
+    "official_url": ""
+  },
+  {
+    "title": "カルロス・カイザー サッカー史上最も奇妙な成功者",
+    "slug": "theater-release-2026-08-14",
+    "release_date": "2026-08-14",
+    "distributor": "NEGA",
+    "official_url": "https://kaiser.negadesignworks.com/"
+  },
+  {
+    "title": "左利きの少女",
+    "slug": "theater-release-2026-08-14",
+    "release_date": "2026-08-14",
+    "distributor": "スターキャット・アルバトロスフィルム",
+    "official_url": "https://cinema.starcat.co.jp/left-handed-girl/"
   }
 ]
