@@ -26,6 +26,10 @@ on:
         options:
           - "theater_discover"
           - "theater_publish"
+      target_start:
+        description: "CPT作成対象週の金曜日 YYYY-MM-DD（空欄は通常週）"
+        required: false
+        type: string
 
 jobs:
   run:
@@ -72,4 +76,10 @@ jobs:
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           # 劇場公開通知の専用チャンネル。未設定(空)の場合は上の承認チャンネルに送る
           SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
-        run: python -m news_bot.main "$COMMAND"
+          TARGET_START: ${{ github.event.inputs.target_start }}
+        run: |
+          args=("$COMMAND")
+          if [ "$COMMAND" = "theater_publish" ] && [ -n "$TARGET_START" ]; then
+            args+=("$TARGET_START")
+          fi
+          python -m news_bot.main "${args[@]}"

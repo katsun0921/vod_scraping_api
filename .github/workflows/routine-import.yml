@@ -23,6 +23,10 @@ on:
         options:
           - "theater_import"
           - "vod_import"
+      target_start:
+        description: "対象週の開始日 YYYY-MM-DD（劇場は金曜、VODは月曜。空欄は通常週）"
+        required: false
+        type: string
 
 jobs:
   detect:
@@ -86,7 +90,11 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
-        run: python -m news_bot.main theater_import
+          TARGET_START: ${{ github.event.inputs.target_start }}
+        run: |
+          args=(theater_import)
+          [ -n "$TARGET_START" ] && args+=("$TARGET_START")
+          python -m news_bot.main "${args[@]}"
 
   vod:
     needs: detect
@@ -121,4 +129,8 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           SLACK_VOD_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_VOD_CHANNEL_ID }}
-        run: python -m news_bot.main vod_import
+          TARGET_START: ${{ github.event.inputs.target_start }}
+        run: |
+          args=(vod_import)
+          [ -n "$TARGET_START" ] && args+=("$TARGET_START")
+          python -m news_bot.main "${args[@]}"

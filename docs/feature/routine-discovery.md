@@ -108,6 +108,23 @@ PRレビューを通っても、シートには **投稿状態=`承認待ち`** 
 | `main.py: theater_import_cycle()` | 劇場: JSON読み込み → 保存 |
 | `main.py: vod_import_cycle()` | VOD: JSON読み込み + X抽出 → 統合 → 保存 |
 | `.github/workflows/routine-import.yml` | PRマージ後に import を実行 |
+| `.github/workflows/routine-pr-notify.yml` | ルーティンPR作成時にSlackへレビュー依頼を通知 |
+
+### PR作成時のSlack通知
+
+`routine/theater-*`または`routine/vod-*`ブランチから成果物JSONを変更するPRが作成されると、
+`Routine PR Notify`がPRタイトル・URL・作成者をSlackへ送信する。劇場/VODの専用チャンネルを
+優先し、未設定の場合は承認チャンネルへフォールバックする。通知には既存の
+`NEWS_BOT_SLACK_BOT_TOKEN`と各チャンネルIDのSecretsを使用する。
+
+### 過去週の手動再処理
+
+`Routine Import`の`workflow_dispatch`には`target_start`を指定できる。劇場は対象週の
+金曜日、VODは対象週の月曜日を`YYYY-MM-DD`で入力する。空欄なら通常どおり実行日から
+対象期間を計算する。
+
+取り込み後はSlack承認を完了させ、`Theater Calendar`または`VOD Calendar`を手動実行して
+同じ`target_start`を指定すると、その過去週を対象にCPTを作成できる。
 
 ### 成果物は固定名
 

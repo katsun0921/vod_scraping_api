@@ -23,6 +23,10 @@ on:
         options:
           - "vod_discover"
           - "vod_publish"
+      target_start:
+        description: "CPT作成対象週の月曜日 YYYY-MM-DD（空欄は通常週）"
+        required: false
+        type: string
 
 jobs:
   run:
@@ -61,4 +65,10 @@ jobs:
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           # VOD配信情報通知の専用チャンネル。未設定(空)の場合は上の承認チャンネルに送る
           SLACK_VOD_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_VOD_CHANNEL_ID }}
-        run: python -m news_bot.main "$COMMAND"
+          TARGET_START: ${{ github.event.inputs.target_start }}
+        run: |
+          args=("$COMMAND")
+          if [ "$COMMAND" = "vod_publish" ] && [ -n "$TARGET_START" ]; then
+            args+=("$TARGET_START")
+          fi
+          python -m news_bot.main "${args[@]}"
