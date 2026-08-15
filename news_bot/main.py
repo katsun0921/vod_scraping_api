@@ -49,6 +49,7 @@ from news_bot import (
     fetch_x,
     import_routine,
     judge,
+    manual_week,
     post_x,
     theater_calendar,
     vod_calendar,
@@ -61,6 +62,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 _POSTABLE_RANKS = {"S", "A"}
+
+
+def _target_start_arg(kind: str) -> date | None:
+    """サブコマンドの第2引数から任意の対象週開始日を取得する。"""
+    raw = sys.argv[2] if len(sys.argv) > 2 else None
+    try:
+        return manual_week.parse_target_start(raw, kind)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 def _notify_thread(postable: list[tuple[NewsEntry, str]]) -> None:
@@ -308,7 +318,7 @@ def theater_discover_cycle() -> dict:
     return _save_theater_entries(entries, start, end, "theater_discover_cycle")
 
 
-def theater_import_cycle() -> dict:
+def theater_import_cycle(target_start: date | None = None) -> dict:
     """ルーティンが出力した劇場公開JSONを取り込み、承認待ちとして保存する。
 
     Claude APIのWeb検索を従量課金で呼ぶ代わりに、Claudeのルーティンが週次で調査して
@@ -317,8 +327,13 @@ def theater_import_cycle() -> dict:
 
     PRレビューを通っていても投稿状態は"承認待ち"で保存する。PRレビューは「AIが拾った
     情報が妥当か」の確認であり、シート上の承認は「記事に載せるか」の判断で目的が異なるため。
+
+    target_startを指定した場合は、その金曜日から7日間を対象にする。未指定時は
+    従来どおり実行日から対象週を計算する。
     """
-    start, end = theater_calendar.week_range(date.today())
+    start, end = manual_week.resolve_range(
+        target_start, "theater", theater_calendar.week_range(date.today())
+    )
     entries = import_routine.load_theater_entries(import_routine.latest_path("theater"))
     return _save_theater_entries(entries, start, end, "theater_import_cycle")
 
@@ -370,7 +385,7 @@ def theater_add_url(url: str) -> dict:
     return stats
 
 
-def theater_publish_cycle() -> dict:
+def theater_publish_cycle(target_start: date | None = None) -> dict:
     """承認済みの劇場公開予定行から週次まとめを生成し、WP CPT投稿+SNS投稿案の
     Slack通知まで行う（docs/feature/theater-release-calendar-spec.md 11.）。
 
@@ -380,10 +395,13 @@ def theater_publish_cycle() -> dict:
     vod_publish_cycle()と違い期間計算に専用関数を設けていないのは、week_range()が
     月曜〜金曜のどの日に実行しても同じ週（直近の金曜起点）を返すため、discover（月曜朝）と
     publish を同じ週に揃えられるため。ただし土日に実行すると翌週にずれるので、
-    ワークフローのcronは平日に置くこと。
+    ワークフローのcronは平日に置くこと。target_startを指定した場合は、その金曜日から
+    7日間を対象にして過去週を再処理できる。
     """
     sheets = NewsBotSheets()
-    start, end = theater_calendar.week_range(date.today())
+    start, end = manual_week.resolve_range(
+        target_start, "theater", theater_calendar.week_range(date.today())
+    )
     items = sheets.get_approved_theater_items(start, end)
     stats = {"target": len(items), "posted": 0, "notified": 0}
 
@@ -471,7 +489,7 @@ def _fetch_vod_x_entries(sheets: NewsBotSheets) -> list:
         return []
 
 
-def _save_vod_entries(source_entries: list, label: str) -> dict:
+def _save_vod_entries(source_entries: list, label: str, target_start: date | None = None) -> dict:
     """VOD配信エントリをX抽出結果と統合し、対象期間・重複でフィルタして保存する。
 
     エントリの供給元（AI Web検索 / ルーティン成果物JSON）によらず共通の保存処理。
@@ -480,9 +498,12 @@ def _save_vod_entries(source_entries: list, label: str) -> dict:
     Args:
         source_entries: AI Web検索またはルーティンJSON由来のVodEntry一覧
         label: ログ表示用の呼び出し元名
+        target_start: 手動再取り込み時の対象週開始日（月曜日）
     """
     sheets = NewsBotSheets()
-    start, end = vod_calendar.next_week_range(date.today())
+    start, end = manual_week.resolve_range(
+        target_start, "vod", vod_calendar.next_week_range(date.today())
+    )
     existing_keys = sheets.get_existing_vod_keys()
 
     x_entries = _fetch_vod_x_entries(sheets)
@@ -548,15 +569,16 @@ def _save_vod_entries(source_entries: list, label: str) -> dict:
     return stats
 
 
-def vod_import_cycle() -> dict:
+def vod_import_cycle(target_start: date | None = None) -> dict:
     """ルーティンが出力したVOD配信JSONを取り込み、承認待ちとして保存する。
 
     AI Web検索部分のみをルーティンへ移行したもの。X公式アカウントからの抽出は
     X API v2の認証が必要でルーティンでは代替できないため、本サイクル内で
     引き続き実行し、ルーティンの結果と統合する（docs/feature/routine-discovery.md）。
+    target_startを指定した場合は、その月曜日から7日間を対象にする。
     """
     entries = import_routine.load_vod_entries(import_routine.latest_path("vod"))
-    return _save_vod_entries(entries, "vod_import_cycle")
+    return _save_vod_entries(entries, "vod_import_cycle", target_start)
 
 
 def vod_resolve_approvals_cycle() -> dict:
@@ -594,15 +616,18 @@ def theater_resolve_approvals_cycle() -> dict:
     return stats
 
 
-def vod_publish_cycle() -> dict:
+def vod_publish_cycle(target_start: date | None = None) -> dict:
     """承認済みのVOD配信予定行から週次まとめを生成し、WP CPT投稿+Xスレッド案の
     Slack通知まで行う（docs/feature/vod-release-calendar-spec.md 11.）。
 
     対象は当週月曜〜日曜が配信開始日、かつ投稿状態=承認済みの行。対象0件の場合は
-    何もしない（空のWP投稿・Slack通知を出さない）。
+    何もしない（空のWP投稿・Slack通知を出さない）。target_startを指定した場合は、
+    その月曜日から7日間を対象にして過去週を再処理できる。
     """
     sheets = NewsBotSheets()
-    start, end = vod_calendar.current_week_range(date.today())
+    start, end = manual_week.resolve_range(
+        target_start, "vod", vod_calendar.current_week_range(date.today())
+    )
     items = sheets.get_approved_vod_items(start, end)
     stats = {"target": len(items), "posted": 0, "notified": 0}
 
@@ -706,15 +731,15 @@ if __name__ == "__main__":
             raise SystemExit("使い方: python -m news_bot.main theater_add <URL>")
         theater_add_url(sys.argv[2])
     elif len(sys.argv) > 1 and sys.argv[1] == "theater_publish":
-        theater_publish_cycle()
+        theater_publish_cycle(_target_start_arg("theater"))
     elif len(sys.argv) > 1 and sys.argv[1] == "theater_import":
-        theater_import_cycle()
+        theater_import_cycle(_target_start_arg("theater"))
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_import":
-        vod_import_cycle()
+        vod_import_cycle(_target_start_arg("vod"))
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_discover":
         vod_discover_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_publish":
-        vod_publish_cycle()
+        vod_publish_cycle(_target_start_arg("vod"))
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_resolve_approvals":
         vod_resolve_approvals_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "theater_resolve_approvals":
