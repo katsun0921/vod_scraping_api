@@ -111,9 +111,9 @@ def test_html_is_escaped():
 
 
 def test_wp_title_uses_search_wording():
-    """記事タイトルはユーザーの検索語（「今週公開」）に寄せる。
+    """記事タイトルは対象週を先頭に置き、検索語の「公開」を使う。
 
     「劇場公開」は業界の分類語であり検索語ではないため、タイトルには使わない。
     """
     title = compose_theater.build_wp_title(compose_theater.week_label(2026, 8, 7))
-    assert title == "今週公開の映画まとめ（2026年8月第1週）"
+    assert title == "2026年8月第1週公開の映画まとめ"

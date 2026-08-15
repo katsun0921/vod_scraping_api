@@ -69,4 +69,4 @@ def test_x_thread_lists_every_item_and_ends_with_wp_url():
 
 def test_week_label_and_title():
     assert compose_vod.week_label(2026, 8, 10) == "2026年8月第2週"
-    assert compose_vod.build_wp_title("2026年8月第2週") == "今週配信開始のVOD作品まとめ（2026年8月第2週）"
+    assert compose_vod.build_wp_title("2026年8月第2週") == "2026年8月第2週配信開始のVOD作品まとめ"

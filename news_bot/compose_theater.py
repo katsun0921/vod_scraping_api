@@ -122,12 +122,12 @@ def build_wp_content(items: list[dict]) -> str:
 
 
 def build_wp_title(week_label: str) -> str:
-    """記事タイトルを生成する（例: "今週公開の映画まとめ（2026年8月第1週）"）。
+    """記事タイトルを生成する（例: "2026年8月第1週公開の映画まとめ"）。
 
     「劇場公開」ではなく「公開」としているのは、ユーザーの検索語が
     「今週公開 映画」「〇〇 公開日」であり、「劇場公開」は業界の分類語であるため。
     """
-    return f"今週公開の映画まとめ（{week_label}）"
+    return f"{week_label}公開の映画まとめ"
 
 
 def week_label(start_year: int, start_month: int, start_day: int) -> str:
