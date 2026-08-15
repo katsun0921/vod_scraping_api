@@ -80,8 +80,8 @@ def build_wp_content(items: list[dict]) -> str:
 
 
 def build_wp_title(week_label: str) -> str:
-    """記事タイトルを生成する（例: "今週配信開始のVOD作品まとめ（2026年7月第4週）"）。"""
-    return f"今週配信開始のVOD作品まとめ（{week_label}）"
+    """記事タイトルを生成する（例: "2026年7月第4週配信開始のVOD作品まとめ"）。"""
+    return f"{week_label}配信開始のVOD作品まとめ"
 
 
 def week_label(start_year: int, start_month: int, start_day: int) -> str:
