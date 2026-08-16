@@ -38,7 +38,7 @@ def notification_channel(kind: str, environ: Mapping[str, str] = os.environ) -> 
 
 
 def build_message(pull_request: Mapping[str, object], kind: str) -> str:
-    """Slackへ送るPRレビュー依頼メッセージを生成する。"""
+    """Slackへ送るルーティンPR作成通知を生成する。"""
     label = {"theater": "劇場公開", "vod": "VOD配信"}[kind]
     number = pull_request["number"]
     title = pull_request["title"]
@@ -51,7 +51,7 @@ def build_message(pull_request: Mapping[str, object], kind: str) -> str:
         f"#{number} {title}\n"
         f"{url}\n"
         f"作成者: {author_name}{draft_note}\n"
-        "内容を確認し、問題なければマージしてください。"
+        "成果物JSONだけの変更であれば、検証後に自動マージされます。"
     )
 
 

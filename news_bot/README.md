@@ -57,20 +57,19 @@ cronのschedule実行では`workflow_dispatch`の`region`入力が存在しな�
 
 ```
 ルーティン（週次）→ JSONをコミットしPR作成
-    ↓ routine-pr-notify.yml がSlackへレビュー依頼を通知
-    ↓ 人間がレビュー（1次承認）※疑わしい行はPR上で削除
-    ↓ マージ
+    ↓ routine-pr-notify.yml がSlackへPR作成を通知
+    ↓ routine-data-auto-merge.yml が変更範囲・JSONを検証して自動マージ
 routine-import.yml → theater_import / vod_import
     ↓ 重複判定・Katsumascore照合・シート追記（承認待ち）・Slack通知
-人間がシートで承認（2次承認）→ 投稿状態=承認済み + SNS優先度を設定
+人間がシートで内容を確認・承認 → 投稿状態=承認済み + SNS優先度を設定
     ↓
 theater_publish / vod_publish → WP CPT投稿 + SNS投稿案をSlackへ
 ```
 
-- **承認は2段階**：PRレビューは「情報が**事実として妥当か**」、シート承認は「**記事に載せるか**」で目的が異なる。PRを通ってもシートには`承認待ち`で入る
+- **人間の承認はシートで行う**：PRは成果物JSONだけの変更かを機械検証して自動マージし、取り込み後の行は`承認待ち`で入る
 - **ルーティンはAIからは設定・起動できない**。Claude Codeの`/schedule`から人間が設定する
 - **成果物は固定名**（`routine_data/{theater,vod}_latest.json`）を上書きする。履歴はgitのコミット履歴で追う
-- **PR作成通知**：`routine/theater-*` / `routine/vod-*`から成果物JSONを変更するPRが作成されると、`Routine PR Notify`が対応するSlackチャンネルへタイトルとURLを通知する。専用チャンネル未設定時は承認チャンネルへ送る
+- **PR作成通知・自動マージ**：`routine/theater-*` / `routine/vod-*`から成果物JSONを変更するPRが作成されるとSlackへ通知し、変更が`news_bot/routine_data/*.json`だけでオブジェクト配列のJSONとして正常ならsquash mergeする
 - **X抽出はルーティンで代替できない**（X API v2の認証が必要）。`vod_import`内でActionsが実行し、ルーティンのWeb検索結果と統合する
 - **`theater_discover` / `vod_discover`（API方式）はコードを残しcronのみ停止**。ルーティンが止まった場合のフォールバックとして手動実行できる。`workflow_dispatch`の既定値は課金の無い`publish`側にしてある
 - **過去週の再処理**：Actionsの`Routine Import`と各`Calendar` workflowで`target_start`を指定する。劇場は金曜日、VODは月曜日を`YYYY-MM-DD`で入力し、再取り込み→承認→CPT作成の順に実行する
