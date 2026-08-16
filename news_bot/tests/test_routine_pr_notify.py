@@ -52,12 +52,13 @@ def test_notification_channel_falls_back_to_approval_channel():
     )
 
 
-def test_build_message_contains_pr_review_information():
+def test_build_message_contains_pr_information():
     message = routine_pr_notify.build_message(_pull_request(), "theater")
     assert "劇場公開ルーティンのPRが作成されました" in message
     assert "#55 劇場公開情報" in message
     assert "https://github.com/example/repo/pull/55" in message
     assert "routine-user" in message
+    assert "検証後に自動マージされます" in message
 
 
 def test_post_message_calls_slack_api():

@@ -77,9 +77,8 @@ jobs:
         run: pip install -r news_bot/requirements.txt
 
       # ルーティン成果物を「劇場公開予定」シートへ投稿状態="承認待ち"で追記し、
-      # Slackへ確認依頼を通知する。PRレビュー（1次承認）を経ていても承認待ちで保存するのは、
-      # PRレビューが「情報が事実として妥当か」の確認、シート承認が「記事に載せるか」の
-      # 判断であり目的が異なるため。
+      # Slackへ確認依頼を通知する。成果物PRは機械検証後に自動マージされるため、
+      # 内容の正しさと記事に載せるかの判断はシート承認で行う。
       - name: Import theater routine data
         env:
           GOOGLE_SHEETS_SPREADSHEET_ID: ${{ secrets.GOOGLE_SHEETS_SPREADSHEET_ID }}
