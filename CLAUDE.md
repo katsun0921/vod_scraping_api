@@ -9,6 +9,13 @@
 
 依存関係（`requirements.txt`）・実行環境・CIジョブは分離されており、互いのデプロイに影響しない。
 
+## AIエージェント運用
+
+- 本ファイルをプロジェクト指示の正本とする。`AGENTS.md` はAgent/Codexから本ファイルを
+  読み込むための入口であり、プロジェクト説明を重複させない。
+- Claude Codeでは `/create-pr`、Agent/Codexでは `create-pr` または `$create-pr` で、
+  `.agents/skills/create-pr/SKILL.md` の共通手順に従ってDraft PRを作成する。
+
 ## プロジェクト構成
 
 ```
