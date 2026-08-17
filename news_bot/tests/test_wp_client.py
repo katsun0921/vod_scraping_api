@@ -117,6 +117,15 @@ def test_create_post_defaults_to_vod_cpt():
         assert req.post.call_args.args[0].endswith("/vod_release")
 
 
+@patch.dict("os.environ", _WP_ENV, clear=True)
+def test_create_post_vod_falls_back_to_release_slug():
+    """Secret未登録でも実際のVOD CPTへ投稿する。"""
+    with patch.object(wp_client, "requests") as req:
+        req.post.return_value = _response({"link": "https://example.com/p/1"})
+        wp_client.create_post("題", "<p>本文</p>")
+        assert req.post.call_args.args[0].endswith("/vod_release")
+
+
 @patch.dict(
     "os.environ",
     {**_WP_ENV, "VOD_NEWS_CPT_SLUG": "vod_release", "THEATER_NEWS_CPT_SLUG": "theater_release"},

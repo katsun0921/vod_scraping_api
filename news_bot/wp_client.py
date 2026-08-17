@@ -14,8 +14,7 @@
                                 vod_bot/wordpress.pyの配信状況チェックと共用）
     WP_USER                  : WordPressユーザー名（同上）
     WP_APP_PASSWORD          : WordPress Application Password（同上）
-    VOD_NEWS_CPT_SLUG        : CPTのRESTスラッグ（既定 vod_news。15.未決定事項#1参照。
-                                最終的な名称は管理者がWordPress側で決定・登録する）
+    VOD_NEWS_CPT_SLUG        : CPTのRESTスラッグ（既定 vod_release）
     VOD_NEWS_WP_STATUS       : 投稿ステータス（既定 draft）
 """
 
@@ -108,7 +107,7 @@ def create_post(
     *,
     excerpt: str = "",
     cpt_slug_env: str = "VOD_NEWS_CPT_SLUG",
-    cpt_slug_default: str = "vod_news",
+    cpt_slug_default: str = "vod_release",
     status_env: str = "VOD_NEWS_WP_STATUS",
 ) -> dict:
     """CPTへ新規投稿を作成する（VOD: 仕様書11.2 / 劇場: 劇場仕様書11.）。
