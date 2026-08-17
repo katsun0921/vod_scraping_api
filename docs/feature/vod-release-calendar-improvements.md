@@ -203,7 +203,7 @@ Netflix
 
 ## 7. CPT名称の見直し【優先度：B】
 
-現在
+旧候補
 
 ```
 vod_news
@@ -219,14 +219,10 @@ vod_news
 
 として利用される。
 
-候補:
+採用済み:
 
 ```
-vod_calendar
-
 vod_release
-
-vod_schedule
 ```
 
 ### 理由

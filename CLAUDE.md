@@ -9,6 +9,13 @@
 
 依存関係（`requirements.txt`）・実行環境・CIジョブは分離されており、互いのデプロイに影響しない。
 
+## AIエージェント運用
+
+- 本ファイルをプロジェクト指示の正本とする。`AGENTS.md` はAgent/Codexから本ファイルを
+  読み込むための入口であり、プロジェクト説明を重複させない。
+- Claude Codeでは `/create-pr`、Agent/Codexでは `create-pr` または `$create-pr` で、
+  `.agents/skills/create-pr/SKILL.md` の共通手順に従ってDraft PRを作成する。
+
 ## プロジェクト構成
 
 ```
@@ -194,7 +201,7 @@ vod_scraping_api/
 | `X_BEARER_TOKEN` | 公式Xアカウントの投稿取得 | ○ |
 | `NEWS_BOT_SLACK_BOT_TOKEN` / `NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID` | Slack通知 | ○ |
 | `NEWS_BOT_SLACK_THEATER_CHANNEL_ID` / `NEWS_BOT_SLACK_VOD_CHANNEL_ID` | 専用チャンネル（未設定なら承認チャンネル） | △ |
-| `VOD_NEWS_CPT_SLUG` | VOD投稿先CPT。**既定値が `vod_news` で実CPT名と不一致のため設定必須** | ○ |
+| `VOD_NEWS_CPT_SLUG` | VOD投稿先CPT（既定 `vod_release`） | △ |
 | `THEATER_NEWS_CPT_SLUG` | 劇場投稿先CPT（既定 `theater_release`） | △ |
 | `VOD_NEWS_WP_STATUS` / `THEATER_NEWS_WP_STATUS` | 投稿ステータス（既定 `draft`） | △ |
 

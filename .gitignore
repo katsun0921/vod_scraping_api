@@ -3,3 +3,4 @@
 __pycache__
 news_bot/.env
 vod_bot/.env
+.claude/settings.local.json

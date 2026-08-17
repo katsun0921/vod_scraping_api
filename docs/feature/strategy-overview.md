@@ -86,7 +86,7 @@ VOD関連で3つのパイプラインが並走している。**それぞれ責�
 |---|---|
 | `vod_scraping_api` | 配信状況の取得（`vod_bot`）・配信情報の収集と記事生成（`news_bot`）・**本戦略ドキュメント** |
 | `katsumascore-front` | **SEO是正（構造化データ・robotsメタ）**・配信状況の表示・サービス別ページ・内部リンク |
-| `katsumascore_wordpress_theme` | CPT登録（`vod_news`）・ACFフィールド・REST API拡張（`streaming_started_at` ソート等） |
+| `katsumascore_wordpress_theme` | CPT登録（`vod_release`）・ACFフィールド・REST API拡張（`streaming_started_at` ソート等） |
 
 **Phase 1 の施策はすべて `katsumascore-front` 側**にある点に注意。本リポジトリの作業ではない。
 

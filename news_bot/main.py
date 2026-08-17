@@ -646,6 +646,10 @@ def vod_publish_cycle(target_start: date | None = None) -> dict:
         stats["posted"] = 1
     except Exception:
         logger.exception("VOD週次まとめWP投稿失敗")
+        # CPTが作成されていないのにworkflowを成功扱いにすると、下のステータス更新で
+        # 対象行が「投稿済み」になり、次回実行でも再処理できなくなる。詳細をerror logへ
+        # 残したうえで例外を再送出し、対象行を「承認済み」のまま保持する。
+        raise
 
     x_thread_parts = compose_vod.build_x_thread(items, wp_post_url)
     try:

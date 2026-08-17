@@ -369,7 +369,7 @@ TMDb API自体（`tmdb_upcoming.py`・`config.py`の`TMDB_API_KEY`/`PROVIDERS`�
 
 ### 11.2 WP CPT投稿
 
-WordPressのカスタム投稿タイプ（仮スラッグ: `vod_news`。名称は未決定事項#1参照）へ
+WordPressのカスタム投稿タイプ（RESTスラッグ: `vod_release`）へ
 「今週配信開始のVOD作品まとめ（YYYY年MM月第N週）」をREST APIで投稿する。
 
 **記事構成**（[vod-release-calendar-improvements.md](vod-release-calendar-improvements.md)
@@ -405,13 +405,13 @@ WordPressのカスタム投稿タイプ（仮スラッグ: `vod_news`。名称�
 
 ```php
 // functions.php（または /inc/ 配下）に CPT を登録
-register_post_type( 'vod_news', [
+register_post_type( 'vod_release', [
     'label'        => 'VOD配信ニュース',
     'public'       => true,
     'show_in_rest' => true,   // REST API経由の投稿に必須
     'supports'     => [ 'title', 'editor', 'excerpt', 'thumbnail' ],
     'has_archive'  => true,
-    'rewrite'      => [ 'slug' => 'vod-news' ],
+    'rewrite'      => [ 'slug' => 'vod-release' ],
 ] );
 ```
 
@@ -485,7 +485,7 @@ news_bot/
 | `WP_API_URL` | WP REST API ベースURL（`vod_bot/wordpress.py`の配信状況チェックと共用） | ○ |
 | `WP_USER` | WP Application Password ユーザー名（`vod_bot/wordpress.py`の配信状況チェックと共用） | ○ |
 | `WP_APP_PASSWORD` | WP Application Password（同上） | ○ |
-| `VOD_NEWS_CPT_SLUG` | CPTのRESTスラッグ。**実際のCPTは `vod_release` のため設定必須**（コード側の既定値は `vod_news` で不一致） | ○ |
+| `VOD_NEWS_CPT_SLUG` | CPTのRESTスラッグ（既定 `vod_release`） | 任意 |
 | `VOD_NEWS_WP_STATUS` | 投稿ステータス（既定 `draft`） | 任意 |
 
 > **未登録のGitHub Secretは空文字で渡る**ため、`os.environ.get(k, default)` では既定値に
@@ -515,7 +515,7 @@ news_bot/
 
 | # | 項目 | 内容 |
 |---|---|---|
-| 1 | ~~CPTスラッグ・WP側登録~~（実装をブロックしない） | 最終的な名称（`vod_news`/`vod_calendar`/`vod_release`/`vod_schedule`等）は管理者がWordPress側で決定・登録する運用とする。コード側は13.の`VOD_NEWS_CPT_SLUG`環境変数でスラッグを注入するため、名称未確定でも実装は進められる（既定値`vod_news`） |
+| 1 | ~~CPTスラッグ・WP側登録~~（実装をブロックしない） | 実際のCPT名を `vod_release` とし、コード側の既定値も統一した。必要な場合は13.の`VOD_NEWS_CPT_SLUG`環境変数で上書きできる |
 | 2 | ~~承認フローの具体化~~（VODは運用方針確定） | **VODは投稿状態列の手動書き換え、またはSlackスレッドへの:white_check_mark:リアクション（ワンクリック承認、8.1参照）の二本立てとする。** Slackボタン（Interactivity）は常時起動サーバーが要るため見送り、X投稿承認フローと同じリアクション+ポーリング方式を採用した。劇場公開側（theater側の未決定事項#1）にも同型の仕組みを実装済み |
 | 3 | 対象サービスの範囲 | 初期6サービス（6.）で良いか。Apple TV / YouTube / Crunchyrollを含めるか |
 | 4 | CPT記事の公開運用 | 下書き→人間公開の運用をいつまで続けるか。テーマ側のCPTアーカイブ・単体テンプレートの用意 |
