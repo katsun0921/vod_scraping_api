@@ -418,6 +418,7 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
         wp_post = wp_client.create_post(
             title,
             content_html,
+            slug=f"theater-release-{start.isoformat()}",
             cpt_slug_env="THEATER_NEWS_CPT_SLUG",
             cpt_slug_default="theater_release",
             status_env="THEATER_NEWS_WP_STATUS",
@@ -641,7 +642,11 @@ def vod_publish_cycle(target_start: date | None = None) -> dict:
 
     wp_post_url = ""
     try:
-        wp_post = wp_client.create_post(title, content_html)
+        wp_post = wp_client.create_post(
+            title,
+            content_html,
+            slug=f"vod-release-{start.isoformat()}",
+        )
         wp_post_url = wp_post.get("link", "")
         stats["posted"] = 1
     except Exception:
