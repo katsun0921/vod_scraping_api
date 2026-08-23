@@ -362,6 +362,7 @@ news_bot/
 投稿先CPTは VOD（`vod_release`）とは**別**にした。理由は
 [THEATER_RELEASE_CPT_SPEC.md](../../../katsumascore_wordpress_theme/docs/feature/THEATER_RELEASE_CPT_SPEC.md)
 を参照（「映画館で観たい」と「家で観たい」は別の検索意図であるため）。
+個別投稿のスラッグは対象週の開始日を使い、`theater-release-yyyy-mm-dd` とする。
 
 ## 14. MVPスコープ
 

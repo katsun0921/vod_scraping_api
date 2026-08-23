@@ -106,14 +106,16 @@ def create_post(
     content_html: str,
     *,
     excerpt: str = "",
+    slug: str = "",
     cpt_slug_env: str = "VOD_NEWS_CPT_SLUG",
     cpt_slug_default: str = "vod_release",
     status_env: str = "VOD_NEWS_WP_STATUS",
 ) -> dict:
     """CPTへ新規投稿を作成する（VOD: 仕様書11.2 / 劇場: 劇場仕様書11.）。
 
-    投稿タイプ（スラッグ）・ステータスは環境変数で注入するため、CPT名称・
+    投稿タイプのRESTスラッグ・ステータスは環境変数で注入するため、CPT名称・
     公開運用の最終決定（15.未決定事項#1・#4）を待たずに実装できる。
+    `slug` はCPTの種類ではなく、作成する個別投稿のパーマリンク用スラッグ。
 
     参照する環境変数名を引数で差し替えられるようにしているのは、VOD配信情報
     （vod_release）と劇場公開情報（theater_release）が別CPTであり、公開運用の
@@ -128,6 +130,8 @@ def create_post(
     payload = {"title": title, "content": content_html, "status": status}
     if excerpt:
         payload["excerpt"] = excerpt
+    if slug:
+        payload["slug"] = slug
 
     resp = requests.post(
         f"{_base_url()}/{cpt_slug}",

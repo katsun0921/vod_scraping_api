@@ -419,8 +419,12 @@ class NewsBotSheets:
         if cell is None:
             logger.warning("劇場公開予定に重複キーが見つかりません: %s", dedupe_key)
             return
-        ws.update_cell(cell.row, _THEATER_ITEMS_HEADER.index("SlackチャンネルID") + 1, slack_channel)
-        ws.update_cell(cell.row, _THEATER_ITEMS_HEADER.index("Slackメッセージts") + 1, slack_ts)
+        channel_col = _THEATER_ITEMS_HEADER.index("SlackチャンネルID") + 1
+        ts_col = _THEATER_ITEMS_HEADER.index("Slackメッセージts") + 1
+        ws.update(range_name=rowcol_to_a1(cell.row, channel_col), values=[[slack_channel]], raw=True)
+        # Slackのtsは小数部を含む文字列。USER_ENTEREDで書くとSheetsが数値へ変換し、
+        # 小数部が失われてreactions.getがmessage_not_foundになるためRAWで保存する。
+        ws.update(range_name=rowcol_to_a1(cell.row, ts_col), values=[[slack_ts]], raw=True)
 
     def get_pending_theater_items_with_slack_ref(self) -> list[dict]:
         """投稿状態=承認待ち、かつSlack参照が記録済みの行を返す（承認スタンプの自動チェック対象）。"""
@@ -584,8 +588,12 @@ class NewsBotSheets:
         if cell is None:
             logger.warning("VOD配信予定に重複キーが見つかりません: %s", dedupe_key)
             return
-        ws.update_cell(cell.row, _VOD_ITEMS_HEADER.index("SlackチャンネルID") + 1, slack_channel)
-        ws.update_cell(cell.row, _VOD_ITEMS_HEADER.index("Slackメッセージts") + 1, slack_ts)
+        channel_col = _VOD_ITEMS_HEADER.index("SlackチャンネルID") + 1
+        ts_col = _VOD_ITEMS_HEADER.index("Slackメッセージts") + 1
+        ws.update(range_name=rowcol_to_a1(cell.row, channel_col), values=[[slack_channel]], raw=True)
+        # 承認スタンプを正しいSlackメッセージへ問い合わせられるよう、小数部を含むtsを
+        # 数値変換させず文字列のまま保存する。
+        ws.update(range_name=rowcol_to_a1(cell.row, ts_col), values=[[slack_ts]], raw=True)
 
     def get_pending_vod_items_with_slack_ref(self) -> list[dict]:
         """投稿状態=承認待ち、かつSlack参照が記録済みの行を返す（承認スタンプの自動チェック対象）。"""

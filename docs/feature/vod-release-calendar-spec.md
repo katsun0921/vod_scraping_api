@@ -399,6 +399,7 @@ WordPressのカスタム投稿タイプ（RESTスラッグ: `vod_release`）へ
 - あらすじ等の外部表現は含めない（事実情報 + 自サイトコンテンツへのリンクのみ）
 - 初期MVPでは**下書き（`status=draft`）で投稿**し、人間が確認して公開する。
   運用が安定したら `publish` に切り替える
+- 個別投稿のスラッグは対象週の開始日を使い、`vod-release-yyyy-mm-dd` とする
 - 認証は既存の WordPress Application Password（`vod_bot` と同じ方式）
 
 **WordPress側で必要な対応（このリポジトリ外）**:

@@ -118,6 +118,18 @@ def test_create_post_defaults_to_vod_cpt():
 
 
 @patch.dict("os.environ", _WP_ENV, clear=True)
+def test_create_post_sends_explicit_post_slug():
+    with patch.object(wp_client, "requests") as req:
+        req.post.return_value = _response({"link": "https://example.com/p/1"})
+        wp_client.create_post(
+            "題",
+            "<p>本文</p>",
+            slug="vod-release-2026-08-24",
+        )
+        assert req.post.call_args.kwargs["json"]["slug"] == "vod-release-2026-08-24"
+
+
+@patch.dict("os.environ", _WP_ENV, clear=True)
 def test_create_post_vod_falls_back_to_release_slug():
     """Secret未登録でも実際のVOD CPTへ投稿する。"""
     with patch.object(wp_client, "requests") as req:
