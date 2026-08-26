@@ -1,82 +1,32 @@
 [
   {
-    "title": "ラスト・サンライズ",
-    "title_orig": "The Last Sunrise",
-    "slug": "vod-release-2026-08-26",
-    "service": "amazon_prime_video",
-    "available_from": "2026-08-26",
+    "title": "スター・ウォーズ／マンダロリアン・アンド・グローグー",
+    "title_orig": "The Mandalorian and Grogu",
+    "slug": "vod-release-2026-09-02",
+    "service": "disney_plus",
+    "available_from": "2026-09-02",
     "availability_type": "独占",
     "category": "映画",
-    "url": "https://www.primevideo.com/-/ja/detail/0MK3JNWBGKXSGBX9L4DTTR8DAQ"
+    "url": "https://www.disneyplus.com/ja-jp/browse/entity-d830ec57-499e-498c-b6b3-2b85a18a5f51"
   },
   {
-    "title": "FBI：Most Wanted ～指名手配特捜班～ ファイナルシーズン",
-    "title_orig": "FBI: Most Wanted",
-    "slug": "vod-release-2026-08-26",
+    "title": "S.W.A.T. シーズン8",
+    "title_orig": "S.W.A.T. Season 8",
+    "slug": "vod-release-2026-09-01",
     "service": "hulu",
-    "available_from": "2026-08-26",
+    "available_from": "2026-09-01",
     "availability_type": "独占",
     "category": "ドラマ",
-    "url": "https://www.hulu.jp/fbi-most-wanted"
+    "url": "https://www.hulu.jp/store/swat-2017-season8"
   },
   {
-    "title": "リアン! シーズン2",
-    "title_orig": "Leanne",
-    "slug": "vod-release-2026-08-27",
-    "service": "netflix",
-    "available_from": "2026-08-27",
-    "availability_type": "独占",
-    "category": "ドラマ",
-    "url": "https://www.netflix.com/jp/title/81752004"
-  },
-  {
-    "title": "ブラッド・シャウト 地獄への響き",
+    "title": "踊る大捜査線 捜査資料管理室～青島俊作、空白の13年～",
     "title_orig": "",
-    "slug": "vod-release-2026-08-27",
+    "slug": "vod-release-2026-09-04",
     "service": "amazon_prime_video",
-    "available_from": "2026-08-27",
-    "availability_type": "独占",
-    "category": "映画",
-    "url": "https://www.primevideo.com/-/ja/detail/0NSOL6L68VRFNG7UMFYN4EHRRJ"
-  },
-  {
-    "title": "ウィスパーマン",
-    "title_orig": "The Whisper Man",
-    "slug": "vod-release-2026-08-28",
-    "service": "netflix",
-    "available_from": "2026-08-28",
-    "availability_type": "独占",
-    "category": "映画",
-    "url": "https://www.netflix.com/jp/title/81278442"
-  },
-  {
-    "title": "ヒーテッド・ライバルリー",
-    "title_orig": "Heated Rivalry",
-    "slug": "vod-release-2026-08-28",
-    "service": "unext",
-    "available_from": "2026-08-28",
+    "available_from": "2026-09-04",
     "availability_type": "独占",
     "category": "ドラマ",
-    "url": "https://video.unext.jp/title/SID0310743"
-  },
-  {
-    "title": "ホウセンカ",
-    "title_orig": "",
-    "slug": "vod-release-2026-08-29",
-    "service": "netflix",
-    "available_from": "2026-08-29",
-    "availability_type": "独占",
-    "category": "アニメ",
     "url": ""
-  },
-  {
-    "title": "ファイブ・ナイツ・アット・フレディーズ2",
-    "title_orig": "Five Nights at Freddy's 2",
-    "slug": "vod-release-2026-08-29",
-    "service": "amazon_prime_video",
-    "available_from": "2026-08-29",
-    "availability_type": "独占",
-    "category": "映画",
-    "url": "https://www.primevideo.com/-/ja/detail/0I7CD6AMCU2YUODC2DRKGCFI7U"
   }
 ]
