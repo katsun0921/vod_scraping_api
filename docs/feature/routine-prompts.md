@@ -22,8 +22,8 @@ PRはActionsが変更範囲とJSONを検証し、条件を満たせば自動マ�
 
 ## ■ 劇場公開ルーティン
 
-- **推奨スケジュール**: 毎週金曜 09:00 JST（Actions の `theater_discover` は月曜だったが、
-  ルーティン方式では対象期間の起点に合わせる）
+- **推奨スケジュール**: 毎週金曜 09:00 JST（`theater_publish` は対象週の前日木曜 07:00 JST。
+  その1週間前の金曜に翌週分を集め、間の土〜水をシート承認の猶予にする）
 - **出力先**: `news_bot/routine_data/theater_latest.json`
 
 ### プロンプト
