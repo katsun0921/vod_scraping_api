@@ -312,8 +312,11 @@ def theater_discover_cycle() -> dict:
     ルーティン方式（theater_import）へ移行後もコードを残しているのは、ルーティンが
     止まった場合のフォールバックとして手動実行できるようにするため
     （docs/feature/routine-discovery.md）。
+
+    対象は next_week_range()（翌週金曜〜その翌木曜）。ルーティンと同じ週を拾わないと
+    フォールバックにならないため、ルーティン側の対象期間に合わせている。
     """
-    start, end = theater_calendar.week_range(date.today())
+    start, end = theater_calendar.next_week_range(date.today())
     entries = discover_theater.discover_all(start, end)
     return _save_theater_entries(entries, start, end, "theater_discover_cycle")
 
@@ -328,11 +331,16 @@ def theater_import_cycle(target_start: date | None = None) -> dict:
     PRレビューを通っていても投稿状態は"承認待ち"で保存する。PRレビューは「AIが拾った
     情報が妥当か」の確認であり、シート上の承認は「記事に載せるか」の判断で目的が異なるため。
 
+    対象は next_week_range()（翌週金曜〜その翌木曜）。ルーティンは公開週の1週間前の
+    金曜に走り、翌週分を集めてPRを出す。取り込みもそれに合わせないと、集めた行が
+    すべて期間外で落ちる。金〜木のどの曜日にマージされても同じ週を返すため、
+    レビューが土日にずれ込んでも対象週は動かない。
+
     target_startを指定した場合は、その金曜日から7日間を対象にする。未指定時は
-    従来どおり実行日から対象週を計算する。
+    実行日から対象週を計算する。
     """
     start, end = manual_week.resolve_range(
-        target_start, "theater", theater_calendar.week_range(date.today())
+        target_start, "theater", theater_calendar.next_week_range(date.today())
     )
     entries = import_routine.load_theater_entries(import_routine.latest_path("theater"))
     return _save_theater_entries(entries, start, end, "theater_import_cycle")
@@ -389,14 +397,18 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
     """承認済みの劇場公開予定行から週次まとめを生成し、WP CPT投稿+SNS投稿案の
     Slack通知まで行う（docs/feature/theater-release-calendar-spec.md 11.）。
 
-    対象は theater_calendar.week_range() の期間（直近の金曜〜翌週木曜）が公開日、
-    かつ投稿状態=承認済みの行。対象0件の場合は何もしない（空のWP投稿・Slack通知を出さない）。
+    対象は theater_calendar.week_range() の期間（これから来る金曜〜その翌木曜）が
+    公開日、かつ投稿状態=承認済みの行。対象0件の場合は何もしない
+    （空のWP投稿・Slack通知を出さない）。
 
-    vod_publish_cycle()と違い期間計算に専用関数を設けていないのは、week_range()が
-    月曜〜金曜のどの日に実行しても同じ週（直近の金曜起点）を返すため、discover（月曜朝）と
-    publish を同じ週に揃えられるため。ただし土日に実行すると翌週にずれるので、
-    ワークフローのcronは平日に置くこと。target_startを指定した場合は、その金曜日から
-    7日間を対象にして過去週を再処理できる。
+    cronは公開週の前日木曜 07:00 JST。week_range() は木曜に実行すると翌日の金曜を
+    起点に返すため、公開初日の前日に下書きが揃う。収集（theater_import）はその
+    1週間前の金曜に next_week_range() で同じ週を先に集めており、間の土〜水が
+    シート承認の猶予になる。
+
+    金曜以降に実行すると week_range() は1週先へ進むので、cronを金〜日へ動かさない
+    こと。過去週・当週をやり直す場合は target_start にその週の金曜日を渡すと、
+    その金曜日から7日間を対象にして再処理できる。
     """
     sheets = NewsBotSheets()
     start, end = manual_week.resolve_range(

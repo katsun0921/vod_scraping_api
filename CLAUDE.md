@@ -79,7 +79,7 @@ vod_scraping_api/
 | | 劇場公開 | VOD配信 |
 |---|---|---|
 | 取り込み | `theater_import` | `vod_import`（+ X公式アカウント抽出） |
-| 公開 | `theater_publish`（金 07:00 JST） | `vod_publish`（月 07:00 JST） |
+| 公開 | `theater_publish`（木 07:00 JST） | `vod_publish`（月 07:00 JST） |
 | CPT | `theater_release` | `vod_release` |
 | 区切り方 | 公開日別 | サービス別 |
 

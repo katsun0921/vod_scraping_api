@@ -58,6 +58,27 @@ def week_range(today: date) -> tuple[date, date]:
     return start, end
 
 
+def next_week_range(today: date) -> tuple[date, date]:
+    """基準日の次の金曜週（翌週金曜〜その翌木曜）を返す。
+
+    収集（ルーティン / theater_discover）用。publish が対象週の前日木曜に走るため、
+    収集はその1週間前の金曜に回して承認の猶予を作る。week_range() は「これから来る
+    金曜」を返すので金曜当日に実行すると当日起点になってしまい、収集には使えない。
+
+    起点は「基準日が属する金曜週の金曜」の7日後。金〜木のどの曜日に実行しても同じ週を
+    返すため、ルーティンPRのマージが土日にずれ込んでも対象週は動かない
+    （vod_calendar.next_week_range() と同じ考え方）。
+
+    例:
+        金曜 2026-08-21 実行 → 2026-08-28〜2026-09-03
+        月曜 2026-08-24 実行 → 2026-08-28〜2026-09-03
+        木曜 2026-08-27 実行 → 2026-08-28〜2026-09-03
+    """
+    days_since_friday = (today.weekday() - 4) % 7
+    start = today - timedelta(days=days_since_friday) + timedelta(days=7)
+    return start, start + timedelta(days=6)
+
+
 def normalize_title(title: str) -> str:
     """タイトルを正規化する（仕様書9.正規化ルール）。
 
