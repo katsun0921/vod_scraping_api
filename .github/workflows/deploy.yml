@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+    # news_bot / docs だけの変更ではデプロイしない。イメージには utils/ と vod_bot/ しか
+    # 入らず（vod_bot/Dockerfile・.dockerignore）、これらを変更してもビルド結果は同一のため。
+    # ルーティンの成果物JSON（news_bot/routine_data/）が週2回mainへマージされるので、
+    # これが無いとその都度Cloud Runへ無駄な再デプロイが走る。
+    paths-ignore:
+      - "news_bot/**"
+      - "docs/**"
 
 jobs:
   test:
