@@ -175,12 +175,19 @@ cron からは外し、`workflow_dispatch` での手動実行のみとする。
 
 プロンプトは [routine-prompts.md](./routine-prompts.md) を参照。
 
-| ルーティン | 推奨スケジュール | 出力先 |
-|---|---|---|
-| 劇場公開 | 毎週金曜 09:00 JST | `news_bot/routine_data/theater_latest.json` |
-| VOD配信 | 毎週水曜 09:00 JST | `news_bot/routine_data/vod_latest.json` |
+| ルーティン | 推奨スケジュール | 対象期間 | 出力先 |
+|---|---|---|---|
+| 劇場公開 | 毎週金曜 09:00 JST | 翌週の金曜〜その翌木曜 | `news_bot/routine_data/theater_latest.json` |
+| VOD配信 | 毎週水曜 09:00 JST | 翌週の月曜〜日曜 | `news_bot/routine_data/vod_latest.json` |
 
-VOD を水曜にしているのは、`vod_publish` が月曜のため、シート確認と承認の時間を確保するため。
+いずれも publish より前に走らせ、シート確認と承認の時間を確保するのが狙い。
+
+- VOD: 水曜収集 → `vod_publish` は月曜 07:00 JST（猶予 約4日22時間）
+- 劇場: 金曜収集 → `theater_publish` は翌木曜 07:00 JST（猶予 約5日22時間）
+
+**劇場ルーティンは「翌週の金曜」を起点に集める。** 当日の金曜を起点にすると、その週の
+`theater_publish` は前日の木曜に終わっているため、集めた行が永久に記事へ載らない。
+取り込み側（`theater_import`）も `theater_calendar.next_week_range()` で同じ週を見る。
 
 ---
 

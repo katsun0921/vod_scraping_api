@@ -1,19 +1,24 @@
 name: Theater Calendar
 
 on:
-  # 0 22 * * 4 (UTC) = 毎週金曜 07:00 JST（公開日当日の朝に記事を出す）
+  # 0 22 * * 3 (UTC) = 毎週木曜 07:00 JST（公開初日の前日朝に下書きを作る）
   #
-  # publish を金曜にしているのは2つの理由による。
-  #  1. 日本の劇場公開は金曜が基準日のため、公開初日の朝に記事が出るのが読者にとって最も有用
-  #  2. theater_calendar.week_range() は土日に実行すると翌週にずれる。月〜金なら同じ週
-  #     （直近の金曜起点）を返すため、ルーティンのdiscoverと同じ週を対象にできる
+  # 対象週は theater_calendar.week_range()＝翌日の金曜〜その翌木曜。日本の劇場公開は
+  # 金曜が基準日なので、公開週の前日に下書きが揃う。
+  #
+  # 収集（ルーティン）はその1週間前の金曜 09:00 JST に翌週分を集めてPRを出す
+  # （theater_calendar.next_week_range()）。間の土〜水がシート承認の猶予になる。
+  # 以前は publish も金曜 07:00 JST で、同じ日の 09:00 に走る収集より2時間早く、
+  # その週の収集分が永久に載らなかった。
+  #
+  # week_range() は金曜以降に実行すると1週先へ進むため、cronを金〜日へ動かさないこと。
   #
   # theater_discover（AI Web検索）のcronは外した。Claudeのルーティンが週次で調査して
   # PRを作る方式へ移行し、従量課金のAPI呼び出しをサブスクリプション内に収めたため
   # （docs/feature/routine-discovery.md）。取り込みは routine-import.yml が担当する。
   # theater_discover はルーティンが止まった場合のフォールバックとして手動実行のみ残す。
   schedule:
-    - cron: "0 22 * * 4"
+    - cron: "0 22 * * 3"
   workflow_dispatch:
     inputs:
       command:
