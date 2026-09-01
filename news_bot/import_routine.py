@@ -2,7 +2,7 @@
 
 docs/feature/routine-discovery.md の方式。Claude/OpenAI APIのWeb検索を従量課金で
 呼ぶ代わりに、Claudeのルーティンが定期実行で調査してリポジトリにJSONをコミットし、
-そのPRをActionsが検証して自動マージする。マージ後にGitHub Actionsが
+そのPRを人間がレビュー（＝承認）してマージする。マージ後にGitHub Actionsが
 本モジュールでJSONを読み、既存の保存処理（重複判定・期間フィルタ・Katsumascore照合・
 Slack通知）へ流す。
 
@@ -37,8 +37,9 @@ _VOD_SOURCE = "ルーティン(claude)"
 def _load_json_array(path: Path) -> list[dict]:
     """JSONファイルを読み、配列であることを検証して返す。
 
-    ルーティンの出力は自動マージ前にもJSON配列であることを検証するが、取り込み時にも
-    同じ前提を検証し、壊れた成果物を0件として扱わないようにする。
+    ルーティンの出力は人間のレビューを経てマージされるが、レビューは内容の正しさ
+    （実在する作品か・日付が合っているか）を見るものであり、構造の妥当性まで
+    毎回目視で保証はできない。ここで落ちれば Actions が失敗し気付ける。
     """
     if not path.exists():
         raise FileNotFoundError(f"ルーティン成果物が見つかりません: {path}")
