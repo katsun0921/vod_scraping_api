@@ -1,62 +1,38 @@
 [
   {
-    "title": "白鳥とコウモリ",
-    "release_date": "2026-09-04",
+    "title": "オデュッセイア",
+    "release_date": "2026-09-11",
+    "distributor": "ビターズ・エンド、ユニバーサル映画",
+    "official_url": "https://odyssey-film.jp/"
+  },
+  {
+    "title": "私たちは、ちょうどいい。",
+    "release_date": "2026-09-11",
+    "distributor": "AMGエンタテインメント",
+    "official_url": "https://bobtrevinolikesit-movie.com/"
+  },
+  {
+    "title": "スターヴ・エイカー 召喚",
+    "release_date": "2026-09-11",
+    "distributor": "ミッドシップ",
+    "official_url": "https://mid-ship.co.jp/starveacre/"
+  },
+  {
+    "title": "ルックバック",
+    "release_date": "2026-09-11",
+    "distributor": "K2 Pictures",
+    "official_url": "https://k2pic.com/film/lb/"
+  },
+  {
+    "title": "最終楽章 響け！ユーフォニアム 後編",
+    "release_date": "2026-09-11",
     "distributor": "松竹",
-    "official_url": "https://movies.shochiku.co.jp/eiga-hakuchotokomori/"
+    "official_url": "https://anime-eupho.com/"
   },
   {
-    "title": "バックルームズ",
-    "release_date": "2026-09-04",
-    "distributor": "ハピネットファントム・スタジオ",
-    "official_url": "https://happinet-phantom.com/lineup/2522/"
-  },
-  {
-    "title": "劇場版 THE ALFEE 3000PREMIUM ～トラベリングバンドが刻んだ3000本の奇跡と軌跡～",
-    "release_date": "2026-09-04",
-    "distributor": "NexTone",
-    "official_url": "https://movie.alfee-sp.com/"
-  },
-  {
-    "title": "SEKIRO: NO DEFEAT",
-    "release_date": "2026-09-04",
-    "distributor": "アニメック",
-    "official_url": "https://sekiro-anime.jp/"
-  },
-  {
-    "title": "ハルバーシュタットの埋蔵金",
-    "release_date": "2026-09-04",
-    "distributor": "インターフィルム",
-    "official_url": "https://2to1-movie.jp/"
-  },
-  {
-    "title": "戦場0地点",
-    "release_date": "2026-09-04",
-    "distributor": "アンプラグド",
-    "official_url": "https://unpfilm.com/senjyo/"
-  },
-  {
-    "title": "猫たちと7000マイルの旅",
-    "release_date": "2026-09-04",
-    "distributor": "",
-    "official_url": "https://cats-7000miles.com/"
-  },
-  {
-    "title": "冴えないボクと映えるキミ",
-    "release_date": "2026-09-04",
-    "distributor": "SPACEBOX、ラビットハウス",
-    "official_url": "https://spaceboxjapan.jp/saebae/"
-  },
-  {
-    "title": "グルスポングの奇跡",
-    "release_date": "2026-09-04",
-    "distributor": "カルチュアルライフ",
-    "official_url": "https://culturallife.co.jp/gullspangmiracle/"
-  },
-  {
-    "title": "沼影市民プール",
-    "release_date": "2026-09-05",
-    "distributor": "NAKACHIKA PICTURES",
-    "official_url": "https://numakage-film.com"
+    "title": "映画「宇宙なんちゃら こてつくん」うっかり出てきた宇宙人を探せ！",
+    "release_date": "2026-09-11",
+    "distributor": "KADOKAWA",
+    "official_url": "https://space--academy.com/eiga.html"
   }
 ]
