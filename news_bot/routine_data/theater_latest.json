@@ -1,79 +1,62 @@
 [
   {
-    "title": "時には懺悔を",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "ソニー・ピクチャーズ エンタテインメント",
-    "official_url": "https://www.tokizan.jp/"
+    "title": "白鳥とコウモリ",
+    "release_date": "2026-09-04",
+    "distributor": "松竹",
+    "official_url": "https://movies.shochiku.co.jp/eiga-hakuchotokomori/"
   },
   {
-    "title": "ラスト・サバイバー",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "ウォルト・ディズニー・ジャパン",
-    "official_url": "https://www.20thcenturystudios.jp/movies/last-survivor"
+    "title": "バックルームズ",
+    "release_date": "2026-09-04",
+    "distributor": "ハピネットファントム・スタジオ",
+    "official_url": "https://happinet-phantom.com/lineup/2522/"
   },
   {
-    "title": "シェルター",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "キノフィルムズ",
-    "official_url": "https://shelter-movie.jp/"
+    "title": "劇場版 THE ALFEE 3000PREMIUM ～トラベリングバンドが刻んだ3000本の奇跡と軌跡～",
+    "release_date": "2026-09-04",
+    "distributor": "NexTone",
+    "official_url": "https://movie.alfee-sp.com/"
   },
   {
-    "title": "劇場版 魔法少女まどか☆マギカ〈ワルプルギスの廻天〉",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "アニプレックス",
-    "official_url": "https://www.madoka-magica.com/wr/"
+    "title": "SEKIRO: NO DEFEAT",
+    "release_date": "2026-09-04",
+    "distributor": "アニメック",
+    "official_url": "https://sekiro-anime.jp/"
   },
   {
-    "title": "平行と垂直",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "東映ビデオ",
-    "official_url": "https://www.toei-video.co.jp/heikoutosuichoku/"
+    "title": "ハルバーシュタットの埋蔵金",
+    "release_date": "2026-09-04",
+    "distributor": "インターフィルム",
+    "official_url": "https://2to1-movie.jp/"
   },
   {
-    "title": "見えない娘 THE INVISIBLES",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "パルコ・CHOCOLATE Inc.",
-    "official_url": "http://mienaimusume.com/"
+    "title": "戦場0地点",
+    "release_date": "2026-09-04",
+    "distributor": "アンプラグド",
+    "official_url": "https://unpfilm.com/senjyo/"
   },
   {
-    "title": "私はあなたを知らない、",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "クロックワークス",
-    "official_url": "https://watashiramovie.com/"
-  },
-  {
-    "title": "顔 -かお-",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "twin",
-    "official_url": "https://kao-movie.com/"
-  },
-  {
-    "title": "こぐまとパルマの物語",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
+    "title": "猫たちと7000マイルの旅",
+    "release_date": "2026-09-04",
     "distributor": "",
-    "official_url": "https://www.koguma-to-palma.com/"
+    "official_url": "https://cats-7000miles.com/"
   },
   {
-    "title": "ナイトボーン -夜哭-",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "ギャガ（NOROSHI）",
-    "official_url": "https://gaga.ne.jp/nightborn_NOROSHI/"
+    "title": "冴えないボクと映えるキミ",
+    "release_date": "2026-09-04",
+    "distributor": "SPACEBOX、ラビットハウス",
+    "official_url": "https://spaceboxjapan.jp/saebae/"
   },
   {
-    "title": "劇場版 TUBE 40th Anniversary Live & Documentary 〜40周年の航海記〜",
-    "slug": "theater-release-2026-08-28",
-    "release_date": "2026-08-28",
-    "distributor": "WOWOW",
-    "official_url": "https://www.wowow.co.jp/film/tube40th/"
+    "title": "グルスポングの奇跡",
+    "release_date": "2026-09-04",
+    "distributor": "カルチュアルライフ",
+    "official_url": "https://culturallife.co.jp/gullspangmiracle/"
+  },
+  {
+    "title": "沼影市民プール",
+    "release_date": "2026-09-05",
+    "distributor": "NAKACHIKA PICTURES",
+    "official_url": "https://numakage-film.com"
   }
 ]
