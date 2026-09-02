@@ -1,32 +1,29 @@
 [
   {
-    "title": "スター・ウォーズ／マンダロリアン・アンド・グローグー",
-    "title_orig": "The Mandalorian and Grogu",
-    "slug": "vod-release-2026-09-02",
-    "service": "disney_plus",
-    "available_from": "2026-09-02",
+    "title": "エージェント物語 ザ・ムービー",
+    "title_orig": "Call My Agent! The Movie",
+    "service": "netflix",
+    "available_from": "2026-09-10",
     "availability_type": "独占",
     "category": "映画",
-    "url": "https://www.disneyplus.com/ja-jp/browse/entity-d830ec57-499e-498c-b6b3-2b85a18a5f51"
+    "url": "https://www.netflix.com/jp/title/82026389"
   },
   {
-    "title": "S.W.A.T. シーズン8",
-    "title_orig": "S.W.A.T. Season 8",
-    "slug": "vod-release-2026-09-01",
-    "service": "hulu",
-    "available_from": "2026-09-01",
+    "title": "メイド・イン・コリア 2",
+    "title_orig": "Made in Korea 2",
+    "service": "disney_plus",
+    "available_from": "2026-09-09",
     "availability_type": "独占",
     "category": "ドラマ",
-    "url": "https://www.hulu.jp/store/swat-2017-season8"
+    "url": "https://www.disneyplus.com/ja-jp/browse/entity-5acf7909-5d2f-494e-91a9-2fe0555c220f"
   },
   {
-    "title": "踊る大捜査線 捜査資料管理室～青島俊作、空白の13年～",
+    "title": "劇場版「緊急取調室 THE FINAL」",
     "title_orig": "",
-    "slug": "vod-release-2026-09-04",
     "service": "amazon_prime_video",
-    "available_from": "2026-09-04",
+    "available_from": "2026-09-11",
     "availability_type": "独占",
-    "category": "ドラマ",
-    "url": ""
+    "category": "映画",
+    "url": "https://www.amazon.co.jp/%E5%8A%87%E5%A0%B4%E7%89%88%E3%80%8C%E7%B7%8A%E6%80%A5%E5%8F%96%E8%AA%BF%E5%AE%A4-FINAL%E3%80%8D-%E5%B8%B8%E5%BB%A3%E4%B8%88%E5%A4%AA/dp/B0HCV5T28V"
   }
 ]
