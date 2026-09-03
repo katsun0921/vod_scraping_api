@@ -38,7 +38,7 @@
   {
     "title": "猫たちと7000マイルの旅",
     "release_date": "2026-09-04",
-    "distributor": "",
+    "distributor": "ファインフィルムズ",
     "official_url": "https://cats-7000miles.com/"
   },
   {
@@ -58,5 +58,17 @@
     "release_date": "2026-09-05",
     "distributor": "NAKACHIKA PICTURES",
     "official_url": "https://numakage-film.com"
+  },
+  {
+    "title": "ラブ・ライズ",
+    "release_date": "2026-09-04",
+    "distributor": "サロンジャパン",
+    "official_url": "https://www.love-lies-movie.jp/"
+  },
+  {
+    "title": "イミノウム",
+    "release_date": "2026-09-04",
+    "distributor": "",
+    "official_url": "https://note.com/contronica/"
   }
 ]
