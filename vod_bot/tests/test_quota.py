@@ -315,15 +315,27 @@ class TestBuildFrontUrl:
         post = {"slug": "dual", "categories": [99, 3], "link": ""}
         assert _build_front_url(post, "ja", self._CAT_MAP) == "https://katsumascore.blog/ja/anime/dual"
 
-    def test_カテゴリ未解決時はWPリンクにフォールバック(self):
+    def test_カテゴリ未解決でもフロントホストを使いカテゴリを省略する(self):
+        """WP の link（バックエンド側ホスト）にはフォールバックしない。"""
         from weekly_patch import _build_front_url
         post = {"slug": "no-cat", "categories": [99], "link": "https://wp.example.com/?p=3"}
-        assert _build_front_url(post, "ja", self._CAT_MAP) == "https://wp.example.com/?p=3"
+        assert _build_front_url(post, "ja", self._CAT_MAP) == "https://katsumascore.blog/ja/no-cat"
 
-    def test_slug欠落時はWPリンクにフォールバック(self):
+    def test_slug欠落時は空文字(self):
         from weekly_patch import _build_front_url
         post = {"categories": [3], "link": "https://wp.example.com/?p=4"}
-        assert _build_front_url(post, "ja", self._CAT_MAP) == "https://wp.example.com/?p=4"
+        assert _build_front_url(post, "ja", self._CAT_MAP) == ""
+
+    def test_言語コードの表記ゆれはjaに正規化する(self):
+        """acf.lang が "jp" でもフロントのパスは /ja にする。"""
+        from weekly_patch import _build_front_url
+        post = {"slug": "john-wick", "categories": [5], "link": ""}
+        assert _build_front_url(post, "jp", self._CAT_MAP) == "https://katsumascore.blog/ja/movie/john-wick"
+
+    def test_言語コード未設定はjaにフォールバックする(self):
+        from weekly_patch import _build_front_url
+        post = {"slug": "john-wick", "categories": [5], "link": ""}
+        assert _build_front_url(post, "", self._CAT_MAP) == "https://katsumascore.blog/ja/movie/john-wick"
 
 
 # ---------------------------------------------------------------------------

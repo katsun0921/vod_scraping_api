@@ -1,6 +1,6 @@
 # 週次パッチ Slack 通知仕様
 
-`weekly_patch.py` が検知した新規配信（新着）を Slack に通知する仕組みの詳細。
+`vod_bot/weekly_patch.py` が検知した新規配信（新着）を Slack に通知する仕組みの詳細。
 スケジューリングやバッチ処理そのものについては [weekly-patch-schedule.md](./weekly-patch-schedule.md) を参照。
 
 ---
@@ -9,7 +9,7 @@
 
 - 通知は **バッチ実行1回につき1通** にまとめて送信する（作品ごとの都度通知は行わない）。
 - 実行中に検知した新規配信を `new_streaming_items` に蓄積し、バッチ完了時（または連続エラーによる中断時）に
-  `utils/slack.py` の `notify_weekly_new_streaming_summary()` へまとめて渡す。
+  `vod_bot/slack.py` の `notify_weekly_new_streaming_summary()` へまとめて渡す。
 - 新着が1件もない週は通知を送信しない。
 - `SLACK_WEBHOOK_URL` 未設定の場合、または送信失敗時は WARNING ログのみで例外は発生しない。
 
@@ -17,7 +17,7 @@
 
 ## 発火条件（新規配信の判定）
 
-`utils/wordpress.py` の `update_post()` 内、以下の条件をすべて満たす場合に「新規配信」と判定する。
+`vod_bot/wordpress.py` の `update_post()` 内、以下の条件をすべて満たす場合に「新規配信」と判定する。
 
 ```
 1. 今回の status == "streaming"
@@ -36,24 +36,25 @@
 - **言語グループ**: 日本語（`ja`）→ English（`en`）の順。上記以外の言語コードが将来追加された場合は末尾に表示する。
 - **サービスグループ**: 各言語内は `_SERVICE_LABELS`（Amazon Prime Video → Netflix → Hulu → U-NEXT → Disney+ → DMM TV → Apple TV → YouTube → Crunchyroll）の定義順。未知のサービスキーは末尾に表示する。
 - 各作品はタイトルにフロントエンド URL をリンクした Slack 形式（`<url|title>`）で表示する。URL が空の場合はタイトルのみ表示する。
+- タイトルの後ろに、そのサービスで実際にスクレイピングした配信ページ URL を `｜ <scraping_url|配信ページ>` の形式で添える。`scraping_url` が空の場合は省略する。
 
 ### 出力例
 
 ```
-🎬 今週の新着配信一覧 — 全5件
+:clapper: *今週の新着配信一覧* — 全5件
 
-🇯🇵 日本語（3件）
-Netflix
-  • 作品A（リンク）
-  • 作品B（リンク）
-U-NEXT
-  • 作品C
+:jp: 日本語（3件）
+*Netflix*
+  • <https://katsumascore.blog/ja/movie/john-wick|ジョン・ウィック> ｜ <https://www.netflix.com/jp/title/81260280|配信ページ>
+  • <https://katsumascore.blog/ja/anime/frieren|葬送のフリーレン> ｜ <https://www.netflix.com/jp/title/81726714|配信ページ>
+*U-NEXT*
+  • <https://katsumascore.blog/ja/movie/sakuhin-c|作品C> ｜ <https://video.unext.jp/title/SID0012345|配信ページ>
 
-🇺🇸 English（2件）
-Amazon Prime Video
-  • Title E（リンク）
-Crunchyroll
-  • Title D（リンク）
+:us: English（2件）
+*Amazon Prime Video*
+  • <https://katsumascore.blog/en/movie/title-e|Title E> ｜ <https://www.amazon.co.jp/gp/video/detail/B0ABCDEFG|配信ページ>
+*Crunchyroll*
+  • <https://katsumascore.blog/en/anime/title-d|Title D> ｜ <https://www.crunchyroll.com/series/GABC/title-d|配信ページ>
 ```
 
 ---
@@ -70,24 +71,25 @@ https://katsumascore.blog/{lang}/{category_slug}/{post_slug}
   英語  : https://katsumascore.blog/en/anime/frieren
 ```
 
-- `lang`: 投稿の `acf.lang`（`ja` / `en`）。
+- `lang`: 投稿の `acf.lang` を `ja` / `en` に正規化したもの（`_front_lang_segment()`）。`jp` などの表記ゆれや未設定・未知の言語コードはすべて `ja` に寄せ、`/jp` のような存在しないパスは出力しない。
 - `category_slug`: 投稿が属する WordPress カテゴリの slug。複数カテゴリに属する場合は解決できた最初の slug を使用する。
 - `post_slug`: 投稿の slug。
 
 ### カテゴリ slug の解決
 
-`utils/wordpress.py` の `get_category_slug_map()` が実行開始時に WP REST API（`/categories`）から
+`vod_bot/wordpress.py` の `get_category_slug_map()` が実行開始時に WP REST API（`/categories`）から
 `{term_id: slug}` のマッピングを一括取得する（バッチ実行につき1回）。
 
 ### フォールバック
 
-以下の場合、フロントエンド URL の組み立てを諦め、WordPress の投稿リンク（`post.link`）にフォールバックする。
+**ホストは常にフロント（`https://katsumascore.blog`）を使う。** WordPress の投稿リンク（`post.link`）は
+バックエンド側のホストを指すため、フォールバック先には使わない。
 
-- 投稿にカテゴリ term_id が設定されていない、またはマップに存在しない
-- 投稿の slug が空
-- カテゴリマップの取得自体に失敗した場合（全件フォールバック）
+- カテゴリ slug が解決できない場合（投稿にカテゴリ term_id がない／マップに存在しない／カテゴリマップの
+  取得自体に失敗した場合）は、カテゴリを省いた `https://katsumascore.blog/{lang}/{post_slug}` を返す
+- 投稿の slug が空の場合のみ空文字を返す（Slack ではタイトルのみ表示になる）
 
-フォールバック発生時は `weekly_patch.py` から WARNING ログが出力される。
+いずれのフォールバックでも `vod_bot/weekly_patch.py` から WARNING ログが出力される。
 
 ---
 
@@ -95,11 +97,11 @@ https://katsumascore.blog/{lang}/{category_slug}/{post_slug}
 
 | 役割 | ファイル |
 |---|---|
-| 新規配信の判定 | `utils/wordpress.py` の `update_post()` |
-| カテゴリ slug マップ取得 | `utils/wordpress.py` の `get_category_slug_map()` |
-| フロントURL組み立て | `weekly_patch.py` の `_build_front_url()` |
-| 新着の蓄積・通知呼び出し | `weekly_patch.py` の `run()` |
-| Slack 通知本体 | `utils/slack.py` の `notify_weekly_new_streaming_summary()` |
+| 新規配信の判定 | `vod_bot/wordpress.py` の `update_post()` |
+| カテゴリ slug マップ取得 | `vod_bot/wordpress.py` の `get_category_slug_map()` |
+| フロントURL組み立て | `vod_bot/weekly_patch.py` の `_build_front_url()` |
+| 新着の蓄積・通知呼び出し | `vod_bot/weekly_patch.py` の `run()` |
+| Slack 通知本体 | `vod_bot/slack.py` の `notify_weekly_new_streaming_summary()` |
 
 ---
 

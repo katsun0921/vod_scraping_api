@@ -47,6 +47,26 @@ def _post(payload: dict) -> None:
         logger.warning("Slack 通知エラー: %s", e)
 
 
+def _format_item(title: str, url: str, scraping_url: str) -> str:
+    """新着1件分の表示行を組み立てる。
+
+    記事のフロント URL をタイトルにリンクし、その後ろにスクレイピングした
+    配信ページ URL へのリンクを添える。
+
+    Args:
+        title       : 作品タイトル。
+        url         : フロントエンド表示 URL（空なら title をそのまま表示）。
+        scraping_url: スクレイピング対象の配信ページ URL（空なら省略）。
+
+    Returns:
+        Slack mrkdwn 形式の1行分の文字列（先頭の箇条書き記号は含まない）。
+    """
+    line = f"<{url}|{title}>" if url else title
+    if scraping_url:
+        line += f" ｜ <{scraping_url}|配信ページ>"
+    return line
+
+
 def notify_weekly_new_streaming_summary(items: list[dict]) -> None:
     """週次パッチで検知した新着配信の一覧を Slack に通知する。
 
@@ -55,22 +75,23 @@ def notify_weekly_new_streaming_summary(items: list[dict]) -> None:
 
     Args:
         items: 新着配信のリスト。各要素は以下のキーを持つ辞書:
-            service: サービスキー名（例: "netflix"）
-            lang   : 投稿の言語コード（"ja" / "en"）
-            title  : 作品タイトル
-            url    : フロントエンド表示 URL（空文字可。解決失敗時は WP link）
+            service     : サービスキー名（例: "netflix"）
+            lang        : 投稿の言語コード（"ja" / "en"）
+            title       : 作品タイトル
+            url         : フロントエンド表示 URL（https://katsumascore.blog/{ja|en}/...）
+            scraping_url: スクレイピング対象の配信ページ URL（空文字可）
     """
     if not items:
         logger.info("Slack 通知スキップ: 今週の新着配信なし")
         return
 
-    # lang → service → [(title, url), ...] にグループ化
-    grouped: dict[str, dict[str, list[tuple[str, str]]]] = {}
+    # lang → service → [(title, url, scraping_url), ...] にグループ化
+    grouped: dict[str, dict[str, list[tuple[str, str, str]]]] = {}
     for item in items:
         lang = item.get("lang") or "ja"
         service = item.get("service", "")
         grouped.setdefault(lang, {}).setdefault(service, []).append(
-            (item.get("title", ""), item.get("url", ""))
+            (item.get("title", ""), item.get("url", ""), item.get("scraping_url", ""))
         )
 
     lines = [f":clapper: *今週の新着配信一覧* — 全{len(items)}件"]
@@ -91,8 +112,8 @@ def notify_weekly_new_streaming_summary(items: list[dict]) -> None:
 
         for service in service_order:
             lines.append(f"*{_SERVICE_LABELS.get(service, service)}*")
-            for title, url in services[service]:
-                lines.append(f"  • <{url}|{title}>" if url else f"  • {title}")
+            for title, url, scraping_url in services[service]:
+                lines.append(f"  • {_format_item(title, url, scraping_url)}")
 
     _post({"text": "\n".join(lines)})
     logger.info("Slack 通知送信: 今週の新着配信一覧 %d件", len(items))
