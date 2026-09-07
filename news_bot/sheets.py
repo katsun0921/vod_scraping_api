@@ -16,9 +16,13 @@ cron実行をまたいで追跡するために本実装で追加した内部管�
 import json
 import logging
 import os
+import random
+import time
 from datetime import date, datetime, timezone
 
 import gspread
+from gspread.exceptions import APIError
+from gspread.http_client import HTTPClient
 from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 
@@ -117,11 +121,49 @@ def _is_active(value) -> bool:
     return False
 
 
+# Sheets API が一時的に返すHTTPステータス。時間をおけば回復するため再試行する。
+# 実例: 週次の theater_publish が 503 "The service is currently unavailable." だけで失敗した
+# （https://github.com/katsun0921/vod_scraping_api/actions/runs/33696915654）。
+_RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+_MAX_ATTEMPTS = 5
+_BACKOFF_BASE_SECONDS = 2.0
+
+
+class _RetryingHTTPClient(HTTPClient):
+    """一時的なAPIエラーを指数バックオフで再試行するgspreadのHTTPクライアント。
+
+    gspreadのSheets APIアクセスはすべて ``HTTPClient.request`` を通るため、ここに
+    再試行を入れれば ``open_by_key`` からシートの読み書きまで一律に保護できる。
+
+    待機は 2 / 4 / 8 / 16 秒（+1秒未満のジッター）で最大5回試行する。それでも復旧
+    しない場合、および 404 などリトライしても無駄なエラーは元の例外をそのまま送出する。
+
+    gspread には ``BackOffHTTPClient`` があるが「production ready ではない」と明記され、
+    リトライ回数のカウンタが失敗時にリセットされない問題があるため自前で用意する。
+    """
+
+    def request(self, *args, **kwargs):
+        for attempt in range(1, _MAX_ATTEMPTS):
+            try:
+                return super().request(*args, **kwargs)
+            except APIError as exc:
+                if exc.code not in _RETRYABLE_STATUS_CODES:
+                    raise
+                wait = _BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)) + random.uniform(0, 1)
+                logger.warning(
+                    "Sheets APIが一時エラー(%s)を返した。%.1f秒後に再試行する (%d/%d)",
+                    exc.code, wait, attempt, _MAX_ATTEMPTS,
+                )
+                time.sleep(wait)
+        # 最終試行。ここで失敗したら例外をそのまま呼び出し元へ返す
+        return super().request(*args, **kwargs)
+
+
 def _client() -> gspread.Client:
     creds_json = os.environ["GOOGLE_SHEETS_CREDENTIALS_JSON"]
     info = json.loads(creds_json)
     credentials = Credentials.from_service_account_info(info, scopes=_SCOPES)
-    return gspread.authorize(credentials)
+    return gspread.authorize(credentials, http_client=_RetryingHTTPClient)
 
 
 class NewsBotSheets:
