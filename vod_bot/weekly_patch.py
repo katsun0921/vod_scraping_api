@@ -134,7 +134,24 @@ _RELEASE_YEAR_FALLBACK_PHASE2 = 0     # DESC(-) ソートで空欄を最後尾�
 _DATE_FAR_FUTURE = date(9999, 12, 31)
 
 # フロントエンドのベース URL（Slack 通知の作品リンクに使用）
+# 実際に記事を表示しているフロント（Next.js）のホスト。WordPress 側のホストではない。
 _FRONT_BASE_URL = "https://katsumascore.blog"
+
+# フロントの言語パスセグメント（acf.lang → URL の /{lang} 部分）
+# "en" 以外はすべて日本語扱いにする（表記ゆれ "jp" 等で /jp を出さないため）
+_FRONT_LANG_SEGMENTS: dict[str, str] = {"ja": "ja", "jp": "ja", "en": "en"}
+
+
+def _front_lang_segment(lang: str) -> str:
+    """acf.lang をフロントの言語パスセグメント（"ja" / "en"）に正規化する。
+
+    Args:
+        lang: 投稿の言語コード（"ja" / "en" 等。空文字可）。
+
+    Returns:
+        "ja" または "en"。未知の言語コードは "ja" にフォールバックする。
+    """
+    return _FRONT_LANG_SEGMENTS.get((lang or "").strip().lower(), "ja")
 
 
 def _build_front_url(
@@ -144,19 +161,27 @@ def _build_front_url(
 ) -> str:
     """投稿のフロントエンド URL（実際の表示 URL）を組み立てる。
 
-    形式: {_FRONT_BASE_URL}/{lang}/{category_slug}/{post_slug}
+    形式: {_FRONT_BASE_URL}/{ja|en}/{category_slug}/{post_slug}
 
-    カテゴリ slug が解決できない場合は WordPress の link にフォールバックする。
+    ホストは常に _FRONT_BASE_URL（フロント）を使う。WordPress の link は
+    バックエンド側のホストを指すためフォールバックには使わない。
+    カテゴリ slug が解決できない場合はカテゴリを省いた
+    {_FRONT_BASE_URL}/{ja|en}/{post_slug} を返す。
 
     Args:
-        post             : WordPress 投稿データ（slug / categories / link を含む）。
+        post             : WordPress 投稿データ（slug / categories を含む）。
         lang             : 投稿の言語コード（"ja" / "en"）。
         category_slug_map: カテゴリ term_id → slug のマッピング。
 
     Returns:
-        フロントエンド URL 文字列。
+        フロントエンド URL 文字列。slug が空の場合のみ空文字。
     """
     post_slug = post.get("slug", "")
+    if not post_slug:
+        logger.warning("フロントURL組み立て失敗（slug なし）: post_id=%s", post.get("id"))
+        return ""
+
+    lang_segment = _front_lang_segment(lang)
     category_slug = next(
         (
             category_slug_map[cat_id]
@@ -165,13 +190,14 @@ def _build_front_url(
         ),
         "",
     )
-    if post_slug and category_slug:
-        return f"{_FRONT_BASE_URL}/{lang}/{category_slug}/{post_slug}"
+    if category_slug:
+        return f"{_FRONT_BASE_URL}/{lang_segment}/{category_slug}/{post_slug}"
+
     logger.warning(
-        "フロントURL組み立て失敗（WPリンクにフォールバック）: slug=%s categories=%s",
+        "フロントURL: カテゴリ slug 未解決のためカテゴリを省略: slug=%s categories=%s",
         post_slug, post.get("categories"),
     )
-    return post.get("link", "")
+    return f"{_FRONT_BASE_URL}/{lang_segment}/{post_slug}"
 
 
 # ──────────────────────────────────────────────────────────────
@@ -650,6 +676,7 @@ def run(
                         "lang": post_lang,
                         "title": post_title,
                         "url": _build_front_url(post, post_lang, category_slug_map),
+                        "scraping_url": scraping_url,
                     })
 
                 # vod_term_ids をローカルで更新（次サービスの処理に反映）
