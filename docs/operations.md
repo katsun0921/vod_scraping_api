@@ -37,6 +37,11 @@ WordPress ACF をデータストアとし、Cloud Run スクレイパーが定�
 ⑧ Next.js フロントエンドが WP REST API から取得して表示
 ```
 
+劇場公開中フラグ（ACF `cinema_info_filed.is_cinema_showing`）は別系統で、
+毎週月曜 05:00 JST に `theater_patch.py` が劇場URLの生存と公開日からの経過週数を
+確認し、上映終了と判定した記事のフラグを自動で OFF にする。
+詳細は [feature/theater-showing-check-spec.md](feature/theater-showing-check-spec.md)。
+
 ---
 
 ## アーキテクチャ
@@ -119,6 +124,7 @@ Next.js TOP「新着配信」セクションで 7 日以内の作品を表示
 | `WP_BASIC_USER` | サーバー Basic 認証ユーザー名 | △ |
 | `WP_BASIC_PASSWORD` | サーバー Basic 認証パスワード | △ |
 | `SLACK_WEBHOOK_URL` | Slack 通知 Webhook URL | △ |
+| `THEATER_SHOWING_WEEKS` | 劇場公開チェックで上映終了とみなす経過週数（既定 8） | △ |
 
 ---
 

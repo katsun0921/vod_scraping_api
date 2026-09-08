@@ -60,6 +60,15 @@ SERVICE_REQUIRED_CATEGORY_IDS: dict[str, frozenset] = {
 
 PER_PAGE = 100
 
+# フロントエンドのベース URL（Slack 通知の作品リンクに使用）
+# 実際に記事を表示しているフロント（Next.js）のホスト。WordPress 側のホストではない。
+FRONT_BASE_URL = "https://katsumascore.blog"
+
+# 劇場情報 ACF グループ（`cinema_info_filed`）とそのサブフィールド名
+CINEMA_INFO_FIELD = "cinema_info_filed"
+CINEMA_SHOWING_SUBFIELD = "is_cinema_showing"   # 現在上映中（true_false）
+CINEMA_URL_SUBFIELD = "cinema_list_filed"       # 劇場URL（url）
+
 
 def _wp_auth_header() -> str:
     """WordPress Application Password の Basic 認証ヘッダー値を返す。"""
@@ -833,3 +842,291 @@ def get_all_posts_for_patch(
         len(posts), len(filtered), limit,
     )
     return filtered
+
+
+
+# ──────────────────────────────────────────────────────────────
+# フロントエンド URL
+# ──────────────────────────────────────────────────────────────
+
+# フロントの言語パスセグメント（acf.lang → URL の /{lang} 部分）
+# "en" 以外はすべて日本語扱いにする（表記ゆれ "jp" 等で /jp を出さないため）
+_FRONT_LANG_SEGMENTS: dict[str, str] = {"ja": "ja", "jp": "ja", "en": "en"}
+
+
+def front_lang_segment(lang: str) -> str:
+    """acf.lang をフロントの言語パスセグメント（"ja" / "en"）に正規化する。
+
+    Args:
+        lang: 投稿の言語コード（"ja" / "en" 等。空文字可）。
+
+    Returns:
+        "ja" または "en"。未知の言語コードは "ja" にフォールバックする。
+    """
+    return _FRONT_LANG_SEGMENTS.get((lang or "").strip().lower(), "ja")
+
+
+def build_front_url(post_slug: str, lang: str, category_slug: str = "") -> str:
+    """フロントエンドの記事 URL を組み立てる。
+
+    形式: {FRONT_BASE_URL}/{ja|en}/{category_slug}/{post_slug}
+    category_slug が空の場合はカテゴリを省いた {FRONT_BASE_URL}/{ja|en}/{post_slug}。
+
+    ホストは常に FRONT_BASE_URL（Next.js 側）を使う。WordPress の link は
+    バックエンドのホストを指すためフォールバックには使わない。
+
+    Args:
+        post_slug    : 記事のスラッグ。空の場合は空文字を返す。
+        lang         : 投稿の言語コード（"ja" / "en"）。
+        category_slug: カテゴリのスラッグ（"movie" / "anime" 等。空可）。
+
+    Returns:
+        フロントエンド URL 文字列。post_slug が空の場合のみ空文字。
+    """
+    if not post_slug:
+        return ""
+    lang_segment = front_lang_segment(lang)
+    if category_slug:
+        return f"{FRONT_BASE_URL}/{lang_segment}/{category_slug}/{post_slug}"
+    return f"{FRONT_BASE_URL}/{lang_segment}/{post_slug}"
+# ──────────────────────────────────────────────────────────────
+# 劇場公開（上映中フラグ）
+# ──────────────────────────────────────────────────────────────
+
+class TheaterListError(RuntimeError):
+    """上映中記事の一覧取得に失敗したことを表す例外。
+
+    この例外が上がった場合、対象一覧が信用できないため上映中フラグの
+    自動更新は行わない（誤って全件のフラグを外さないため）。
+    """
+
+
+def _v1_base_url() -> str:
+    """テーマ独自 REST エンドポイント（`/wp-json/v1/...`）のベース URL を返す。
+
+    WP_API_URL は `https://example.com/wp-json/wp/v2` を指す運用のため、
+    末尾の `/wp/v2` を落として `/v1` に差し替える。
+
+    Returns:
+        末尾スラッシュなしの `.../wp-json/v1` 形式の URL。
+    """
+    base = _base_url()
+    if base.endswith("/wp/v2"):
+        base = base[: -len("/wp/v2")]
+    return f"{base}/v1"
+
+
+def _theater_item_from_endpoint(item: dict) -> dict:
+    """`/v1/theater-list` の items 1件を内部形式に変換する。
+
+    Args:
+        item: エンドポイントのレスポンス items の1要素。
+
+    Returns:
+        {id, slug, title, lang, release_date, cinema_url, category_slugs} の辞書。
+        release_date / cinema_url は未入力なら空文字。
+    """
+    return {
+        "id": int(item.get("id") or 0),
+        "slug": item.get("slug") or "",
+        "title": item.get("title") or item.get("slug") or "",
+        "lang": item.get("lang") or "ja",
+        "release_date": item.get("releaseDate") or "",
+        "cinema_url": item.get("cinemaUrl") or "",
+        "category_slugs": [
+            c.get("slug", "") for c in (item.get("categories") or []) if c.get("slug")
+        ],
+    }
+
+
+def get_theater_showing_posts(langs: tuple[str, ...] = ("ja", "en")) -> list[dict]:
+    """上映中フラグ（`cinema_info_filed.is_cinema_showing`）が ON の記事を返す。
+
+    テーマの独自エンドポイント `/v1/theater-list` を lang ごとに全ページ取得する。
+    エンドポイントが未デプロイ（404）の場合のみ `/wp/v2/posts` の全件走査に
+    フォールバックする。
+
+    Args:
+        langs: 取得対象の言語コード。エンドポイントは lang 単位でしか返さないため、
+               既定の ("ja", "en") で両方を取得する。
+
+    Returns:
+        {id, slug, title, lang, release_date, cinema_url, category_slugs} のリスト。
+        同一 id は1件に重複排除する。
+
+    Raises:
+        TheaterListError: 404 以外のエラー（501 showing_meta_key_missing 等）で
+            一覧が取得できなかった場合。
+    """
+    url = f"{_v1_base_url()}/theater-list"
+    session = _session()
+    items: dict[int, dict] = {}
+
+    for lang in langs:
+        page = 1
+        while True:
+            params = {"lang": lang, "page": page, "per_page": PER_PAGE, "filter": "release"}
+
+            # 502 等の一時的エラーに備えてリトライ（取得失敗は更新中止に直結するため）
+            for attempt in range(3):
+                resp = session.get(url, params=params, timeout=30)
+                if resp.status_code < 500 or resp.status_code == 501:
+                    break
+                logger.warning(
+                    "GET theater-list lang=%s page=%d server error(status=%d), retrying in 5s...",
+                    lang, page, resp.status_code,
+                )
+                time.sleep(5)
+
+            if resp.status_code == 404:
+                logger.warning(
+                    "/v1/theater-list が見つかりません（404）。"
+                    "テーマ未デプロイとみなし /wp/v2/posts の走査にフォールバックします"
+                )
+                return _scan_theater_showing_posts()
+
+            if not resp.ok:
+                raise TheaterListError(
+                    f"/v1/theater-list 取得失敗: lang={lang} page={page} "
+                    f"status={resp.status_code} body={resp.text[:200]}"
+                )
+
+            data = resp.json()
+            batch = data.get("items") or []
+            for raw in batch:
+                normalized = _theater_item_from_endpoint(raw)
+                if normalized["id"]:
+                    items[normalized["id"]] = normalized
+
+            total_pages = int((data.get("meta") or {}).get("totalPages") or 0)
+            if page >= total_pages or not batch:
+                break
+            page += 1
+
+    logger.info("上映中の記事: %d件（/v1/theater-list, langs=%s）", len(items), ",".join(langs))
+    return list(items.values())
+
+
+def _scan_theater_showing_posts() -> list[dict]:
+    """`/wp/v2/posts` を全件走査して上映中フラグ ON の記事を抽出する。
+
+    `/v1/theater-list` が未デプロイのときのフォールバック。ACF の
+    `cinema_info_filed` グループを直接見るため、エンドポイントと違い
+    postmeta キー名には依存しない。
+
+    Returns:
+        get_theater_showing_posts() と同じ形式のリスト。
+    """
+    session = _session()
+    url = f"{_base_url()}/posts"
+    posts: list[dict] = []
+    page = 1
+
+    while True:
+        params = {
+            "status": "publish",
+            "_fields": "id,slug,title,acf,categories",
+            "per_page": PER_PAGE,
+            "page": page,
+        }
+        for attempt in range(3):
+            resp = session.get(url, params=params, timeout=30)
+            if resp.status_code < 500:
+                break
+            logger.warning("GET posts（上映中走査）page=%d server error, retrying in 5s...", page)
+            time.sleep(5)
+        if not resp.ok:
+            raise TheaterListError(
+                f"GET posts（上映中走査）失敗: page={page} status={resp.status_code}"
+            )
+        batch = resp.json()
+        if not batch:
+            break
+        posts.extend(batch)
+        if len(batch) < PER_PAGE:
+            break
+        page += 1
+
+    category_slug_map: dict[int, str] = {}
+    try:
+        category_slug_map = get_category_slug_map()
+    except Exception as e:  # カテゴリ解決に失敗してもフロントURLが粗くなるだけ
+        logger.warning("カテゴリ slug マップ取得失敗: %s", e)
+
+    items: list[dict] = []
+    for post in posts:
+        acf = post.get("acf") or {}
+        cinema = acf.get(CINEMA_INFO_FIELD) or {}
+        if not cinema.get(CINEMA_SHOWING_SUBFIELD):
+            continue
+        release = acf.get("release") or {}
+        items.append({
+            "id": post["id"],
+            "slug": post.get("slug", ""),
+            "title": (post.get("title") or {}).get("rendered") or post.get("slug", ""),
+            "lang": acf.get("lang") or "ja",
+            "release_date": _format_release_date(str(release.get("release_date") or "")),
+            "cinema_url": cinema.get(CINEMA_URL_SUBFIELD) or "",
+            "category_slugs": [
+                category_slug_map[cid]
+                for cid in (post.get("categories") or [])
+                if category_slug_map.get(cid)
+            ],
+        })
+
+    logger.info("上映中の記事: %d件（全投稿 %d件を走査）", len(items), len(posts))
+    return items
+
+
+def _format_release_date(raw: str) -> str:
+    """ACF `release.release_date`（Ymd 形式）を `Y-m-d` に整形する。
+
+    Args:
+        raw: `20260801` のような8桁文字列。想定外の値は空文字を返す。
+
+    Returns:
+        `2026-08-01` 形式の文字列。整形できない場合は空文字。
+    """
+    digits = raw.strip()
+    if len(digits) != 8 or not digits.isdigit():
+        return ""
+    return f"{digits[0:4]}-{digits[4:6]}-{digits[6:8]}"
+
+
+def patch_cinema_showing(post_id: int, is_showing: bool) -> None:
+    """記事の上映中フラグ（`cinema_info_filed.is_cinema_showing`）を更新する。
+
+    劇場URL（`cinema_list_filed`）など同グループの他サブフィールドは
+    既存値をそのまま保持する。
+
+    Args:
+        post_id   : WordPress 投稿 ID。
+        is_showing: 設定する値。上映終了時は False。
+
+    Raises:
+        requests.HTTPError: GET / PATCH 失敗時。
+    """
+    url = f"{_base_url()}/posts/{post_id}"
+    session = _session(wp_auth=True)
+
+    get_resp = session.get(url, params={"_fields": "acf"}, timeout=30)
+    get_resp.raise_for_status()
+    existing_acf: dict = (get_resp.json().get("acf") or {}).copy()
+
+    # 必須フィールドは PATCH に含めないとバリデーションで弾かれるため引き継ぐ
+    schema = _get_acf_schema()
+    required_keys = [k for k, v in schema.items() if isinstance(v, dict) and v.get("required")]
+    acf_patch: dict = {k: existing_acf[k] for k in required_keys if k in existing_acf}
+
+    cinema_info = dict(existing_acf.get(CINEMA_INFO_FIELD) or {})
+    cinema_info[CINEMA_SHOWING_SUBFIELD] = is_showing
+    acf_patch[CINEMA_INFO_FIELD] = cinema_info
+
+    resp = session.patch(url, json={"acf": acf_patch}, timeout=30)
+    if not resp.ok:
+        logger.error(
+            "PATCH cinema showing failed: post_id=%d is_showing=%s status=%d body=%s",
+            post_id, is_showing, resp.status_code, resp.text[:300],
+        )
+    resp.raise_for_status()
+    logger.info("post_id=%d: %s=%s に更新", post_id, CINEMA_SHOWING_SUBFIELD, is_showing)

@@ -4,7 +4,8 @@ HTTP POST リクエストを受け取り、VOD配信状況チェックを実行�
 認証は Cloud Run の IAM (Bearer トークン) で管理する。
 
 エンドポイント:
-    POST /weekly-patch : 週次パッチ統合ランナー（URLチェック + JustWatch検索）
+    POST /weekly-patch  : 週次パッチ統合ランナー（URLチェック + JustWatch検索）
+    POST /theater-check : 劇場公開（上映中フラグ）の週次チェック
     GET  /health        : ヘルスチェック
 
 レスポンス（POST /weekly-patch）:
@@ -34,6 +35,7 @@ import sys
 
 from flask import Flask, jsonify, request
 
+from theater_patch import run as theater_check_run
 from weekly_patch import BATCH_COUNT, DEFAULT_BATCH_SIZE
 from weekly_patch import run as weekly_patch_run
 
@@ -97,6 +99,47 @@ def weekly_patch():
         force=force,
         slug=slug,
     )
+    return jsonify(result)
+
+
+@app.route("/theater-check", methods=["POST"])
+def theater_check():
+    """劇場公開（上映中フラグ）の週次チェックを実行するエンドポイント。
+
+    ACF `cinema_info_filed.is_cinema_showing` が ON の記事について、劇場URLの
+    生存と劇場公開日からの経過週数を確認し、上映終了と判定した記事のフラグを
+    自動で OFF にする。判定ロジックの詳細は theater_patch.py を参照。
+
+    リクエストボディ（JSON）:
+        weeks   (int)  : 上映終了とみなす経過週数。省略時は環境変数 → 既定8週。
+        dry_run (bool) : 判定のみ（更新・Slack通知なし）。
+        slug    (str)  : 特定 slug のみ処理する。
+        post_id (int)  : 特定 post_id のみ処理する（slug より優先）。
+        limit   (int)  : 最大処理件数。
+
+    Returns:
+        判定結果の JSON。対象一覧の取得に失敗した場合は 502 で `error` を返す。
+    """
+    body = request.get_json(silent=True) or {}
+
+    def _optional_int(key: str):
+        raw = body.get(key)
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return None
+
+    result = theater_check_run(
+        weeks=_optional_int("weeks"),
+        dry_run=bool(body.get("dry_run", False)),
+        slug=body.get("slug"),
+        post_id=_optional_int("post_id"),
+        limit=_optional_int("limit"),
+    )
+    if result.get("error"):
+        return jsonify(result), 502
     return jsonify(result)
 
 

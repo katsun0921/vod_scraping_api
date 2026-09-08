@@ -67,10 +67,13 @@ from justwatch import search_urls
 from slack import notify_weekly_new_streaming_summary
 from utils.rate_limit import RateLimiter
 from wordpress import (
+    FRONT_BASE_URL,
     SERVICES,
     SERVICE_REQUIRED_CATEGORY_IDS,
     SERVICE_SUPPORTED_LANGUAGES,
     VOD_TERM_IDS,
+    build_front_url,
+    front_lang_segment,
     get_all_posts_for_patch,
     get_category_slug_map,
     get_vod_term_ids,
@@ -134,24 +137,12 @@ _RELEASE_YEAR_FALLBACK_PHASE2 = 0     # DESC(-) ソートで空欄を最後尾�
 _DATE_FAR_FUTURE = date(9999, 12, 31)
 
 # フロントエンドのベース URL（Slack 通知の作品リンクに使用）
-# 実際に記事を表示しているフロント（Next.js）のホスト。WordPress 側のホストではない。
-_FRONT_BASE_URL = "https://katsumascore.blog"
+# 定義は wordpress.py（劇場チェックの theater_patch.py と共有する）
+_FRONT_BASE_URL = FRONT_BASE_URL
 
-# フロントの言語パスセグメント（acf.lang → URL の /{lang} 部分）
-# "en" 以外はすべて日本語扱いにする（表記ゆれ "jp" 等で /jp を出さないため）
-_FRONT_LANG_SEGMENTS: dict[str, str] = {"ja": "ja", "jp": "ja", "en": "en"}
-
-
-def _front_lang_segment(lang: str) -> str:
-    """acf.lang をフロントの言語パスセグメント（"ja" / "en"）に正規化する。
-
-    Args:
-        lang: 投稿の言語コード（"ja" / "en" 等。空文字可）。
-
-    Returns:
-        "ja" または "en"。未知の言語コードは "ja" にフォールバックする。
-    """
-    return _FRONT_LANG_SEGMENTS.get((lang or "").strip().lower(), "ja")
+# 言語セグメントの正規化とURL組み立ては wordpress.py に置き、劇場チェック
+# （theater_patch.py）と共有する
+_front_lang_segment = front_lang_segment
 
 
 def _build_front_url(
@@ -181,7 +172,6 @@ def _build_front_url(
         logger.warning("フロントURL組み立て失敗（slug なし）: post_id=%s", post.get("id"))
         return ""
 
-    lang_segment = _front_lang_segment(lang)
     category_slug = next(
         (
             category_slug_map[cat_id]
@@ -190,14 +180,12 @@ def _build_front_url(
         ),
         "",
     )
-    if category_slug:
-        return f"{_FRONT_BASE_URL}/{lang_segment}/{category_slug}/{post_slug}"
-
-    logger.warning(
-        "フロントURL: カテゴリ slug 未解決のためカテゴリを省略: slug=%s categories=%s",
-        post_slug, post.get("categories"),
-    )
-    return f"{_FRONT_BASE_URL}/{lang_segment}/{post_slug}"
+    if not category_slug:
+        logger.warning(
+            "フロントURL: カテゴリ slug 未解決のためカテゴリを省略: slug=%s categories=%s",
+            post_slug, post.get("categories"),
+        )
+    return build_front_url(post_slug, lang, category_slug)
 
 
 # ──────────────────────────────────────────────────────────────
