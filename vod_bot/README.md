@@ -11,13 +11,16 @@ VOD配信状況スクレイピングAPI。WordPress REST API から投稿デー�
 - JustWatch API を使った未登録URLの検索
 - 判定結果を ACF フィールド・taxonomy として WordPress に書き戻す
 - 新着配信の検知結果を Slack に通知
+- 劇場公開中フラグ（ACF `cinema_info_filed.is_cinema_showing`）の週次チェックと自動 OFF
+  （[docs/feature/theater-showing-check-spec.md](../docs/feature/theater-showing-check-spec.md)）
 
 ## 実行方式
 
 | エントリーポイント | 用途 | 実行環境 |
 |---|---|---|
-| `main.py`（Flask） | `POST /weekly-patch` を Cloud Run 上で待ち受け、Cloud Scheduler から起動 | Cloud Run（本番） |
+| `main.py`（Flask） | `POST /weekly-patch` / `POST /theater-check` を Cloud Run 上で待ち受け、Cloud Scheduler から起動 | Cloud Run（本番） |
 | `weekly_patch.py`（CLI） | 同じ処理をコマンドラインから直接実行 | GitHub Actions cron / ローカル |
+| `theater_patch.py`（CLI） | 劇場公開（上映中フラグ）の週次チェック | GitHub Actions cron（毎週月曜 05:00 JST）/ ローカル |
 
 ## ローカル実行手順
 
@@ -71,6 +74,30 @@ python weekly_patch.py --limit 50
 
 GitHub Actions（`weekly-patch.yml`）の手動実行（`workflow_dispatch`）では `post_id` 入力欄に
 post ID を指定すると、その投稿のみを巡回して配信状況を確認・更新できる。
+
+### 4. 劇場公開（上映中フラグ）のチェック
+
+上映中フラグ（ACF `cinema_info_filed.is_cinema_showing`）が ON の記事について、
+劇場URLの生存と劇場公開日からの経過週数を確認し、上映終了と判定した記事のフラグを
+自動で OFF にする。判定基準・安全側の設計は
+[docs/feature/theater-showing-check-spec.md](../docs/feature/theater-showing-check-spec.md) を参照。
+
+```bash
+export PYTHONPATH=..
+
+# 上映中の全記事をチェックして自動OFF
+python theater_patch.py
+
+# 判定のみ（更新・Slack通知なし）
+python theater_patch.py --dry-run
+
+# しきい値を12週間に変更（既定は8週間）
+python theater_patch.py --weeks 12
+
+# 特定の記事のみ
+python theater_patch.py --slug john-wick
+python theater_patch.py --post-id 16233
+```
 
 ## ステータス値
 

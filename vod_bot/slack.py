@@ -117,3 +117,70 @@ def notify_weekly_new_streaming_summary(items: list[dict]) -> None:
 
     _post({"text": "\n".join(lines)})
     logger.info("Slack 通知送信: 今週の新着配信一覧 %d件", len(items))
+
+
+def _format_theater_item(item: dict, weeks: int) -> str:
+    """劇場チェック結果1件分の表示行を組み立てる。
+
+    Args:
+        item : theater_patch.run() の ended / unknown 要素。
+        weeks: 上映終了とみなす経過週数（理由ラベルの埋め込みに使用）。
+
+    Returns:
+        Slack mrkdwn 形式の1行分の文字列（先頭の箇条書き記号は含まない）。
+    """
+    title = item.get("title") or item.get("slug", "")
+    url = item.get("url") or ""
+    line = f"<{url}|{title}>" if url else title
+
+    reason = item.get("reason", "")
+    if reason == "url_gone":
+        detail = "劇場URLが404/410"
+    elif reason == "expired":
+        days = item.get("elapsed_days")
+        release_date = item.get("release_date") or ""
+        elapsed = f"公開から{days // 7}週間経過" if isinstance(days, int) else f"公開から{weeks}週間以上経過"
+        detail = f"{elapsed}（{release_date}）" if release_date else elapsed
+    else:
+        detail = "公開日・劇場URLが未入力で判定できず"
+
+    line += f" ｜ {detail}"
+    cinema_url = item.get("cinema_url") or ""
+    if cinema_url:
+        line += f" ｜ <{cinema_url}|劇場ページ>"
+    return line
+
+
+def notify_theater_showing_result(ended: list[dict], unknown: list[dict], weeks: int) -> None:
+    """劇場公開チェックの結果を Slack に通知する。
+
+    上映終了として自動でフラグを外した記事と、判定できず据え置いた記事を
+    1通にまとめる。どちらも空の場合は通知しない。
+
+    Args:
+        ended  : 上映終了と判定しフラグを OFF にした記事のリスト。
+        unknown: 判定不能で据え置いた記事のリスト。
+        weeks  : 上映終了とみなす経過週数。
+    """
+    if not ended and not unknown:
+        logger.info("Slack 通知スキップ: 劇場公開チェックの報告対象なし")
+        return
+
+    lines = [
+        f":performing_arts: *劇場公開の週次チェック* — 上映終了 {len(ended)}件 / 判定不能 {len(unknown)}件"
+    ]
+
+    if ended:
+        lines.append("")
+        lines.append("*上映終了（現在上映中フラグを自動OFF）*")
+        for item in ended:
+            lines.append(f"  • {_format_theater_item(item, weeks)}")
+
+    if unknown:
+        lines.append("")
+        lines.append("*判定不能（フラグはそのまま）*")
+        for item in unknown:
+            lines.append(f"  • {_format_theater_item(item, weeks)}")
+
+    _post({"text": "\n".join(lines)})
+    logger.info("Slack 通知送信: 劇場公開チェック 上映終了%d件 / 判定不能%d件", len(ended), len(unknown))

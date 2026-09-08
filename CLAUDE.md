@@ -4,7 +4,7 @@
 
 | サブシステム | 責務 | 実行環境 |
 |---|---|---|
-| `vod_bot/` | VOD 配信状況スクレイピング。WordPress の既存投稿に紐づく配信状況を確認・更新する | Cloud Run + Cloud Scheduler |
+| `vod_bot/` | VOD 配信状況スクレイピング。WordPress の既存投稿に紐づく配信状況と劇場公開中フラグを確認・更新する | Cloud Run + Cloud Scheduler / GitHub Actions |
 | `news_bot/` | ニュース・劇場公開・VOD配信情報の収集と記事化。人間の承認を経て WordPress 投稿と SNS 投稿案を生成する | GitHub Actions + Claudeルーティン |
 
 依存関係（`requirements.txt`）・実行環境・CIジョブは分離されており、互いのデプロイに影響しない。
@@ -25,6 +25,7 @@ vod_scraping_api/
 │   ├── wordpress.py           # WP REST API クライアント
 │   ├── justwatch.py           # JustWatch 経由の配信状況取得
 │   ├── weekly_patch.py        # 既存投稿の配信状況を定期更新
+│   ├── theater_patch.py       # 劇場公開（上映中フラグ）の週次チェック
 │   ├── slack.py               # Slack 通知
 │   ├── checkers/              # サービス別チェッカー（amazon/netflix/hulu/unext/
 │   │                          #   disney_plus/dmm_tv/apple_tv/youtube/crunchyroll）
@@ -161,6 +162,8 @@ vod_scraping_api/
 - ロボット検出・サーバーエラー時は `RuntimeError` を raise する（呼び出し元でスキップ）
 - 新規チェッカーを追加したら `vod_bot/weekly_patch.py` の `_CHECKER_MAP` にも追加する
 - JS レンダリングが必要なサービスは Playwright を使用する
+- 劇場公開チェック（`theater_patch.py`）で外部の映画情報サイトを参照しない。
+  見に行くのは記事に登録された劇場URLのみ（[docs/feature/theater-sources-candidates.md](docs/feature/theater-sources-candidates.md)）
 
 ### news_bot
 
@@ -190,6 +193,7 @@ vod_scraping_api/
 | `WP_BASIC_USER` | サーバー Basic 認証ユーザー名 | △ |
 | `WP_BASIC_PASSWORD` | サーバー Basic 認証パスワード | △ |
 | `SLACK_WEBHOOK_URL` | Slack 通知 Webhook URL | △ |
+| `THEATER_SHOWING_WEEKS` | 劇場公開チェックで上映終了とみなす経過週数（既定 8） | △ |
 
 ### news_bot
 

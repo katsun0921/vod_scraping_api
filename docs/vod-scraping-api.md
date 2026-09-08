@@ -50,7 +50,8 @@ vod_scraping_api/
 
 | メソッド | パス | 概要 |
 |---|---|---|
-| POST | `/` | VOD 配信状況チェックを全件実行 |
+| POST | `/weekly-patch` | 週次パッチ統合ランナー（URLチェック + JustWatch検索） |
+| POST | `/theater-check` | 劇場公開（上映中フラグ）の週次チェック（[仕様](feature/theater-showing-check-spec.md)） |
 | GET | `/health` | ヘルスチェック |
 
 認証は Cloud Run IAM の Bearer トークンで管理する。
