@@ -52,6 +52,7 @@ vod_scraping_api/
 |---|---|---|
 | POST | `/weekly-patch` | 週次パッチ統合ランナー（URLチェック + JustWatch検索） |
 | POST | `/theater-check` | 劇場公開（上映中フラグ）の週次チェック（[仕様](feature/theater-showing-check-spec.md)） |
+| POST | `/youtube-free-check` | YouTube 無料配信の日次チェック（[仕様](feature/youtube-free-check-spec.md)） |
 | GET | `/health` | ヘルスチェック |
 
 認証は Cloud Run IAM の Bearer トークンで管理する。
@@ -68,6 +69,10 @@ vod_scraping_api/
 {"status": str, "price": float | None}
 ```
 
+YouTube チェッカーだけは無料公開しているチャンネル名を返すため
+`{"status": str, "price": float | None, "channel_name": str}` を返す。
+追加キーであり、`channel_name` を見ない呼び出し元は従来どおり動く。
+
 ### ステータス値
 
 | status | 意味 |
@@ -77,6 +82,9 @@ vod_scraping_api/
 | `purchase` | 購入（price に金額） |
 | `unavailable` | 配信なし |
 | `ended` | 配信終了（404 等） |
+
+> **YouTube の `streaming` は意味が違う**。サブスクではなく「誰でも無料で観られる」
+> ことを指す。配給会社の公式チャンネルによる期間限定の無料公開がこれにあたる。
 
 ### サービス別実装
 
@@ -89,7 +97,7 @@ vod_scraping_api/
 | Disney+ | `https://www.disneyplus.com/ja-jp/movies/{slug}` | requests + BeautifulSoup |
 | DMM TV | `https://tv.dmm.com/vod/detail/?season={id}` | Playwright（Chromium） |
 | Apple TV | `https://tv.apple.com/jp/movie/{slug}` | requests + BeautifulSoup（実装予定） |
-| YouTube | `https://www.youtube.com/watch?v={video_id}` | requests + BeautifulSoup |
+| YouTube | `https://www.youtube.com/watch?v={video_id}` | requests + BeautifulSoup（`ytInitialPlayerResponse` を解析） |
 
 > **Amazon について**: Cloud Run 環境では `/gp/video/detail/{id}` 形式を使用すること。`/dp/{asin}` 形式はブロックされる場合がある。
 

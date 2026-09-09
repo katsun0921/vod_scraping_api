@@ -184,3 +184,89 @@ def notify_theater_showing_result(ended: list[dict], unknown: list[dict], weeks:
 
     _post({"text": "\n".join(lines)})
     logger.info("Slack 通知送信: 劇場公開チェック 上映終了%d件 / 判定不能%d件", len(ended), len(unknown))
+
+
+# YouTube 配信ステータスの日本語ラベル
+_YOUTUBE_STATUS_LABELS: dict[str, str] = {
+    "streaming": "無料公開",
+    "rental": "レンタル",
+    "purchase": "購入",
+    "unavailable": "配信なし",
+    "ended": "配信終了",
+}
+
+
+def _format_youtube_item(item: dict) -> str:
+    """YouTube 無料チェック結果1件分の表示行を組み立てる。
+
+    Args:
+        item: youtube_free_patch.run() の started / ended 要素。
+
+    Returns:
+        Slack mrkdwn 形式の1行分の文字列（先頭の箇条書き記号は含まない）。
+    """
+    title = item.get("title") or item.get("slug", "")
+    url = item.get("url") or ""
+    line = f"<{url}|{title}>" if url else title
+
+    channel = item.get("channel_name") or ""
+    if channel:
+        line += f" ｜ {channel}"
+
+    prev_status = item.get("prev_status") or "未取得"
+    status = item.get("status") or ""
+    if status and status != "streaming":
+        price = item.get("price")
+        status_label = _YOUTUBE_STATUS_LABELS.get(status, status)
+        detail = f"{status_label}（{int(price)}円）" if price else status_label
+        line += f" ｜ {prev_status} → {detail}"
+
+    youtube_url = item.get("youtube_url") or ""
+    if youtube_url:
+        line += f" ｜ <{youtube_url}|YouTube>"
+    return line
+
+
+def notify_youtube_free_result(started: list[dict], ended: list[dict], skipped: list[dict]) -> None:
+    """YouTube 無料配信チェックの結果を Slack に通知する。
+
+    新たに無料公開が始まった作品と、無料公開が終わった（有料化・非公開）作品を
+    1通にまとめる。無料公開は期間限定のため、始まりも終わりも見逃したくない。
+    どれも空の場合は通知しない。
+
+    Args:
+        started: 新たに無料公開が始まった記事のリスト。
+        ended  : 無料公開が終わった記事のリスト。
+        skipped: 判定不能で据え置いた記事のリスト。
+    """
+    if not started and not ended and not skipped:
+        logger.info("Slack 通知スキップ: YouTube 無料チェックの報告対象なし")
+        return
+
+    lines = [
+        f":tv: *YouTube 無料配信チェック* — 開始 {len(started)}件 / 終了 {len(ended)}件 / 判定不能 {len(skipped)}件"
+    ]
+
+    if started:
+        lines.append("")
+        lines.append("*無料公開が始まった作品*")
+        for item in started:
+            lines.append(f"  • {_format_youtube_item(item)}")
+
+    if ended:
+        lines.append("")
+        lines.append("*無料公開が終わった作品（TOP から自動的に外れる）*")
+        for item in ended:
+            lines.append(f"  • {_format_youtube_item(item)}")
+
+    if skipped:
+        lines.append("")
+        lines.append("*判定不能（値はそのまま）*")
+        for item in skipped:
+            lines.append(f"  • {_format_youtube_item(item)}")
+
+    _post({"text": "\n".join(lines)})
+    logger.info(
+        "Slack 通知送信: YouTube 無料チェック 開始%d件 / 終了%d件 / 判定不能%d件",
+        len(started), len(ended), len(skipped),
+    )

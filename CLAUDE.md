@@ -26,6 +26,7 @@ vod_scraping_api/
 │   ├── justwatch.py           # JustWatch 経由の配信状況取得
 │   ├── weekly_patch.py        # 既存投稿の配信状況を定期更新
 │   ├── theater_patch.py       # 劇場公開（上映中フラグ）の週次チェック
+│   ├── youtube_free_patch.py  # YouTube 無料配信の日次チェック（無料↔有料の切替を検知）
 │   ├── slack.py               # Slack 通知
 │   ├── checkers/              # サービス別チェッカー（amazon/netflix/hulu/unext/
 │   │                          #   disney_plus/dmm_tv/apple_tv/youtube/crunchyroll）
@@ -161,6 +162,12 @@ vod_scraping_api/
 - 戻り値は `{"status": str, "price": float | None}` に統一する
 - ロボット検出・サーバーエラー時は `RuntimeError` を raise する（呼び出し元でスキップ）
 - 新規チェッカーを追加したら `vod_bot/weekly_patch.py` の `_CHECKER_MAP` にも追加する
+- 戻り値の追加キーは呼び出し元が無視できる形にする。YouTube だけは
+  `channel_name`（無料公開しているチャンネル名）を足している
+- **YouTube の `streaming` はサブスクではなく「誰でも無料」を指す。**
+  レンタル・購入を無料と取り違えないこと（判定に迷ったら RuntimeError で据え置く）
+- YouTube の無料公開は期間限定のため、週次パッチのバッチ巡回（2ヶ月に1周）とは別に
+  `youtube_free_patch.py` が日次で全件を見る（[docs/feature/youtube-free-check-spec.md](docs/feature/youtube-free-check-spec.md)）
 - JS レンダリングが必要なサービスは Playwright を使用する
 - 劇場公開チェック（`theater_patch.py`）で外部の映画情報サイトを参照しない。
   見に行くのは記事に登録された劇場URLのみ（[docs/feature/theater-sources-candidates.md](docs/feature/theater-sources-candidates.md)）

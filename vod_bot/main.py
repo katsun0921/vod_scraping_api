@@ -4,9 +4,10 @@ HTTP POST リクエストを受け取り、VOD配信状況チェックを実行�
 認証は Cloud Run の IAM (Bearer トークン) で管理する。
 
 エンドポイント:
-    POST /weekly-patch  : 週次パッチ統合ランナー（URLチェック + JustWatch検索）
-    POST /theater-check : 劇場公開（上映中フラグ）の週次チェック
-    GET  /health        : ヘルスチェック
+    POST /weekly-patch       : 週次パッチ統合ランナー（URLチェック + JustWatch検索）
+    POST /theater-check      : 劇場公開（上映中フラグ）の週次チェック
+    POST /youtube-free-check : YouTube 無料配信の日次チェック
+    GET  /health             : ヘルスチェック
 
 レスポンス（POST /weekly-patch）:
     {
@@ -38,6 +39,7 @@ from flask import Flask, jsonify, request
 from theater_patch import run as theater_check_run
 from weekly_patch import BATCH_COUNT, DEFAULT_BATCH_SIZE
 from weekly_patch import run as weekly_patch_run
+from youtube_free_patch import run as youtube_free_check_run
 
 logging.basicConfig(
     level=logging.INFO,
@@ -133,6 +135,45 @@ def theater_check():
 
     result = theater_check_run(
         weeks=_optional_int("weeks"),
+        dry_run=bool(body.get("dry_run", False)),
+        slug=body.get("slug"),
+        post_id=_optional_int("post_id"),
+        limit=_optional_int("limit"),
+    )
+    if result.get("error"):
+        return jsonify(result), 502
+    return jsonify(result)
+
+@app.route("/youtube-free-check", methods=["POST"])
+def youtube_free_check():
+    """YouTube 無料配信の日次チェックを実行するエンドポイント。
+
+    `youtube.scraping_url` が登録された記事について、いま無料で観られるかを
+    確認し ACF を更新する。無料公開は数日〜数週間で終わるため、週次パッチの
+    バッチ巡回（2ヶ月に1周）とは別に日次で全件を見る。有料・配信終了だった
+    作品が新たに無料公開されるケースも拾う。
+
+    リクエストボディ（JSON）:
+        dry_run (bool) : 判定のみ（更新・Slack通知なし）。
+        slug    (str)  : 特定 slug のみ処理する。
+        post_id (int)  : 特定 post_id のみ処理する（slug より優先）。
+        limit   (int)  : 最大処理件数。
+
+    Returns:
+        判定結果の JSON。対象記事の取得に失敗した場合は 502 で `error` を返す。
+    """
+    body = request.get_json(silent=True) or {}
+
+    def _optional_int(key: str):
+        raw = body.get(key)
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except (ValueError, TypeError):
+            return None
+
+    result = youtube_free_check_run(
         dry_run=bool(body.get("dry_run", False)),
         slug=body.get("slug"),
         post_id=_optional_int("post_id"),

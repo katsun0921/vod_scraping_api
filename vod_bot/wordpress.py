@@ -1130,3 +1130,146 @@ def patch_cinema_showing(post_id: int, is_showing: bool) -> None:
         )
     resp.raise_for_status()
     logger.info("post_id=%d: %s=%s に更新", post_id, CINEMA_SHOWING_SUBFIELD, is_showing)
+
+
+# ──────────────────────────────────────────────────────────────
+# YouTube 無料公開
+# ──────────────────────────────────────────────────────────────
+
+# ACF `youtube` グループ（`group_vod_status`）のサブフィールド名
+YOUTUBE_FIELD = "youtube"
+YOUTUBE_CHANNEL_SUBFIELD = "channel_name"       # 無料公開しているチャンネル名（text）
+
+# 無料公開とみなす配信ステータス。YouTube の「見放題」はサブスクではなく無料公開
+YOUTUBE_FREE_STATUS = "streaming"
+
+
+def get_youtube_url_posts(
+    slug: Optional[str] = None,
+    post_id: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> list[dict]:
+    """`youtube.scraping_url` が登録された publish 投稿を返す。
+
+    無料公開は期間限定で唐突に終わるため、週次パッチのバッチ巡回（2ヶ月に1周）
+    とは別に日次で全件を見に行く。母数は YouTube URL 付きの記事だけなので小さい。
+
+    現在のステータスでは絞らない。有料だった作品が無料公開に切り替わるケースも
+    拾う必要があるため、`rental` / `purchase` / `ended` の記事も対象に含める。
+
+    Args:
+        slug   : 指定した場合、該当 slug の投稿のみ（post_id 未指定時のみ有効）。
+        post_id: 指定した場合、該当 post_id の投稿のみ（slug より優先）。
+        limit  : 返す最大件数。
+
+    Returns:
+        投稿データのリスト（id, slug, title, acf, vod, categories を含む）。
+    """
+    posts = get_all_posts_for_patch(slug=slug, post_id=post_id)
+
+    targets = [
+        post
+        for post in posts
+        if ((post.get("acf") or {}).get(YOUTUBE_FIELD) or {}).get("scraping_url")
+    ]
+
+    if limit is not None:
+        targets = targets[:limit]
+
+    logger.info("全投稿 %d 件中、youtube.scraping_url あり: %d 件", len(posts), len(targets))
+    return targets
+
+
+def patch_youtube_status(
+    post_id: int,
+    status: str,
+    price: Optional[float],
+    updated_at: str,
+    channel_name: str,
+    current_vod_term_ids: list[int],
+) -> bool:
+    """YouTube の配信状況・チャンネル名を更新し、無料公開の開始を検知する。
+
+    `update_post()` と分けているのは `streaming_started_at` の更新条件が違うため。
+    `update_post()` は「未取得 → streaming」の初回だけ日付を入れるが、YouTube の
+    無料公開は同じ作品が期間を空けて何度も無料になる。前回の日付を残したままだと
+    「最近無料になった順」の並びが壊れるので、**有料・終了から無料に戻るたびに
+    日付を入れ直す**。
+
+    Args:
+        post_id             : WordPress 投稿 ID。
+        status              : 配信ステータス（`streaming` / `rental` / `purchase` / `ended` 等）。
+        price               : 価格。None は 0 として保存する。
+        updated_at          : 更新日時（`YYYY-MM-DD HH:MM:SS`）。
+        channel_name        : 無料公開しているチャンネル名。空文字なら既存値を維持する。
+        current_vod_term_ids: 現在付与されている vod タクソノミーの term_id リスト。
+
+    Returns:
+        True の場合、無料公開が新たに始まった（有料・終了・未取得 → streaming）。
+
+    Raises:
+        requests.HTTPError: GET / PATCH 失敗時。
+    """
+    url = f"{_base_url()}/posts/{post_id}"
+    session = _session(wp_auth=True)
+
+    get_resp = session.get(url, params={"_fields": "acf"}, timeout=30)
+    get_resp.raise_for_status()
+    existing_acf: dict = (get_resp.json().get("acf") or {}).copy()
+    existing_yt: dict = dict(existing_acf.get(YOUTUBE_FIELD) or {})
+
+    prev_status = existing_yt.get("status", "")
+    prev_started_at = existing_yt.get("streaming_started_at", "")
+
+    is_new_free = status == YOUTUBE_FREE_STATUS and prev_status != YOUTUBE_FREE_STATUS
+    if is_new_free:
+        streaming_started_at = updated_at
+        logger.info("post_id=%d: YouTube 無料公開を検知 → streaming_started_at=%s", post_id, updated_at)
+    elif status == YOUTUBE_FREE_STATUS and not prev_started_at:
+        # 継続中だが日付が入っていない過去データ。並び順の欠落を埋める
+        streaming_started_at = updated_at
+    else:
+        # 有料・終了に変わった場合も履歴として前回の開始日は残す
+        streaming_started_at = prev_started_at
+
+    # 必須フィールドは PATCH に含めないとバリデーションで弾かれるため引き継ぐ
+    schema = _get_acf_schema()
+    required_keys = [k for k, v in schema.items() if isinstance(v, dict) and v.get("required")]
+    acf_patch: dict = {k: existing_acf[k] for k in required_keys if k in existing_acf}
+
+    acf_patch[YOUTUBE_FIELD] = {
+        "scraping_url": existing_yt.get("scraping_url", ""),
+        "status": status,
+        "price": price if price is not None else 0,
+        "updated_at": updated_at,
+        "streaming_started_at": streaming_started_at,
+        # チャンネル名が取れなかった回で既存の値を消さない
+        YOUTUBE_CHANNEL_SUBFIELD: channel_name or existing_yt.get(YOUTUBE_CHANNEL_SUBFIELD, ""),
+    }
+
+    resp = session.patch(url, json={"acf": acf_patch}, timeout=30)
+    if not resp.ok:
+        logger.error(
+            "PATCH youtube failed: post_id=%d status=%s http=%d body=%s",
+            post_id, status, resp.status_code, resp.text[:300],
+        )
+    resp.raise_for_status()
+
+    # vod タクソノミー更新（無料公開のときだけ YouTube を付ける）
+    term_id = VOD_TERM_IDS.get(YOUTUBE_FIELD, 0)
+    if term_id == 0:
+        return is_new_free
+
+    new_term_ids = set(current_vod_term_ids)
+    if status == YOUTUBE_FREE_STATUS:
+        new_term_ids.add(term_id)
+    else:
+        new_term_ids.discard(term_id)
+
+    if new_term_ids != set(current_vod_term_ids):
+        resp = session.patch(url, json={"vod": list(new_term_ids)}, timeout=30)
+        if not resp.ok:
+            logger.error("PATCH vod failed: post_id=%d http=%d body=%s", post_id, resp.status_code, resp.text[:300])
+        resp.raise_for_status()
+
+    return is_new_free

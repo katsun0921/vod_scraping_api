@@ -1,0 +1,76 @@
+name: Daily YouTube Free Streaming Check
+
+on:
+  schedule:
+    # 毎日 06:00 JST（前日 21:00 UTC）に実行
+    # 無料公開は数日で終わることがあるため、週次パッチとは別に日次で回す
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "dry-run（判定のみ、更新・Slack通知なし）"
+        type: boolean
+        required: false
+        default: false
+      slug:
+        description: "特定 slug のみ処理（空欄で全件）"
+        required: false
+        default: ""
+      post_id:
+        description: "特定 post ID のみ処理（空欄で全件、slug より優先）"
+        required: false
+        default: ""
+      limit:
+        description: "最大処理件数（空欄で全件）"
+        required: false
+        default: ""
+
+jobs:
+  youtube-free-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      PYTHONPATH: ".."
+    defaults:
+      run:
+        working-directory: vod_bot
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # YouTube の watch ページは requests で取得できるため Playwright は入れない
+
+      - name: Run YouTube free streaming check
+        env:
+          WP_API_URL: ${{ secrets.WP_API_URL }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          WP_BASIC_USER: ${{ secrets.WP_BASIC_USER }}
+          WP_BASIC_PASSWORD: ${{ secrets.WP_BASIC_PASSWORD }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          if [ -n "${{ inputs.slug }}" ]; then
+            ARGS="$ARGS --slug ${{ inputs.slug }}"
+          fi
+          if [ -n "${{ inputs.post_id }}" ]; then
+            ARGS="$ARGS --post-id ${{ inputs.post_id }}"
+          fi
+          if [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+          python youtube_free_patch.py $ARGS
