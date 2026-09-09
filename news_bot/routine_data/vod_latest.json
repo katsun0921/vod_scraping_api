@@ -1,29 +1,38 @@
 [
   {
-    "title": "エージェント物語 ザ・ムービー",
-    "title_orig": "Call My Agent! The Movie",
+    "title": "ダウンタイム",
+    "title_orig": "",
     "service": "netflix",
-    "available_from": "2026-09-10",
-    "availability_type": "独占",
-    "category": "映画",
-    "url": "https://www.netflix.com/jp/title/82026389"
-  },
-  {
-    "title": "メイド・イン・コリア 2",
-    "title_orig": "Made in Korea 2",
-    "service": "disney_plus",
-    "available_from": "2026-09-09",
+    "available_from": "2026-09-17",
     "availability_type": "独占",
     "category": "ドラマ",
-    "url": "https://www.disneyplus.com/ja-jp/browse/entity-5acf7909-5d2f-494e-91a9-2fe0555c220f"
+    "url": "https://www.netflix.com/jp/title/81603806"
   },
   {
-    "title": "劇場版「緊急取調室 THE FINAL」",
+    "title": "ストレンジャー・シングス: 1985年の冒険 シーズン2",
+    "title_orig": "Stranger Things: Tales from '85",
+    "service": "netflix",
+    "available_from": "2026-09-17",
+    "availability_type": "独占",
+    "category": "アニメ",
+    "url": "https://www.netflix.com/jp/title/81398721"
+  },
+  {
+    "title": "スキャンダル",
     "title_orig": "",
+    "service": "netflix",
+    "available_from": "2026-09-18",
+    "availability_type": "独占",
+    "category": "ドラマ",
+    "url": "https://www.netflix.com/jp/title/81911390"
+  },
+  {
+    "title": "スマッシング・マシーン",
+    "title_orig": "The Smashing Machine",
     "service": "amazon_prime_video",
-    "available_from": "2026-09-11",
+    "available_from": "2026-09-18",
     "availability_type": "独占",
     "category": "映画",
-    "url": "https://www.amazon.co.jp/%E5%8A%87%E5%A0%B4%E7%89%88%E3%80%8C%E7%B7%8A%E6%80%A5%E5%8F%96%E8%AA%BF%E5%AE%A4-FINAL%E3%80%8D-%E5%B8%B8%E5%BB%A3%E4%B8%88%E5%A4%AA/dp/B0HCV5T28V"
+    "url": "https://www.amazon.co.jp/%E3%82%B9%E3%83%9E%E3%83%83%E3%82%B7%E3%83%B3%E3%82%B0%E3%83%BB%E3%83%9E%E3%82%B7%E3%83%BC%E3%83%B3-%E3%83%99%E3%83%8B%E3%83%BC%E3%83%BB%E3%82%B5%E3%83%95%E3%83%87%E3%82%A3/dp/B0H5K24QHD"
   }
 ]
