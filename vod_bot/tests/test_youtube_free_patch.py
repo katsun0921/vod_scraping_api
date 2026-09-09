@@ -196,7 +196,7 @@ def _post(
 @pytest.fixture
 def patched_run(monkeypatch):
     """run() の外部依存（WP・Slack・待機）を差し替える。"""
-    calls: dict = {"patched": [], "notified": []}
+    calls: dict = {"patched": [], "notified": [], "failed": []}
 
     monkeypatch.setattr(youtube_free_patch, "get_category_slug_map", lambda: {3: "movie"})
     monkeypatch.setattr(youtube_free_patch, "get_vod_term_ids", lambda post: [])
@@ -206,11 +206,15 @@ def patched_run(monkeypatch):
         calls["patched"].append(kwargs)
         return kwargs["status"] == "streaming"
 
-    def _fake_notify(started, ended, skipped):
-        calls["notified"].append((started, ended, skipped))
+    def _fake_notify(started, ended, skipped, errors=None):
+        calls["notified"].append((started, ended, skipped, errors or []))
+
+    def _fake_notify_failure(message):
+        calls["failed"].append(message)
 
     monkeypatch.setattr(youtube_free_patch, "patch_youtube_status", _fake_patch)
     monkeypatch.setattr(youtube_free_patch, "notify_youtube_free_result", _fake_notify)
+    monkeypatch.setattr(youtube_free_patch, "notify_youtube_free_failure", _fake_notify_failure)
     return calls
 
 
@@ -297,7 +301,7 @@ def test_run_dry_run_does_not_patch(monkeypatch, patched_run):
 
 
 def test_run_returns_error_when_fetch_fails(monkeypatch, patched_run):
-    """対象一覧が取れないときは1件も更新しない。"""
+    """対象一覧が取れないときは1件も更新せず、中断を Slack に知らせる。"""
 
     def _boom(slug=None, post_id=None):
         raise RuntimeError("WP 取得失敗")
@@ -308,3 +312,56 @@ def test_run_returns_error_when_fetch_fails(monkeypatch, patched_run):
 
     assert result["error"] == "WP 取得失敗"
     assert patched_run["patched"] == []
+    # 無通知だと「変化が無かった日」と区別できないため、中断は必ず通知する
+    assert patched_run["failed"] == ["WP 取得失敗"]
+
+
+def test_run_notifies_started_ended_skipped_and_errors(monkeypatch, patched_run):
+    """Slack 通知には開始・終了・判定不能・更新失敗の4種が渡る。"""
+    monkeypatch.setattr(
+        youtube_free_patch, "get_youtube_url_posts",
+        lambda slug=None, post_id=None: [
+            _post(post_id=1, slug="became-free", status="rental", url="https://youtu.be/a"),
+            _post(post_id=2, slug="became-paid", status="streaming", url="https://youtu.be/b"),
+            _post(post_id=3, slug="undecidable", status="streaming", url="https://youtu.be/c"),
+            _post(post_id=4, slug="patch-fails", status="rental", url="https://youtu.be/d"),
+        ],
+    )
+    _stub_checker(monkeypatch, {
+        "https://youtu.be/a": {"status": "streaming", "price": 0, "channel_name": "公式"},
+        "https://youtu.be/b": {"status": "rental", "price": 407.0, "channel_name": ""},
+        "https://youtu.be/c": RuntimeError("ログインが必要"),
+        "https://youtu.be/d": {"status": "streaming", "price": 0, "channel_name": ""},
+    })
+
+    def _patch(**kwargs):
+        if kwargs["post_id"] == 4:
+            raise RuntimeError("PATCH 失敗")
+        return True
+
+    monkeypatch.setattr(youtube_free_patch, "patch_youtube_status", _patch)
+
+    result = run()
+
+    started, ended, skipped, errors = patched_run["notified"][0]
+    assert [i["slug"] for i in started] == ["became-free"]
+    assert [i["slug"] for i in ended] == ["became-paid"]
+    assert [i["slug"] for i in skipped] == ["undecidable"]
+    assert [i["slug"] for i in errors] == ["patch-fails"]
+    assert errors[0]["reason"] == "PATCH 失敗"
+    assert result["posts"]["errors"] == 1
+
+
+def test_run_skips_notify_when_nothing_changed(monkeypatch, patched_run):
+    """変化が無い日は通知内容が空で渡る（slack 側で送信を抑止する）。"""
+    monkeypatch.setattr(
+        youtube_free_patch, "get_youtube_url_posts",
+        lambda slug=None, post_id=None: [_post(status="streaming")],
+    )
+    _stub_checker(monkeypatch, {
+        "https://www.youtube.com/watch?v=abc": {"status": "streaming", "price": 0, "channel_name": ""},
+    })
+
+    run()
+
+    assert patched_run["notified"][0] == ([], [], [], [])

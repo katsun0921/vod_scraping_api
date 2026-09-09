@@ -45,7 +45,7 @@ from datetime import datetime
 from typing import Optional
 
 from checkers.youtube import YoutubeChecker
-from slack import notify_youtube_free_result
+from slack import notify_youtube_free_failure, notify_youtube_free_result
 from utils.rate_limit import RateLimiter
 from wordpress import (
     FRONT_BASE_URL,
@@ -130,8 +130,13 @@ def run(
                       "skipped": 1, "errors": 0},
             "started": [{"id": 16233, "slug": "one-missed-call-2003", ...}],
             "ended": [],
-            "skipped": []
+            "skipped": [],
+            "errors_detail": []
         }
+
+    Slack には開始・終了・判定不能・更新失敗をまとめて1通で通知する
+    （変化が無い日は通知しない）。対象一覧の取得に失敗した場合は
+    中断そのものを別途通知する。
     """
     logger.info("YouTube 無料配信チェック開始: dry_run=%s", dry_run)
 
@@ -139,6 +144,10 @@ def run(
         posts = get_youtube_url_posts(slug=slug, post_id=post_id)
     except Exception as e:
         logger.error("対象記事の取得に失敗したため中断する（更新なし）: %s", e)
+        # 無通知だと「今日は変化が無かった」と区別できず、TOP の無料枠が
+        # 古いまま放置される。失敗そのものを必ず知らせる
+        if not dry_run:
+            notify_youtube_free_failure(str(e))
         return {
             "dry_run": dry_run,
             "error": str(e),
@@ -146,6 +155,7 @@ def run(
             "started": [],
             "ended": [],
             "skipped": [],
+            "errors": [],
         }
 
     targets = _select_targets(posts, limit)
@@ -156,10 +166,10 @@ def run(
 
     free = 0
     paid = 0
-    errors = 0
     started_items: list[dict] = []
     ended_items: list[dict] = []
     skipped_items: list[dict] = []
+    error_items: list[dict] = []
     checked = 0
 
     for post in targets:
@@ -232,7 +242,7 @@ def run(
                 current_vod_term_ids=get_vod_term_ids(post),
             )
         except Exception as e:
-            errors += 1
+            error_items.append({**record, "status": status, "price": price, "reason": str(e)})
             logger.error("更新に失敗: post_id=%d slug=%s error=%s", pid, record["slug"], e)
             continue
 
@@ -252,17 +262,18 @@ def run(
             "started": len(started_items),
             "ended": len(ended_items),
             "skipped": len(skipped_items),
-            "errors": errors,
+            "errors": len(error_items),
         },
         "started": started_items,
         "ended": ended_items,
         "skipped": skipped_items,
+        "errors_detail": error_items,
     }
 
     if dry_run:
         logger.info("[dry-run] Slack 通知はスキップ: %s", result["posts"])
     else:
-        notify_youtube_free_result(started_items, ended_items, skipped_items)
+        notify_youtube_free_result(started_items, ended_items, skipped_items, error_items)
 
     logger.info("YouTube 無料配信チェック完了: %s", result["posts"])
     return result

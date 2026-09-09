@@ -200,7 +200,7 @@ def _format_youtube_item(item: dict) -> str:
     """YouTube 無料チェック結果1件分の表示行を組み立てる。
 
     Args:
-        item: youtube_free_patch.run() の started / ended 要素。
+        item: youtube_free_patch.run() の started / ended / skipped / errors 要素。
 
     Returns:
         Slack mrkdwn 形式の1行分の文字列（先頭の箇条書き記号は含まない）。
@@ -221,31 +221,68 @@ def _format_youtube_item(item: dict) -> str:
         detail = f"{status_label}（{int(price)}円）" if price else status_label
         line += f" ｜ {prev_status} → {detail}"
 
+    # 判定不能・更新失敗の理由。原因が分からないと Slack を見ても動きようがない
+    reason = item.get("reason") or ""
+    if reason:
+        line += f" ｜ {reason}"
+
     youtube_url = item.get("youtube_url") or ""
     if youtube_url:
         line += f" ｜ <{youtube_url}|YouTube>"
     return line
 
 
-def notify_youtube_free_result(started: list[dict], ended: list[dict], skipped: list[dict]) -> None:
+def notify_youtube_free_failure(message: str) -> None:
+    """YouTube 無料配信チェックが中断したことを Slack に通知する。
+
+    対象記事の一覧を取れなかった場合、1件も更新せずに終わる。無通知だと
+    「今日は何も変化がなかった」と見分けが付かず、TOP の無料枠が古いまま
+    放置されるため、失敗そのものを必ず知らせる。
+
+    Args:
+        message: 中断の理由（例外メッセージ）。
+    """
+    _post({
+        "text": (
+            ":rotating_light: *YouTube 無料配信チェックが中断しました*\n"
+            f"  対象記事の取得に失敗したため、1件も更新していません。\n"
+            f"  ```{message}```"
+        )
+    })
+    logger.info("Slack 通知送信: YouTube 無料チェックの中断")
+
+
+def notify_youtube_free_result(
+    started: list[dict],
+    ended: list[dict],
+    skipped: list[dict],
+    errors: list[dict] | None = None,
+) -> None:
     """YouTube 無料配信チェックの結果を Slack に通知する。
 
     新たに無料公開が始まった作品と、無料公開が終わった（有料化・非公開）作品を
     1通にまとめる。無料公開は期間限定のため、始まりも終わりも見逃したくない。
-    どれも空の場合は通知しない。
+    どれも空の場合は通知しない（毎日実行するため、変化が無い日まで流すと
+    通知が形骸化して肝心の開始・終了を見落とす）。
 
     Args:
         started: 新たに無料公開が始まった記事のリスト。
         ended  : 無料公開が終わった記事のリスト。
         skipped: 判定不能で据え置いた記事のリスト。
+        errors : WordPress の更新に失敗した記事のリスト。
     """
-    if not started and not ended and not skipped:
+    errors = errors or []
+    if not started and not ended and not skipped and not errors:
         logger.info("Slack 通知スキップ: YouTube 無料チェックの報告対象なし")
         return
 
-    lines = [
-        f":tv: *YouTube 無料配信チェック* — 開始 {len(started)}件 / 終了 {len(ended)}件 / 判定不能 {len(skipped)}件"
-    ]
+    header = (
+        f":tv: *YouTube 無料配信チェック* — 開始 {len(started)}件 / 終了 {len(ended)}件"
+        f" / 判定不能 {len(skipped)}件"
+    )
+    if errors:
+        header += f" / :warning: 更新失敗 {len(errors)}件"
+    lines = [header]
 
     if started:
         lines.append("")
@@ -265,8 +302,14 @@ def notify_youtube_free_result(started: list[dict], ended: list[dict], skipped: 
         for item in skipped:
             lines.append(f"  • {_format_youtube_item(item)}")
 
+    if errors:
+        lines.append("")
+        lines.append("*WordPress の更新に失敗（値が古いまま残っている）*")
+        for item in errors:
+            lines.append(f"  • {_format_youtube_item(item)}")
+
     _post({"text": "\n".join(lines)})
     logger.info(
-        "Slack 通知送信: YouTube 無料チェック 開始%d件 / 終了%d件 / 判定不能%d件",
-        len(started), len(ended), len(skipped),
+        "Slack 通知送信: YouTube 無料チェック 開始%d件 / 終了%d件 / 判定不能%d件 / 更新失敗%d件",
+        len(started), len(ended), len(skipped), len(errors),
     )
