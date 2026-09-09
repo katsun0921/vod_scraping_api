@@ -97,7 +97,7 @@ YouTube チェッカーだけは無料公開しているチャンネル名を返
 | Disney+ | `https://www.disneyplus.com/ja-jp/movies/{slug}` | requests + BeautifulSoup |
 | DMM TV | `https://tv.dmm.com/vod/detail/?season={id}` | Playwright（Chromium） |
 | Apple TV | `https://tv.apple.com/jp/movie/{slug}` | requests + BeautifulSoup（実装予定） |
-| YouTube | `https://www.youtube.com/watch?v={video_id}` | requests + BeautifulSoup（`ytInitialPlayerResponse` を解析） |
+| YouTube | `https://www.youtube.com/watch?v={video_id}` | requests + BeautifulSoup（`ytInitialPlayerResponse` を解析。[専用仕様書](feature/youtube-checker-spec.md)） |
 
 > **Amazon について**: Cloud Run 環境では `/gp/video/detail/{id}` 形式を使用すること。`/dp/{asin}` 形式はブロックされる場合がある。
 

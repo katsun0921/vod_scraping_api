@@ -50,30 +50,27 @@ publish 記事をすべて毎回チェックする。
 
 ## 判定ロジック（`YoutubeChecker`）
 
-watch ページの `ytInitialPlayerResponse` を読む。
+watch ページの `ytInitialPlayerResponse` を読み、**上から順に**評価する。
 
 | 条件 | 判定 | price |
 |---|---|---|
+| HTTP 5xx | **RuntimeError**（据え置き） | — |
 | 有料オファー（`ytOfferModuleRenderer`）あり | `rental` / `purchase` | オファーの金額 |
 | `playabilityStatus.status == "OK"` | `streaming`（無料公開） | `0` |
+| status が `CONTENT_CHECK_REQUIRED` | `streaming`（確認を挟むだけ） | `0` |
 | status が `ERROR` / `UNPLAYABLE`（オファーなし） | `ended` | `None` |
 | status が `LOGIN_REQUIRED` | **RuntimeError**（据え置き） | — |
 | `playabilityStatus` を読めず og:title だけある | **RuntimeError**（据え置き） | — |
 | og:title も無い | `ended` | `None` |
-| HTTP 5xx | **RuntimeError**（据え置き） | — |
 
-購入形態は、オファーパネル周辺に「購入」「Buy」があれば `purchase`、
-無ければ `rental` とする。金額は `¥407` / `407円` の表記から拾う。
+有料オファーを最初に見るのは、**有料作品の `playabilityStatus` が `UNPLAYABLE`
+になる**ため。順序を逆にするとレンタル映画が `ended` に化ける。
 
-### なぜ「判定不能」を作るのか
+判定に迷う場合は既存の値を据え置き、Slack に「判定不能」として報告する。
+無料枠に有料作品が混ざる事故を、取りこぼしより重く見ているためである。
 
-**改修前は og:title があれば無条件で `streaming` を返していた**ため、
-レンタル作品まで「無料」と記録されていた。無料枠に有料作品が混ざるのは
-「観に行ったら有料だった」という一番避けたい体験を生む。
-
-そのため判定に迷う場合は既存の値を据え置き、Slack に「判定不能」として
-報告する。ended に倒さないのも同じ理由で、年齢制限（`LOGIN_REQUIRED`）の
-ホラー作品などが無料枠から消えるのを避けている。
+**判定の詳細・正規表現・壊れやすい点・テスト一覧は
+[youtube-checker-spec.md](./youtube-checker-spec.md) にまとめてある。**
 
 ### `channel_name`
 
@@ -152,6 +149,7 @@ python youtube_free_patch.py --limit 10
 
 ## 関連
 
+- [youtube-checker-spec.md](./youtube-checker-spec.md) — `YoutubeChecker` の判定仕様
 - `katsumascore_wordpress_theme/docs/feature/YOUTUBE_FREE_LIST_API_SPEC.md` — エンドポイント仕様
 - [theater-showing-check-spec.md](./theater-showing-check-spec.md) — 同じ「下ろす」系の自動チェック
 - [../vod-scraping-api.md](../vod-scraping-api.md) — チェッカー全体の仕様

@@ -165,7 +165,8 @@ vod_scraping_api/
 - 戻り値の追加キーは呼び出し元が無視できる形にする。YouTube だけは
   `channel_name`（無料公開しているチャンネル名）を足している
 - **YouTube の `streaming` はサブスクではなく「誰でも無料」を指す。**
-  レンタル・購入を無料と取り違えないこと（判定に迷ったら RuntimeError で据え置く）
+  レンタル・購入を無料と取り違えないこと（判定に迷ったら RuntimeError で据え置く）。
+  判定仕様は [docs/feature/youtube-checker-spec.md](docs/feature/youtube-checker-spec.md)
 - YouTube の無料公開は期間限定のため、週次パッチのバッチ巡回（2ヶ月に1周）とは別に
   `youtube_free_patch.py` が日次で全件を見る（[docs/feature/youtube-free-check-spec.md](docs/feature/youtube-free-check-spec.md)）
 - JS レンダリングが必要なサービスは Playwright を使用する

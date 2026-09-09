@@ -129,6 +129,21 @@ def test_check_purchase_offer(stub_get):
     assert result["price"] == 2500.0
 
 
+def test_check_content_check_required_is_free(stub_get):
+    """閲覧注意の確認を挟むだけの動画は無料で観られる。ended に倒さない。"""
+    stub_get(_html(playability="CONTENT_CHECK_REQUIRED"))
+    result = YoutubeChecker().check("https://www.youtube.com/watch?v=abc")
+    assert result["status"] == "streaming"
+    assert result["price"] == 0
+
+
+def test_check_content_check_required_with_offer_is_paid(stub_get):
+    """確認付きでも有料オファーがあれば無料ではない（オファー判定が先）。"""
+    stub_get(_html(playability="CONTENT_CHECK_REQUIRED", offer=_RENTAL_OFFER))
+    result = YoutubeChecker().check("https://www.youtube.com/watch?v=abc")
+    assert result["status"] == "rental"
+
+
 def test_check_deleted_video_returns_ended(stub_get):
     stub_get(_html(playability="ERROR", og_title=""))
     result = YoutubeChecker().check("https://www.youtube.com/watch?v=abc")

@@ -13,6 +13,8 @@ YouTube の「見放題（streaming）」は他サービスと意味が違い、
 判定ロジック（watch ページの `ytInitialPlayerResponse` を読む）:
     - 有料オファー（`ytOfferModuleRenderer`）あり → rental / purchase（price に金額）
     - `playabilityStatus.status == "OK"`           → streaming（無料公開・price 0）
+    - status が CONTENT_CHECK_REQUIRED             → streaming（閲覧注意の確認を挟むだけで
+      無料で観られる。有料オファーは既に除外済み）
     - status が ERROR / UNPLAYABLE（オファーなし）→ ended（削除・非公開・地域制限）
     - status が LOGIN_REQUIRED                     → RuntimeError（年齢制限か限定公開か
       区別できないため据え置く。誤って ended にすると一覧から落ちる）
@@ -52,7 +54,12 @@ _PRICE_RE = re.compile(r'[¥￥]\s*([\d,]+)|([\d,]+)\s*円')
 _PURCHASE_WORDS = ("購入", "で購入", "Buy", "buy")
 
 # 削除・非公開とみなす playabilityStatus
-_ENDED_STATUSES = frozenset({"ERROR", "UNPLAYABLE", "CONTENT_CHECK_REQUIRED"})
+_ENDED_STATUSES = frozenset({"ERROR", "UNPLAYABLE"})
+
+# 再生前に確認を挟むだけで、無料で観られる playabilityStatus。
+# 閲覧注意の警告（暴力・自傷など）で出る。ホラー作品の無料公開で踏みやすく、
+# ended に倒すと観られる作品が一覧から消えるため streaming として扱う
+_FREE_WITH_INTERSTITIAL_STATUSES = frozenset({"CONTENT_CHECK_REQUIRED"})
 
 _TIMEOUT = 30
 
@@ -98,7 +105,7 @@ class YoutubeChecker:
 
         playability = extract_playability_status(html)
 
-        if playability == "OK":
+        if playability == "OK" or playability in _FREE_WITH_INTERSTITIAL_STATUSES:
             return {"status": "streaming", "price": 0, "channel_name": channel_name}
 
         if playability in _ENDED_STATUSES:
