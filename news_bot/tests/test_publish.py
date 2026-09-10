@@ -168,7 +168,7 @@ def test_theater_import_manual_target_start_still_wins():
 
 
 def test_theater_import_logs_each_out_of_range_entry(caplog):
-    """期間外で全件落ちたときに、どの日付が外れたかがログに残る。"""
+    """どの日付が外れたかを1件ずつ残す。個別のスキップ自体は異常ではないのでINFO。"""
     sheets = MagicMock()
     sheets.get_existing_theater_keys.return_value = set()
 
@@ -179,11 +179,46 @@ def test_theater_import_logs_each_out_of_range_entry(caplog):
             main.theater_calendar, "next_week_range", return_value=(date(2026, 9, 11), date(2026, 9, 17))
         ),
         patch.object(main.wp_client, "find_post_by_title", return_value=None),
-        caplog.at_level(logging.WARNING),
+        caplog.at_level(logging.INFO),
     ):
         main.theater_import_cycle(date(2026, 9, 11))
 
     assert "対象期間外のためスキップ: 八つ墓村 (2026-09-18)" in caplog.text
+    assert "対象期間外のためスキップ: ブロークン・ヴォイス (2026-09-19)" in caplog.text
+
+
+def test_all_out_of_range_is_warned():
+    """全件が期間外なら警告する。#76 / #83 はこれが無く成功扱いのまま見逃された。"""
+    stats = {"discovered": 7, "out_of_range": 7, "duplicate": 0, "saved": 0, "notified": 0}
+    logger = logging.getLogger(main.__name__)
+
+    with patch.object(logger, "warning") as warn:
+        main._warn_if_all_out_of_range(stats, date(2026, 9, 11), date(2026, 9, 17), "theater_import_cycle")
+
+    warn.assert_called_once()
+    assert "すべてが対象期間" in warn.call_args[0][0]
+
+
+def test_partial_out_of_range_is_not_warned():
+    """一部だけ期間外なのは通常運転（VODのX抽出分）。警告しない。"""
+    stats = {"discovered": 10, "out_of_range": 6, "duplicate": 0, "saved": 4, "notified": 4}
+    logger = logging.getLogger(main.__name__)
+
+    with patch.object(logger, "warning") as warn:
+        main._warn_if_all_out_of_range(stats, date(2026, 9, 14), date(2026, 9, 20), "vod_import_cycle")
+
+    warn.assert_not_called()
+
+
+def test_zero_discovered_is_not_warned():
+    """収集0件は成果物が空だっただけ。警告しない。"""
+    stats = {"discovered": 0, "out_of_range": 0, "duplicate": 0, "saved": 0, "notified": 0}
+    logger = logging.getLogger(main.__name__)
+
+    with patch.object(logger, "warning") as warn:
+        main._warn_if_all_out_of_range(stats, date(2026, 9, 14), date(2026, 9, 20), "vod_import_cycle")
+
+    warn.assert_not_called()
 
 
 def test_vod_import_follows_routine_dates():

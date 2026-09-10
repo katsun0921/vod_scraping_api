@@ -227,6 +227,23 @@ def theater_cycle() -> dict:
     return stats
 
 
+def _warn_if_all_out_of_range(stats: dict, start: date, end: date, label: str) -> None:
+    """収集できたのに1件も対象期間に入らなかった場合に警告する。
+
+    保存0件・通知0件でもサイクルは正常終了するため、統計行を目視しない限り気付けない。
+    実際 #76 / #83 は対象週の計算ずれで全件が落ちたまま Actions が成功していた。
+    個別のスキップ（VODのX抽出分など）は通常運転なので、全滅したときだけ警告する。
+    """
+    if stats["discovered"] and stats["out_of_range"] == stats["discovered"]:
+        logger.warning(
+            "%s: 収集した%d件すべてが対象期間（%s〜%s）外でした。保存・通知は行われていません",
+            label,
+            stats["discovered"],
+            start,
+            end,
+        )
+
+
 def _save_theater_entries(entries: list, start: date, end: date, label: str) -> dict:
     """劇場公開エントリを対象期間・重複でフィルタし、承認待ちとしてシートへ保存する。
 
@@ -244,9 +261,9 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
     saved_entries = []
     for entry in entries:
         if not theater_calendar.in_range(entry.release_date, start, end):
-            # 全件がここで落ちると保存も通知も0件のままジョブは成功する。原因（どの日付が
-            # 期間外だったか）をログに残さないと気付けないため、1件ずつ出す。
-            logger.warning("対象期間外のためスキップ: %s (%s)", entry.title, entry.release_date)
+            # どの日付が外れたのかは統計行だけでは追えないため1件ずつ残す。個別のスキップは
+            # 異常ではない（VOD側のX抽出分は毎回一定数が期間外になる）のでINFO。
+            logger.info("対象期間外のためスキップ: %s (%s)", entry.title, entry.release_date)
             stats["out_of_range"] += 1
             continue
 
@@ -302,6 +319,7 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
         except Exception:
             logger.exception("劇場公開Slack通知失敗（%d件）", len(saved_entries))
 
+    _warn_if_all_out_of_range(stats, start, end, label)
     logger.info("%s(%s〜%s) 完了: %s", label, start, end, stats)
     return stats
 
@@ -543,8 +561,8 @@ def _save_vod_entries(
     saved_entries = []
     for entry in merged:
         if not vod_calendar.in_range(entry.available_from, start, end):
-            # 期間外で全件落ちても成功扱いになるため、どの日付が外れたかを残す（劇場側と同じ方針）。
-            logger.warning(
+            # 劇場側と同じ方針。X抽出分は対象週外の告知が混ざるのが通常なのでINFO。
+            logger.info(
                 "対象期間外のためスキップ: %s / %s (%s)", entry.service, entry.title, entry.available_from
             )
             stats["out_of_range"] += 1
@@ -599,6 +617,7 @@ def _save_vod_entries(
         except Exception:
             logger.exception("VOD配信予定Slack通知失敗（%d件）", len(saved_entries))
 
+    _warn_if_all_out_of_range(stats, start, end, label)
     logger.info("%s(%s〜%s) 完了: %s", label, start, end, stats)
     return stats
 
