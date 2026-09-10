@@ -253,16 +253,104 @@ _PLAYABILITY_STATUS_RE = re.compile(
 `OK` を返す形に変わると無料枠に有料作品が載る。TOP に見覚えのない有料作品が
 出ていないか、たまに目視で確認する運用が要る。
 
+確認の手段としては、有料と分かっているレンタル作品の URL を診断モード
+（§9）に通し、「有料オファー: あり」が出るかを見るのが速い。
+
 ### 検証環境の制約
 
-開発コンテナからは `www.youtube.com` へ到達できない（プロキシが 403）。
-そのため**実ページでの疎通確認は行えず、判定ロジックは HTML フィクスチャに
-よるユニットテストで検証している。** マーカーや正規表現の妥当性は、本番
-（Cloud Run / GitHub Actions）での初回実行結果と Slack 通知で確認すること。
+開発コンテナからは `www.youtube.com` へ到達できない（組織の egress ポリシーが
+CONNECT を 403 で拒否する）。スケジュール実行にしても同じ環境・同じポリシーの
+ため結果は変わらない。そのため**実ページでの疎通確認は行えず、判定ロジックは
+HTML フィクスチャによるユニットテストで検証している。**
+
+さらに、**YouTube はアクセス元 IP によって返す HTML を変える。** 手元のブラウザ
+や外部サービスのフェッチャーで見える HTML と、GitHub Actions / Cloud Run から
+見える HTML は同じとは限らない（同意ページ・ボット検出ページを掴まされる）。
+したがって**実データでの確認は本番と同じ実行環境で行う必要がある。**
+そのための仕組みが次の診断モードである。
 
 ---
 
-## 9. テスト
+## 9. 診断モード（`--probe`）
+
+判定結果ではなく、**判定に使ったシグナルそのもの**を出力するモード。
+WordPress も Slack も触らない。
+
+```bash
+# 登録済みの youtube.scraping_url を5件診断する
+python youtube_free_patch.py --probe --limit 5
+
+# 記事が無い動画でも、URL を直接指定して試せる
+python youtube_free_patch.py --url 'https://www.youtube.com/watch?v=xxxxxxxxxxx'
+```
+
+GitHub Actions の `youtube-free-check.yml` からは `workflow_dispatch` の
+`probe` / `url` 入力で同じことができる。**本番と同じ IP から見た HTML を
+確認できるのが要点。**
+
+### 出力
+
+```
+── https://www.youtube.com/watch?v=xxxxxxxxxxx
+   HTTP            : 200  (HTML 1,284,332 文字)
+   最終URL         : https://www.youtube.com/watch?v=xxxxxxxxxxx
+   ページ種別      : normal
+   playerResponse  : あり
+   playabilityStatus: OK
+   有料オファー    : なし
+   チャンネル名    : 【公式】プレシディオチャンネル
+   og:title        : 着信アリ
+   → 判定          : streaming / price=0
+```
+
+| 項目 | 何が分かるか |
+|---|---|
+| ページ種別 | `normal` / `consent`（同意ページ）/ `bot_check`（ボット検出） |
+| playerResponse | `ytInitialPlayerResponse` が HTML に埋まっているか |
+| playabilityStatus | 正規表現が実際に読めた値。空なら §6.2 の前提が崩れている |
+| 有料オファー | `ytOfferModuleRenderer` が当たったか。**§8 の最も危険な失効を目視できる唯一の手段** |
+| オファー抜粋 | 有料時のみ。金額・文言が期待どおりか確認する |
+| → 判定 | 同じ HTML を `judge_html()` に通した結果。判定不能なら理由 |
+
+### まとめ行
+
+```
+YouTube 診断まとめ: {'total': 5, 'judged': 5, 'undecidable': 0,
+                     'fetch_failed': 0, 'consent_or_bot': 0, 'no_player_response': 0}
+```
+
+**`fetch_failed` を他の集計から必ず分けている。** 混ぜると「同意ページを
+掴まされた」と「そもそも繋がっていない」を取り違え、対応を誤る。
+
+| 症状 | 読み取れること |
+|---|---|
+| `fetch_failed` が全件 | ネットワーク・プロキシの問題。YouTube 側は無関係 |
+| `consent_or_bot` が多い | 実行元 IP が弾かれている。UA・アクセス間隔の見直しが要る |
+| `no_player_response` が全件（取得はできている） | HTML 構造が変わった可能性。§6.2 の正規表現を見直す |
+| `judged` が全件だが有料オファーが常に「なし」 | §8 のマーカー失効を疑う |
+
+### 例外を投げない設計
+
+`probe()` は通信エラーでも例外を投げず、`error` に載せて返す。複数 URL を
+まとめて診断する用途で、1件目の失敗で残りが見られなくなるのを避けるため。
+判定不能そのものは正常な観測結果なので、終了コードも 0 のままにしている
+（対象一覧を取得できなかった場合のみ 1）。
+
+### 実装の構造
+
+`check()` と `probe()` は判定を共有する。
+
+```
+_fetch(url) ──┬─→ check(url)  ─→ judge_html(html) ─→ {status, price, channel_name}
+              └─→ probe(url)  ─→ 観測値を集める + judge_html(html) の結果も載せる
+```
+
+`judge_html()` は HTTP アクセスを伴わない純粋関数。診断モードが
+「実際にどう判定されるか」を再取得せずに出せるのはこのため。
+
+---
+
+## 10. テスト
 
 `vod_bot/tests/test_youtube_free_patch.py` に集約している。HTTP は
 `requests.get` をスタブに差し替え、外部アクセスは一切しない。
@@ -279,10 +367,12 @@ _PLAYABILITY_STATUS_RE = re.compile(
 | `test_check_unreadable_page_raises` | 同意ページは無料に倒さない |
 | `test_check_server_error_raises` | 5xx は据え置き |
 | `test_extract_channel_name_*` | チャンネル名の2段フォールバック |
+| `test_probe_*` | 診断モードが観測値を返し、例外で止まらないこと |
+| `test_run_probe_separates_fetch_failure_from_consent` | 通信失敗を同意ページに数えないこと |
 
 ---
 
-## 10. 改修履歴
+## 11. 改修履歴
 
 ### 旧実装（`og:title` 方式）の問題
 
@@ -303,10 +393,12 @@ return {"status": "ended", "price": None}
 1. `ytInitialPlayerResponse` を読み、有料オファーを明示的に検出する
 2. 判定できない状態を `RuntimeError`（据え置き）として区別する
 3. チャンネル名を返す（無料公開の主体を表示するため）
+4. 診断モード（`--probe`）を追加した。開発環境から YouTube へ到達できず、
+   実データでの確認が本番でしかできないため
 
 ---
 
-## 11. 関連
+## 12. 関連
 
 - [youtube-free-check-spec.md](./youtube-free-check-spec.md) — このチェッカーを日次で回すジョブの仕様
 - [../vod-scraping-api.md](../vod-scraping-api.md) — チェッカー全体の共通仕様

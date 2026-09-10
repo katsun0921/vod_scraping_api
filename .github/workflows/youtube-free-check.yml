@@ -12,6 +12,15 @@ on:
         type: boolean
         required: false
         default: false
+      probe:
+        description: "診断モード（判定に使ったシグナルを出力。WordPress・Slackとも触らない）"
+        type: boolean
+        required: false
+        default: false
+      url:
+        description: "診断するYouTube URLを直接指定（probeを自動で有効化。記事が無い動画も試せる）"
+        required: false
+        default: ""
       slug:
         description: "特定 slug のみ処理（空欄で全件）"
         required: false
@@ -59,18 +68,33 @@ jobs:
           WP_BASIC_USER: ${{ secrets.WP_BASIC_USER }}
           WP_BASIC_PASSWORD: ${{ secrets.WP_BASIC_PASSWORD }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          # workflow_dispatch の入力は run: に直接展開せず、環境変数を経由させる。
+          # ${{ }} はシェルがパースする前に置換されるため、引用符で囲っても
+          # 入力値から抜け出してコマンドを差し込めてしまう
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_PROBE: ${{ inputs.probe }}
+          INPUT_URL: ${{ inputs.url }}
+          INPUT_SLUG: ${{ inputs.slug }}
+          INPUT_POST_ID: ${{ inputs.post_id }}
+          INPUT_LIMIT: ${{ inputs.limit }}
         run: |
-          ARGS=""
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            ARGS="$ARGS --dry-run"
+          ARGS=()
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
           fi
-          if [ -n "${{ inputs.slug }}" ]; then
-            ARGS="$ARGS --slug ${{ inputs.slug }}"
+          if [ "$INPUT_PROBE" = "true" ]; then
+            ARGS+=(--probe)
           fi
-          if [ -n "${{ inputs.post_id }}" ]; then
-            ARGS="$ARGS --post-id ${{ inputs.post_id }}"
+          if [ -n "$INPUT_URL" ]; then
+            ARGS+=(--url "$INPUT_URL")
           fi
-          if [ -n "${{ inputs.limit }}" ]; then
-            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          if [ -n "$INPUT_SLUG" ]; then
+            ARGS+=(--slug "$INPUT_SLUG")
           fi
-          python youtube_free_patch.py $ARGS
+          if [ -n "$INPUT_POST_ID" ]; then
+            ARGS+=(--post-id "$INPUT_POST_ID")
+          fi
+          if [ -n "$INPUT_LIMIT" ]; then
+            ARGS+=(--limit "$INPUT_LIMIT")
+          fi
+          python youtube_free_patch.py "${ARGS[@]}"

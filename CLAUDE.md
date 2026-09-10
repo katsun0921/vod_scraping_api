@@ -169,6 +169,11 @@ vod_scraping_api/
   判定仕様は [docs/feature/youtube-checker-spec.md](docs/feature/youtube-checker-spec.md)
 - YouTube の無料公開は期間限定のため、週次パッチのバッチ巡回（2ヶ月に1周）とは別に
   `youtube_free_patch.py` が日次で全件を見る（[docs/feature/youtube-free-check-spec.md](docs/feature/youtube-free-check-spec.md)）
+- **YouTube はアクセス元IPで返すHTMLが変わる。** 判定の実データ確認は手元ではなく
+  本番と同じ実行環境で行う。`youtube_free_patch.py --probe`（GitHub Actions の
+  `workflow_dispatch` の `probe` / `url` 入力）でシグナルをそのまま出せる
+- **workflow の `run:` に `${{ inputs.* }}` を直接展開しない。** シェルがパースする前に
+  置換されるため、引用符で囲ってもコマンドを差し込める。`env:` 経由で渡す
 - JS レンダリングが必要なサービスは Playwright を使用する
 - 劇場公開チェック（`theater_patch.py`）で外部の映画情報サイトを参照しない。
   見に行くのは記事に登録された劇場URLのみ（[docs/feature/theater-sources-candidates.md](docs/feature/theater-sources-candidates.md)）

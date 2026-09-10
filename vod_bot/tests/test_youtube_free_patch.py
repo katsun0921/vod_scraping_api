@@ -7,8 +7,14 @@ import pytest
 
 import youtube_free_patch
 from checkers import youtube as youtube_checker
-from checkers.youtube import YoutubeChecker, extract_channel_name, extract_playability_status
-from youtube_free_patch import run
+from checkers.youtube import (
+    YoutubeChecker,
+    classify_page,
+    extract_channel_name,
+    extract_playability_status,
+    probe,
+)
+from youtube_free_patch import run, run_probe
 
 
 # ---------------------------------------------------------------------------
@@ -53,18 +59,19 @@ _PURCHASE_OFFER = (
 class _StubResponse:
     """requests.get の戻り値のスタブ。"""
 
-    def __init__(self, text: str, status_code: int = 200) -> None:
+    def __init__(self, text: str, status_code: int = 200, url: str = "") -> None:
         self.text = text
         self.status_code = status_code
+        self.url = url
 
 
 @pytest.fixture
 def stub_get(monkeypatch):
     """requests.get を差し替え、任意の HTML を返させるフィクスチャ。"""
 
-    def _install(text: str, status_code: int = 200):
+    def _install(text: str, status_code: int = 200, final_url: str = ""):
         def _fake_get(url, **kwargs):
-            return _StubResponse(text, status_code)
+            return _StubResponse(text, status_code, final_url or url)
 
         monkeypatch.setattr(youtube_checker.requests, "get", _fake_get)
 
@@ -380,3 +387,117 @@ def test_run_skips_notify_when_nothing_changed(monkeypatch, patched_run):
     run()
 
     assert patched_run["notified"][0] == ([], [], [], [])
+
+
+# ---------------------------------------------------------------------------
+# probe / classify_page（診断モード）
+# ---------------------------------------------------------------------------
+
+def test_classify_page_detects_consent():
+    assert classify_page("<html>Before you continue</html>") == "consent"
+    assert classify_page("", "https://consent.youtube.com/m?continue=...") == "consent"
+
+
+def test_classify_page_detects_bot_check():
+    assert classify_page("<html>Our systems have detected unusual traffic</html>") == "bot_check"
+
+
+def test_classify_page_normal():
+    assert classify_page(_html()) == "normal"
+
+
+def test_probe_reports_signals_for_free_video(stub_get):
+    """無料公開の動画では、観測値と判定の両方が揃って返る。"""
+    stub_get(_html(playability="OK"))
+    result = probe("https://www.youtube.com/watch?v=abc")
+
+    assert result["http_status"] == 200
+    assert result["page_type"] == "normal"
+    assert result["has_player_response"] is True
+    assert result["playability_status"] == "OK"
+    assert result["has_offer_marker"] is False
+    assert result["channel_name"] == "【公式】プレシディオチャンネル"
+    assert result["og_title"] == "着信アリ"
+    assert result["verdict"]["status"] == "streaming"
+    assert result["error"] == ""
+
+
+def test_probe_reports_offer_excerpt(stub_get):
+    """有料オファーのときは抜粋も返し、マーカーが当たったか目視できる。"""
+    stub_get(_html(playability="UNPLAYABLE", offer=_RENTAL_OFFER))
+    result = probe("https://www.youtube.com/watch?v=abc")
+
+    assert result["has_offer_marker"] is True
+    assert "ytOfferModuleRenderer" in result["offer_excerpt"]
+    assert result["verdict"]["status"] == "rental"
+
+
+def test_probe_records_error_instead_of_raising(stub_get):
+    """判定不能でも例外にせず error に載せる（複数URLをまとめて見るため）。"""
+    stub_get(_html(playability="LOGIN_REQUIRED"))
+    result = probe("https://www.youtube.com/watch?v=abc")
+
+    assert result["verdict"] is None
+    assert "ログインが必要" in result["error"]
+    # 判定できなくても観測値は返る。これが診断モードの目的
+    assert result["playability_status"] == "LOGIN_REQUIRED"
+
+
+def test_probe_survives_network_error(monkeypatch):
+    """通信エラーでも例外を投げず、error だけ埋めて返す。"""
+
+    def _boom(url, **kwargs):
+        raise youtube_checker.requests.RequestException("tunnel blocked")
+
+    monkeypatch.setattr(youtube_checker.requests, "get", _boom)
+    result = probe("https://www.youtube.com/watch?v=abc")
+
+    assert result["http_status"] == 0
+    assert result["verdict"] is None
+    assert "リクエスト失敗" in result["error"]
+
+
+def test_run_probe_does_not_touch_wordpress(monkeypatch, patched_run, stub_get):
+    """診断モードは WordPress も Slack も触らない。"""
+    monkeypatch.setattr(
+        youtube_free_patch, "get_youtube_url_posts",
+        lambda slug=None, post_id=None, limit=None: [_post(status="rental")],
+    )
+    stub_get(_html(playability="OK"))
+
+    result = run_probe()
+
+    assert result["posts"]["total"] == 1
+    assert result["posts"]["judged"] == 1
+    assert patched_run["patched"] == []
+    assert patched_run["notified"] == []
+
+
+def test_run_probe_with_url_skips_wordpress(monkeypatch, patched_run, stub_get):
+    """--url 指定時は記事一覧を取りに行かない（記事の無い動画も試せる）。"""
+
+    def _must_not_be_called(**kwargs):
+        raise AssertionError("get_youtube_url_posts を呼んではいけない")
+
+    monkeypatch.setattr(youtube_free_patch, "get_youtube_url_posts", _must_not_be_called)
+    stub_get(_html(playability="OK"))
+
+    result = run_probe(url="https://youtu.be/abc")
+
+    assert result["posts"]["total"] == 1
+    assert result["probe"][0]["url"] == "https://youtu.be/abc"
+
+
+def test_run_probe_separates_fetch_failure_from_consent(monkeypatch, patched_run):
+    """通信できなかった件を「同意ページ」に数えない。原因の取り違えを防ぐ。"""
+
+    def _boom(url, **kwargs):
+        raise youtube_checker.requests.RequestException("tunnel blocked")
+
+    monkeypatch.setattr(youtube_checker.requests, "get", _boom)
+
+    result = run_probe(url="https://youtu.be/abc")
+
+    assert result["posts"]["fetch_failed"] == 1
+    assert result["posts"]["consent_or_bot"] == 0
+    assert result["posts"]["no_player_response"] == 0

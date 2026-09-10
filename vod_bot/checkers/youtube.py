@@ -24,6 +24,11 @@ YouTube の「見放題（streaming）」は他サービスと意味が違い、
 
 `check()` の戻り値には共通仕様の `status` / `price` に加えて、無料公開している
 チャンネル名を `channel_name` として返す。呼び出し元が使わない場合は無視してよい。
+
+判定に使うシグナルを生のまま覗く診断用に `probe()` を用意している。
+開発環境から YouTube へ到達できないため、実際に何が返ってきているかは
+本番（GitHub Actions / Cloud Run）で `youtube_free_patch.py --probe` を
+流して確認する。
 """
 
 import json
@@ -63,6 +68,28 @@ _FREE_WITH_INTERSTITIAL_STATUSES = frozenset({"CONTENT_CHECK_REQUIRED"})
 
 _TIMEOUT = 30
 
+# 同意ページ（EU 向け Cookie 同意など）を示す痕跡。
+# ここに落ちると playerResponse が丸ごと無く、判定不能になる
+_CONSENT_MARKERS = (
+    "consent.youtube.com",
+    "Before you continue",
+    "ご利用の前に",
+)
+
+# ボット検出・レート制限ページを示す痕跡
+_BOT_CHECK_MARKERS = (
+    "unusual traffic",
+    "通常と異なるトラフィック",
+    "/sorry/index",
+    "captcha",
+)
+
+# probe() が返すオファー抜粋の長さ
+_OFFER_EXCERPT_CHARS = 300
+
+# ytInitialPlayerResponse が埋まっているかの判定
+_PLAYER_RESPONSE_MARKER = "ytInitialPlayerResponse"
+
 
 class YoutubeChecker:
     """YouTube の配信状況を確認するチェッカー。
@@ -85,48 +112,195 @@ class YoutubeChecker:
         Raises:
             RuntimeError: ネットワークエラー・サーバーエラー・判定不能時。
         """
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=_TIMEOUT, allow_redirects=True)
-        except requests.RequestException as e:
-            raise RuntimeError(f"YouTube: リクエスト失敗 {e}") from e
+        resp = _fetch(url)
 
         if resp.status_code >= 500:
             raise RuntimeError(f"YouTube: サーバーエラー (HTTP {resp.status_code})")
 
-        html = resp.text
-        channel_name = extract_channel_name(html)
+        return judge_html(resp.text, url)
 
-        # 有料オファーが出ている時点で無料では観られない。
-        # playabilityStatus より先に判定する（オファー時の status は UNPLAYABLE のため）
-        if _OFFER_MODULE_MARKER in html:
-            status, price = _parse_offer(html)
-            logger.info("YouTube: 有料オファー検出 status=%s price=%s url=%s", status, price, url)
-            return {"status": status, "price": price, "channel_name": channel_name}
 
-        playability = extract_playability_status(html)
+def _fetch(url: str):
+    """watch ページを取得する。
 
-        if playability == "OK" or playability in _FREE_WITH_INTERSTITIAL_STATUSES:
-            return {"status": "streaming", "price": 0, "channel_name": channel_name}
+    Args:
+        url: 取得対象の YouTube 動画URL。
 
-        if playability in _ENDED_STATUSES:
-            logger.info("YouTube: playabilityStatus=%s → ended url=%s", playability, url)
-            return {"status": "ended", "price": None, "channel_name": channel_name}
+    Returns:
+        `requests.Response`。
 
-        if playability == "LOGIN_REQUIRED":
-            # 年齢制限（無料のまま）と限定公開（実質終了）を HTML から区別できない。
-            # ended に倒すと年齢制限のホラー作品などが一覧から消えるため据え置く
-            raise RuntimeError("YouTube: ログインが必要（年齢制限か限定公開か判定できない）")
+    Raises:
+        RuntimeError: ネットワークエラー時。
+    """
+    try:
+        return requests.get(url, headers=HEADERS, timeout=_TIMEOUT, allow_redirects=True)
+    except requests.RequestException as e:
+        raise RuntimeError(f"YouTube: リクエスト失敗 {e}") from e
 
-        soup = BeautifulSoup(html, "html.parser")
-        og_title = soup.find("meta", property="og:title")
-        if og_title and og_title.get("content", "").strip():
-            # 同意ページ・ボット検出ページなどで playerResponse が落ちているケース。
-            # 「ページはある」だけで無料と決めつけると有料作品を無料枠に載せてしまう
-            raise RuntimeError("YouTube: playabilityStatus を読めなかった（判定不能）")
 
-        # og:title も playabilityStatus も無い = 削除・非公開・存在しない動画
-        logger.debug("YouTube: og:title なし → ended url=%s", url)
+def judge_html(html: str, url: str = "") -> dict:
+    """取得済みの HTML から配信状況を判定する（HTTP アクセスを伴わない純粋関数）。
+
+    `check()` と `probe()` が同じ判定を共有するために切り出している。
+    診断モードで「実際にどう判定されるか」を再取得せずに出せる。
+
+    Args:
+        html: watch ページの HTML。
+        url : ログに出す URL（任意）。
+
+    Returns:
+        {"status": str, "price": float | None, "channel_name": str} の辞書。
+
+    Raises:
+        RuntimeError: 判定不能時。
+    """
+    channel_name = extract_channel_name(html)
+
+    # 有料オファーが出ている時点で無料では観られない。
+    # playabilityStatus より先に判定する（オファー時の status は UNPLAYABLE のため）
+    if _OFFER_MODULE_MARKER in html:
+        status, price = _parse_offer(html)
+        logger.info("YouTube: 有料オファー検出 status=%s price=%s url=%s", status, price, url)
+        return {"status": status, "price": price, "channel_name": channel_name}
+
+    playability = extract_playability_status(html)
+
+    if playability == "OK" or playability in _FREE_WITH_INTERSTITIAL_STATUSES:
+        return {"status": "streaming", "price": 0, "channel_name": channel_name}
+
+    if playability in _ENDED_STATUSES:
+        logger.info("YouTube: playabilityStatus=%s → ended url=%s", playability, url)
         return {"status": "ended", "price": None, "channel_name": channel_name}
+
+    if playability == "LOGIN_REQUIRED":
+        # 年齢制限（無料のまま）と限定公開（実質終了）を HTML から区別できない。
+        # ended に倒すと年齢制限のホラー作品などが一覧から消えるため据え置く
+        raise RuntimeError("YouTube: ログインが必要（年齢制限か限定公開か判定できない）")
+
+    if extract_og_title(html):
+        # 同意ページ・ボット検出ページなどで playerResponse が落ちているケース。
+        # 「ページはある」だけで無料と決めつけると有料作品を無料枠に載せてしまう
+        raise RuntimeError("YouTube: playabilityStatus を読めなかった（判定不能）")
+
+    # og:title も playabilityStatus も無い = 削除・非公開・存在しない動画
+    logger.debug("YouTube: og:title なし → ended url=%s", url)
+    return {"status": "ended", "price": None, "channel_name": channel_name}
+
+
+def extract_og_title(html: str) -> str:
+    """`og:title` の内容を返す。無ければ空文字。
+
+    Args:
+        html: watch ページの HTML。
+
+    Returns:
+        og:title の content。取れなければ空文字。
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    og_title = soup.find("meta", property="og:title")
+    if og_title and og_title.get("content", "").strip():
+        return og_title["content"].strip()
+    return ""
+
+
+def classify_page(html: str, final_url: str = "") -> str:
+    """取得したページの種類を判定する（診断用）。
+
+    判定不能が続くとき、原因が「同意ページを掴まされている」のか
+    「YouTube の HTML 構造が変わった」のかで対応がまったく違うため、
+    probe で切り分けられるようにする。
+
+    Args:
+        html     : 取得した HTML。
+        final_url: リダイレクト後の URL。
+
+    Returns:
+        `consent`（同意ページ）/ `bot_check`（ボット検出）/ `normal`。
+    """
+    haystack = f"{final_url}\n{html[:200_000]}"
+    if any(marker in haystack for marker in _CONSENT_MARKERS):
+        return "consent"
+    if any(marker in haystack.lower() for marker in _BOT_CHECK_MARKERS):
+        return "bot_check"
+    return "normal"
+
+
+def probe(url: str) -> dict:
+    """判定に使うシグナルを生のまま取り出す（診断用。WordPress は更新しない）。
+
+    開発環境から YouTube へ到達できないため、判定ロジックが実データに対して
+    正しく動くかは本番でしか確かめられない。マーカーや正規表現が期待どおり
+    HTML に当たっているかを、1回のアクセスでまとめて可視化する。
+
+    例外は投げない。ネットワークエラーも `error` に載せて返す
+    （診断が途中で止まると、複数URLをまとめて見るときに不便なため）。
+
+    Args:
+        url: 診断対象の YouTube 動画URL。
+
+    Returns:
+        観測したシグナルと、それに基づく判定結果を含む辞書。
+    """
+    result: dict = {
+        "url": url,
+        "final_url": "",
+        "http_status": 0,
+        "html_length": 0,
+        "page_type": "",
+        "has_player_response": False,
+        "playability_status": "",
+        "has_offer_marker": False,
+        "offer_excerpt": "",
+        "channel_name": "",
+        "og_title": "",
+        "verdict": None,
+        "error": "",
+    }
+
+    try:
+        resp = _fetch(url)
+    except RuntimeError as e:
+        result["error"] = str(e)
+        return result
+
+    html = resp.text
+    result["final_url"] = resp.url
+    result["http_status"] = resp.status_code
+    result["html_length"] = len(html)
+    result["page_type"] = classify_page(html, resp.url)
+    result["has_player_response"] = _PLAYER_RESPONSE_MARKER in html
+    result["playability_status"] = extract_playability_status(html)
+    result["has_offer_marker"] = _OFFER_MODULE_MARKER in html
+    result["offer_excerpt"] = _offer_excerpt(html)
+    result["channel_name"] = extract_channel_name(html)
+    result["og_title"] = extract_og_title(html)
+
+    if resp.status_code >= 500:
+        result["error"] = f"YouTube: サーバーエラー (HTTP {resp.status_code})"
+        return result
+
+    try:
+        result["verdict"] = judge_html(html, url)
+    except RuntimeError as e:
+        result["error"] = str(e)
+
+    return result
+
+
+def _offer_excerpt(html: str) -> str:
+    """有料オファーのパネル周辺を、読める長さに詰めて返す（診断用）。
+
+    Args:
+        html: watch ページの HTML。
+
+    Returns:
+        空白を潰した抜粋。オファーが無ければ空文字。
+    """
+    idx = html.find(_OFFER_MODULE_MARKER)
+    if idx < 0:
+        return ""
+    window = html[idx: idx + _OFFER_EXCERPT_CHARS]
+    return " ".join(window.split())
 
 
 def extract_playability_status(html: str) -> str:

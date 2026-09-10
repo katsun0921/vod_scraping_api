@@ -118,6 +118,24 @@ python youtube_free_patch.py --limit 10
 対象一覧の取得に失敗した場合は WordPress を一切更新せず `error` を返す
 （誤って全記事のステータスを書き換えないため）。
 
+### 診断モード（`--probe`）
+
+判定結果ではなく、判定に使ったシグナルそのものを出す。WordPress も Slack も
+触らない。
+
+```bash
+python youtube_free_patch.py --probe --limit 5               # 登録URLを5件診断
+python youtube_free_patch.py --url 'https://youtu.be/xxxx'   # 任意URLを診断
+```
+
+**YouTube はアクセス元 IP によって返す HTML を変える**ため、手元で確認しても
+本番で同じ HTML が返る保証がない。GitHub Actions の `workflow_dispatch` に
+`probe` / `url` 入力を用意してあり、**本番と同じ IP から見た HTML を確認できる。**
+判定がおかしいときやマーカーの失効を疑ったときは、まずここから始める。
+
+出力の読み方は [youtube-checker-spec.md](./youtube-checker-spec.md) の
+「診断モード」を参照。
+
 ---
 
 ## Slack 通知

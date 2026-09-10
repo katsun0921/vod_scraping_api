@@ -30,12 +30,28 @@
   GitHub Actions: .github/workflows/youtube-free-check.yml（毎日 06:00 JST）
   Cloud Run     : POST /youtube-free-check
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+診断モード（--probe）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  判定結果ではなく、判定に使った**シグナルそのもの**を出力する。
+
+  YouTube はアクセス元 IP によって返す HTML を変える。手元のブラウザで
+  見える HTML と、GitHub Actions / Cloud Run から見える HTML は同じとは
+  限らない（同意ページやボット検出ページを掴まされることがある）。
+  マーカーや正規表現が実データに当たっているかは本番でしか確認できないため、
+  1回のアクセスで観測値をまとめて出せるようにしている。
+
+  WordPress は一切更新せず、Slack にも通知しない。
+
 Usage:
     python youtube_free_patch.py                # YouTube URL 付きの全記事をチェック
     python youtube_free_patch.py --dry-run      # 判定のみ（WordPress を更新しない）
     python youtube_free_patch.py --slug one-missed-call-2003  # 特定 slug のみ
     python youtube_free_patch.py --post-id 123  # 特定 post_id のみ
     python youtube_free_patch.py --limit 10     # 上限10件（デバッグ用）
+
+    python youtube_free_patch.py --probe --limit 5        # 登録URLを5件診断
+    python youtube_free_patch.py --url 'https://youtu.be/xxxx'  # 任意URLを診断
 """
 
 import argparse
@@ -44,7 +60,7 @@ import sys
 from datetime import datetime
 from typing import Optional
 
-from checkers.youtube import YoutubeChecker
+from checkers.youtube import YoutubeChecker, probe
 from slack import notify_youtube_free_failure, notify_youtube_free_result
 from utils.rate_limit import RateLimiter
 from wordpress import (
@@ -103,6 +119,134 @@ def _select_targets(
 ) -> list[dict]:
     """件数上限を適用する（slug / post_id の絞り込みは取得時に済んでいる）。"""
     return posts[:limit] if limit is not None else posts
+
+
+def _format_probe(result: dict) -> str:
+    """probe() の結果を1件分のログブロックに整形する。
+
+    Args:
+        result: `checkers.youtube.probe()` の戻り値。
+
+    Returns:
+        改行込みの表示用文字列。
+    """
+    verdict = result.get("verdict")
+    if verdict:
+        judged = f"{verdict['status']} / price={verdict['price']}"
+    else:
+        judged = f"判定不能（{result.get('error') or '理由不明'}）"
+
+    lines = [
+        f"── {result['url']}",
+        f"   HTTP            : {result['http_status']}  (HTML {result['html_length']:,} 文字)",
+        f"   最終URL         : {result['final_url']}",
+        f"   ページ種別      : {result['page_type']}",
+        f"   playerResponse  : {'あり' if result['has_player_response'] else 'なし'}",
+        f"   playabilityStatus: {result['playability_status'] or '(読めず)'}",
+        f"   有料オファー    : {'あり' if result['has_offer_marker'] else 'なし'}",
+        f"   チャンネル名    : {result['channel_name'] or '(取れず)'}",
+        f"   og:title        : {result['og_title'] or '(取れず)'}",
+        f"   → 判定          : {judged}",
+    ]
+    if result["offer_excerpt"]:
+        lines.append(f"   オファー抜粋    : {result['offer_excerpt']}")
+    return "\n".join(lines)
+
+
+def _probe_targets(
+    url: Optional[str],
+    slug: Optional[str],
+    post_id: Optional[int],
+    limit: Optional[int],
+) -> list[str]:
+    """診断対象の URL 一覧を作る。
+
+    `--url` が指定されていれば WordPress を見ない（記事が無い動画も試せる）。
+    指定が無ければ登録済みの `youtube.scraping_url` を対象にする。
+
+    Args:
+        url    : 直接指定する URL。
+        slug   : 該当 slug の記事のみ。
+        post_id: 該当 post_id の記事のみ。
+        limit  : 最大件数。
+
+    Returns:
+        診断対象 URL のリスト。
+    """
+    if url:
+        return [url]
+
+    posts = get_youtube_url_posts(slug=slug, post_id=post_id, limit=limit)
+    return [
+        ((post.get("acf") or {}).get(YOUTUBE_FIELD) or {}).get("scraping_url", "")
+        for post in posts
+    ]
+
+
+def run_probe(
+    url: Optional[str] = None,
+    slug: Optional[str] = None,
+    post_id: Optional[int] = None,
+    limit: Optional[int] = None,
+) -> dict:
+    """診断モード。判定に使うシグナルをそのまま出力する。
+
+    WordPress は一切更新せず、Slack にも通知しない。判定不能そのものは
+    正常な結果なので、終了コードは（対象を取得できない場合を除き）0 のまま。
+
+    Args:
+        url    : 直接指定する URL。指定時は WordPress を見ない。
+        slug   : 該当 slug の記事のみ。
+        post_id: 該当 post_id の記事のみ。
+        limit  : 最大件数。
+
+    Returns:
+        {"probe": [...], "posts": {...}} 形式の結果。
+    """
+    logger.info("YouTube 診断モード開始（WordPress は更新しない）")
+
+    try:
+        targets = [t for t in _probe_targets(url, slug, post_id, limit) if t]
+    except Exception as e:
+        logger.error("診断対象の取得に失敗した: %s", e)
+        return {"error": str(e), "probe": [], "posts": {"total": 0}}
+
+    if not targets:
+        logger.warning("診断対象が0件だった（youtube.scraping_url が未登録の可能性）")
+        return {"probe": [], "posts": {"total": 0}}
+
+    results: list[dict] = []
+    for index, target in enumerate(targets):
+        if index:
+            _RATE_LIMITER.wait()
+        result = probe(target)
+        results.append(result)
+        logger.info("YouTube 診断結果:\n%s", _format_probe(result))
+
+    # 構造変更の一次切り分けに使うので、種別ごとの件数をまとめて出す。
+    # ページを取得できなかった分（通信エラー・プロキシ拒否）は、HTML を
+    # 見た結果の集計から必ず外す。混ぜると「同意ページを掴まされた」と
+    # 「そもそも繋がっていない」を取り違える
+    fetched = [r for r in results if r["http_status"] > 0]
+    summary = {
+        "total": len(results),
+        "judged": sum(1 for r in results if r["verdict"]),
+        "undecidable": sum(1 for r in results if not r["verdict"]),
+        "fetch_failed": len(results) - len(fetched),
+        "consent_or_bot": sum(1 for r in fetched if r["page_type"] in ("consent", "bot_check")),
+        "no_player_response": sum(1 for r in fetched if not r["has_player_response"]),
+    }
+    logger.info("YouTube 診断まとめ: %s", summary)
+
+    if summary["fetch_failed"] == summary["total"]:
+        logger.error("全件でページを取得できなかった。ネットワーク・プロキシ設定を確認すること")
+    elif fetched and summary["no_player_response"] == len(fetched):
+        logger.error(
+            "取得できた全件で ytInitialPlayerResponse を読めなかった。"
+            "同意ページ・ボット検出を掴まされているか、HTML 構造が変わった可能性がある"
+        )
+
+    return {"probe": results, "posts": summary}
 
 
 def run(
@@ -286,14 +430,34 @@ def main() -> None:
     parser.add_argument("--slug", type=str, default=None, help="特定 slug のみ処理する")
     parser.add_argument("--post-id", type=int, default=None, help="特定 post_id のみ処理する")
     parser.add_argument("--limit", type=int, default=None, help="最大処理件数")
+    parser.add_argument(
+        "--probe",
+        action="store_true",
+        help="診断モード。判定に使ったシグナルを出力する（WordPress・Slack とも触らない）",
+    )
+    parser.add_argument(
+        "--url",
+        type=str,
+        default=None,
+        help="診断する URL を直接指定する（--probe を自動で有効にする）",
+    )
     args = parser.parse_args()
 
-    result = run(
-        dry_run=args.dry_run,
-        slug=args.slug,
-        post_id=args.post_id,
-        limit=args.limit,
-    )
+    # --url は WordPress の記事を前提にしないため、診断以外の使い道が無い
+    if args.probe or args.url:
+        result = run_probe(
+            url=args.url,
+            slug=args.slug,
+            post_id=args.post_id,
+            limit=args.limit,
+        )
+    else:
+        result = run(
+            dry_run=args.dry_run,
+            slug=args.slug,
+            post_id=args.post_id,
+            limit=args.limit,
+        )
 
     if result.get("error"):
         sys.exit(1)
