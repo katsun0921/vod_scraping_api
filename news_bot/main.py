@@ -244,6 +244,9 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
     saved_entries = []
     for entry in entries:
         if not theater_calendar.in_range(entry.release_date, start, end):
+            # 全件がここで落ちると保存も通知も0件のままジョブは成功する。原因（どの日付が
+            # 期間外だったか）をログに残さないと気付けないため、1件ずつ出す。
+            logger.warning("対象期間外のためスキップ: %s (%s)", entry.title, entry.release_date)
             stats["out_of_range"] += 1
             continue
 
@@ -331,18 +334,23 @@ def theater_import_cycle(target_start: date | None = None) -> dict:
     PRレビューを通っていても投稿状態は"承認待ち"で保存する。PRレビューは「AIが拾った
     情報が妥当か」の確認であり、シート上の承認は「記事に載せるか」の判断で目的が異なるため。
 
-    対象は next_week_range()（翌週金曜〜その翌木曜）。ルーティンは公開週の1週間前の
-    金曜に走り、翌週分を集めてPRを出す。取り込みもそれに合わせないと、集めた行が
-    すべて期間外で落ちる。金〜木のどの曜日にマージされても同じ週を返すため、
-    レビューが土日にずれ込んでも対象週は動かない。
+    対象週は成果物JSONに入っている公開日から決める（manual_week.routine_range()）。
+    実行日から next_week_range() で逆算すると、ルーティンが走った曜日とPRがマージされた
+    曜日がずれた瞬間に集めた行がすべて期間外で落ちるため（#76 / #83 で実際に発生）。
+    成果物が空の場合のみ next_week_range()（翌週金曜〜その翌木曜）にフォールバックする。
 
-    target_startを指定した場合は、その金曜日から7日間を対象にする。未指定時は
-    実行日から対象週を計算する。
+    target_startを指定した場合は、その金曜日から7日間を対象にする。
     """
-    start, end = manual_week.resolve_range(
-        target_start, "theater", theater_calendar.next_week_range(date.today())
-    )
     entries = import_routine.load_theater_entries(import_routine.latest_path("theater"))
+    start, end = manual_week.resolve_range(
+        target_start,
+        "theater",
+        manual_week.routine_range(
+            [entry.release_date for entry in entries],
+            "theater",
+            theater_calendar.next_week_range(date.today()),
+        ),
+    )
     return _save_theater_entries(entries, start, end, "theater_import_cycle")
 
 
@@ -502,7 +510,12 @@ def _fetch_vod_x_entries(sheets: NewsBotSheets) -> list:
         return []
 
 
-def _save_vod_entries(source_entries: list, label: str, target_start: date | None = None) -> dict:
+def _save_vod_entries(
+    source_entries: list,
+    label: str,
+    target_start: date | None = None,
+    automatic_range: tuple[date, date] | None = None,
+) -> dict:
     """VOD配信エントリをX抽出結果と統合し、対象期間・重複でフィルタして保存する。
 
     エントリの供給元（AI Web検索 / ルーティン成果物JSON）によらず共通の保存処理。
@@ -512,10 +525,14 @@ def _save_vod_entries(source_entries: list, label: str, target_start: date | Non
         source_entries: AI Web検索またはルーティンJSON由来のVodEntry一覧
         label: ログ表示用の呼び出し元名
         target_start: 手動再取り込み時の対象週開始日（月曜日）
+        automatic_range: 自動判定の対象期間。未指定なら実行日から計算する。
+            vod_import_cycle はルーティン成果物の日付から決めた週を渡す。
     """
     sheets = NewsBotSheets()
     start, end = manual_week.resolve_range(
-        target_start, "vod", vod_calendar.next_week_range(date.today())
+        target_start,
+        "vod",
+        automatic_range if automatic_range is not None else vod_calendar.next_week_range(date.today()),
     )
     existing_keys = sheets.get_existing_vod_keys()
 
@@ -526,6 +543,10 @@ def _save_vod_entries(source_entries: list, label: str, target_start: date | Non
     saved_entries = []
     for entry in merged:
         if not vod_calendar.in_range(entry.available_from, start, end):
+            # 期間外で全件落ちても成功扱いになるため、どの日付が外れたかを残す（劇場側と同じ方針）。
+            logger.warning(
+                "対象期間外のためスキップ: %s / %s (%s)", entry.service, entry.title, entry.available_from
+            )
             stats["out_of_range"] += 1
             continue
 
@@ -588,10 +609,18 @@ def vod_import_cycle(target_start: date | None = None) -> dict:
     AI Web検索部分のみをルーティンへ移行したもの。X公式アカウントからの抽出は
     X API v2の認証が必要でルーティンでは代替できないため、本サイクル内で
     引き続き実行し、ルーティンの結果と統合する（docs/feature/routine-discovery.md）。
+
+    対象週は成果物JSONに入っている配信開始日から決める（theater_import_cycle と同じ理由）。
+    X抽出分は成果物の週に対してフィルタされる。
     target_startを指定した場合は、その月曜日から7日間を対象にする。
     """
     entries = import_routine.load_vod_entries(import_routine.latest_path("vod"))
-    return _save_vod_entries(entries, "vod_import_cycle", target_start)
+    automatic_range = manual_week.routine_range(
+        [entry.available_from for entry in entries],
+        "vod",
+        vod_calendar.next_week_range(date.today()),
+    )
+    return _save_vod_entries(entries, "vod_import_cycle", target_start, automatic_range)
 
 
 def vod_resolve_approvals_cycle() -> dict:
