@@ -227,6 +227,23 @@ def theater_cycle() -> dict:
     return stats
 
 
+def _warn_if_all_out_of_range(stats: dict, start: date, end: date, label: str) -> None:
+    """収集できたのに1件も対象期間に入らなかった場合に警告する。
+
+    保存0件・通知0件でもサイクルは正常終了するため、統計行を目視しない限り気付けない。
+    実際 #76 / #83 は対象週の計算ずれで全件が落ちたまま Actions が成功していた。
+    個別のスキップ（VODのX抽出分など）は通常運転なので、全滅したときだけ警告する。
+    """
+    if stats["discovered"] and stats["out_of_range"] == stats["discovered"]:
+        logger.warning(
+            "%s: 収集した%d件すべてが対象期間（%s〜%s）外でした。保存・通知は行われていません",
+            label,
+            stats["discovered"],
+            start,
+            end,
+        )
+
+
 def _save_theater_entries(entries: list, start: date, end: date, label: str) -> dict:
     """劇場公開エントリを対象期間・重複でフィルタし、承認待ちとしてシートへ保存する。
 
@@ -244,6 +261,9 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
     saved_entries = []
     for entry in entries:
         if not theater_calendar.in_range(entry.release_date, start, end):
+            # どの日付が外れたのかは統計行だけでは追えないため1件ずつ残す。個別のスキップは
+            # 異常ではない（VOD側のX抽出分は毎回一定数が期間外になる）のでINFO。
+            logger.info("対象期間外のためスキップ: %s (%s)", entry.title, entry.release_date)
             stats["out_of_range"] += 1
             continue
 
@@ -299,6 +319,7 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
         except Exception:
             logger.exception("劇場公開Slack通知失敗（%d件）", len(saved_entries))
 
+    _warn_if_all_out_of_range(stats, start, end, label)
     logger.info("%s(%s〜%s) 完了: %s", label, start, end, stats)
     return stats
 
@@ -331,18 +352,23 @@ def theater_import_cycle(target_start: date | None = None) -> dict:
     PRレビューを通っていても投稿状態は"承認待ち"で保存する。PRレビューは「AIが拾った
     情報が妥当か」の確認であり、シート上の承認は「記事に載せるか」の判断で目的が異なるため。
 
-    対象は next_week_range()（翌週金曜〜その翌木曜）。ルーティンは公開週の1週間前の
-    金曜に走り、翌週分を集めてPRを出す。取り込みもそれに合わせないと、集めた行が
-    すべて期間外で落ちる。金〜木のどの曜日にマージされても同じ週を返すため、
-    レビューが土日にずれ込んでも対象週は動かない。
+    対象週は成果物JSONに入っている公開日から決める（manual_week.routine_range()）。
+    実行日から next_week_range() で逆算すると、ルーティンが走った曜日とPRがマージされた
+    曜日がずれた瞬間に集めた行がすべて期間外で落ちるため（#76 / #83 で実際に発生）。
+    成果物が空の場合のみ next_week_range()（翌週金曜〜その翌木曜）にフォールバックする。
 
-    target_startを指定した場合は、その金曜日から7日間を対象にする。未指定時は
-    実行日から対象週を計算する。
+    target_startを指定した場合は、その金曜日から7日間を対象にする。
     """
-    start, end = manual_week.resolve_range(
-        target_start, "theater", theater_calendar.next_week_range(date.today())
-    )
     entries = import_routine.load_theater_entries(import_routine.latest_path("theater"))
+    start, end = manual_week.resolve_range(
+        target_start,
+        "theater",
+        manual_week.routine_range(
+            [entry.release_date for entry in entries],
+            "theater",
+            theater_calendar.next_week_range(date.today()),
+        ),
+    )
     return _save_theater_entries(entries, start, end, "theater_import_cycle")
 
 
@@ -502,7 +528,12 @@ def _fetch_vod_x_entries(sheets: NewsBotSheets) -> list:
         return []
 
 
-def _save_vod_entries(source_entries: list, label: str, target_start: date | None = None) -> dict:
+def _save_vod_entries(
+    source_entries: list,
+    label: str,
+    target_start: date | None = None,
+    automatic_range: tuple[date, date] | None = None,
+) -> dict:
     """VOD配信エントリをX抽出結果と統合し、対象期間・重複でフィルタして保存する。
 
     エントリの供給元（AI Web検索 / ルーティン成果物JSON）によらず共通の保存処理。
@@ -512,10 +543,14 @@ def _save_vod_entries(source_entries: list, label: str, target_start: date | Non
         source_entries: AI Web検索またはルーティンJSON由来のVodEntry一覧
         label: ログ表示用の呼び出し元名
         target_start: 手動再取り込み時の対象週開始日（月曜日）
+        automatic_range: 自動判定の対象期間。未指定なら実行日から計算する。
+            vod_import_cycle はルーティン成果物の日付から決めた週を渡す。
     """
     sheets = NewsBotSheets()
     start, end = manual_week.resolve_range(
-        target_start, "vod", vod_calendar.next_week_range(date.today())
+        target_start,
+        "vod",
+        automatic_range if automatic_range is not None else vod_calendar.next_week_range(date.today()),
     )
     existing_keys = sheets.get_existing_vod_keys()
 
@@ -526,6 +561,10 @@ def _save_vod_entries(source_entries: list, label: str, target_start: date | Non
     saved_entries = []
     for entry in merged:
         if not vod_calendar.in_range(entry.available_from, start, end):
+            # 劇場側と同じ方針。X抽出分は対象週外の告知が混ざるのが通常なのでINFO。
+            logger.info(
+                "対象期間外のためスキップ: %s / %s (%s)", entry.service, entry.title, entry.available_from
+            )
             stats["out_of_range"] += 1
             continue
 
@@ -578,6 +617,7 @@ def _save_vod_entries(source_entries: list, label: str, target_start: date | Non
         except Exception:
             logger.exception("VOD配信予定Slack通知失敗（%d件）", len(saved_entries))
 
+    _warn_if_all_out_of_range(stats, start, end, label)
     logger.info("%s(%s〜%s) 完了: %s", label, start, end, stats)
     return stats
 
@@ -588,10 +628,18 @@ def vod_import_cycle(target_start: date | None = None) -> dict:
     AI Web検索部分のみをルーティンへ移行したもの。X公式アカウントからの抽出は
     X API v2の認証が必要でルーティンでは代替できないため、本サイクル内で
     引き続き実行し、ルーティンの結果と統合する（docs/feature/routine-discovery.md）。
+
+    対象週は成果物JSONに入っている配信開始日から決める（theater_import_cycle と同じ理由）。
+    X抽出分は成果物の週に対してフィルタされる。
     target_startを指定した場合は、その月曜日から7日間を対象にする。
     """
     entries = import_routine.load_vod_entries(import_routine.latest_path("vod"))
-    return _save_vod_entries(entries, "vod_import_cycle", target_start)
+    automatic_range = manual_week.routine_range(
+        [entry.available_from for entry in entries],
+        "vod",
+        vod_calendar.next_week_range(date.today()),
+    )
+    return _save_vod_entries(entries, "vod_import_cycle", target_start, automatic_range)
 
 
 def vod_resolve_approvals_cycle() -> dict:
