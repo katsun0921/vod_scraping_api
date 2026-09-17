@@ -1,44 +1,74 @@
 [
   {
-    "title": "八つ墓村",
-    "release_date": "2026-09-18",
-    "distributor": "松竹",
-    "official_url": "https://movies.shochiku.co.jp/yatsuhakamura-movie/"
+    "title": "襲名",
+    "release_date": "2026-09-25",
+    "distributor": "K2 Pictures",
+    "official_url": "https://k2pic.com/film/shumei/"
   },
   {
-    "title": "踊る大捜査線 N.E.W. メトロポリスを駆け抜けろ！",
-    "release_date": "2026-09-18",
-    "distributor": "東宝",
-    "official_url": "https://odoru.com/"
+    "title": "デス・バイ・メタル～デス・メタルを作った男～",
+    "release_date": "2026-09-25",
+    "distributor": "キングレコード",
+    "official_url": "https://murder-death.com/"
   },
   {
-    "title": "映画名探偵プリキュア！",
-    "release_date": "2026-09-18",
-    "distributor": "東映",
-    "official_url": "https://2026.precure-movie.com/"
+    "title": "マーダー・イン・ザ・フロント・ロウ～俺たちのベイエリア・スラッシュ物語～",
+    "release_date": "2026-09-25",
+    "distributor": "キングレコード",
+    "official_url": "https://murder-death.com/"
   },
   {
-    "title": "ワンオペレーション",
-    "release_date": "2026-09-18",
-    "distributor": "東京テアトル／シンカ",
-    "official_url": "https://synca.jp/oneoperation/"
+    "title": "眺めのいい部屋 4K",
+    "release_date": "2026-09-25",
+    "distributor": "ザジフィルムズ",
+    "official_url": "https://www.zaziefilms.com/nagame/"
   },
   {
-    "title": "さとこはいつも",
-    "release_date": "2026-09-18",
-    "distributor": "ハピネットファントム・スタジオ",
-    "official_url": "https://happinet-phantom.com/satoko/"
+    "title": "ナギダイアリー",
+    "release_date": "2026-09-25",
+    "distributor": "スターサンズ",
+    "official_url": "https://starsands.com/nagidiary/"
   },
   {
-    "title": "リサ・ラーソンがいた時間",
-    "release_date": "2026-09-18",
-    "distributor": "ミモザフィルムズ",
-    "official_url": "https://mimosafilms.com/lisalarson/"
+    "title": "マッチング TRUE LOVE",
+    "release_date": "2026-09-25",
+    "distributor": "KADOKAWA",
+    "official_url": "https://movies.kadokawa.co.jp/matching/"
   },
   {
-    "title": "ブロークン・ヴォイス",
-    "release_date": "2026-09-19",
-    "distributor": "クレプスキュールフィルム",
-    "official_url": "https://broken.crepuscule-films.com/"
+    "title": "ハート・オブ・ビースト",
+    "release_date": "2026-09-25",
+    "distributor": "東和ピクチャーズ／東宝",
+    "official_url": "https://heart-of-the-beast.jp/"
+  },
+  {
+    "title": "縁の手紙",
+    "release_date": "2026-09-25",
+    "distributor": "コミックス・ウェーブ・フィルム",
+    "official_url": "https://en-no-tegami.com/"
+  },
+  {
+    "title": "シャドウワーク",
+    "release_date": "2026-09-25",
+    "distributor": "ショウゲート",
+    "official_url": "https://shadowwork-movie.jp/"
+  },
+  {
+    "title": "我々は宇宙人",
+    "release_date": "2026-09-25",
+    "distributor": "NOTHING NEW",
+    "official_url": "https://nothingnew.film/wearealiens/"
+  },
+  {
+    "title": "百姓、わらう。",
+    "release_date": "2026-09-26",
+    "distributor": "プロダクション・エイシア",
+    "official_url": "https://www.100sho.info/"
+  },
+  {
+    "title": "ディスクロージャー・デイ",
+    "release_date": "2026-10-01",
+    "distributor": "東宝東和",
+    "official_url": "https://disclosureday.jp/"
   }
 ]
