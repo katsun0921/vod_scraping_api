@@ -84,7 +84,7 @@ theater_publish / vod_publish → WP CPT投稿 + SNS投稿案をSlackへ
 
 - **発見はルーティン方式**（上記）。`theater_import`が成果物JSONを取り込む。フォールバックの`theater_discover`はClaude API（`web_search_20260209`）とOpenAI API（Responses APIの`web_search`）を**併用**する（`discover_theater.py`）。いずれも保存するのは**事実情報のみ**（タイトル・公開日・配給会社名・公式URL）で、あらすじ等の表現はコピーしない
 - **人間の承認が必須**：結果は誤り得るため保存時は投稿状態=`承認待ち`。新規保存分は**Slackに親メッセージ+作品ごとのスレッド返信で確認依頼を通知**する（`approval.notify_theater_discovered()`。通知失敗してもシート保存は完了しているためサイクルは失敗しない）。通知先は劇場公開専用チャンネル（`SLACK_THEATER_CHANNEL_ID`、GitHub Secret名`NEWS_BOT_SLACK_THEATER_CHANNEL_ID`。**Botを対象チャンネルに招待しておくこと**）。未設定の場合はニュース通知と同じ承認チャンネルに送る
-- **週次まとめの生成（`theater_publish`）**：承認済み行から記事本文とSNS投稿案を作る（`compose_theater.py`）。毎週金曜 07:00 JST（`0 22 * * 4` UTC）に実行。**公開日別**に区切るのがVOD版との違いで、劇場公開は「いつ観に行けるか」が関心事のため。注目作は**SNS優先度=S**の行（劇場シートには「編集部おすすめ」列が無いため）
+- **週次まとめの生成（`theater_publish`）**：承認済み行から記事本文とSNS投稿案を作る（`compose_theater.py`）。毎週月曜 07:00 JST（`0 22 * * 0` UTC）に実行。**公開日別**に区切るのがVOD版との違いで、劇場公開は「いつ観に行けるか」が関心事のため。注目作は**SNS優先度=S**の行（劇場シートには「編集部おすすめ」列が無いため）
 - **投稿先CPTは`theater_release`**（`vod_release`とは別）。「映画館で観たい」と「家で観たい」は別の検索意図であり、同一CPTに混ぜるとどちらのクエリにも半分ノイズのページを返すことになる。技術的にも`vod_release`が持つ`vod`タクソノミー（配信サービス軸）は劇場公開まとめに付かず、タームが空の記事が混ざる
 - **SNS投稿案は3種類**：①Xスレッド（2分割）②Facebook / Threads / Bluesky向け（1投稿完結）③注目作の個別投稿（SNS優先度=S かつレビュー記事がある作品のみ）。**Facebook APIとは連携しない**（Meta開発者アプリの審査とページ権限の取得が週1回の投稿頻度に見合わないため）。Slackに出した完成形テキストを人間が手動投稿する
 - **レイヤー1データソース（特定サイトの自動取得）はすべて撤回**：配給会社公式サイト（東宝・東映等）と映画.comRSSは利用規約の複製・転載禁止により除外。**TMDb API**はKatsumascoreのAdSense収益化がPersonal Use申請（非商用・無収益の誓約）に反するため撤回。**PR TIMES企業別RSS**も一般規約第6条④「有償目的で企業コンテンツを利用する行為」の禁止に抵触するリスクが高く撤回（詳細は[theater-sources-candidates.md](../docs/feature/theater-sources-candidates.md)）。`fetch_theater.py`（RSS/TMDb取得）と「劇場情報源」シート巡回の`theater`コマンドはコードとして残っているが、cronからは外した
@@ -205,7 +205,7 @@ python -m news_bot.main
 | （引数なし） | RSS取得→AI判定→Slackスレッド案 | `news-bot.yml` | Claude |
 | `x <地域>` | 公式Xアカウント取得→同上 | `news-bot-x.yml` | Claude + X API |
 | `theater_import [YYYY-MM-DD]` | ルーティン成果物を取り込み→シート追記→Slack通知。任意引数は対象週の金曜日 | `routine-import.yml`（PRマージ時） | なし |
-| `theater_publish [YYYY-MM-DD]` | 承認済み行→WP投稿→SNS投稿案をSlackへ。任意引数は対象週の金曜日 | 毎週金 07:00 JST | なし |
+| `theater_publish [YYYY-MM-DD]` | 承認済み行→WP投稿→SNS投稿案をSlackへ。任意引数は対象週の金曜日 | 毎週月 07:00 JST | なし |
 | `theater_add <URL>` | 人間が指定したURLから1件抽出→シート追記 | 手動（`theater-add-url.yml`） | Claude |
 | `theater_discover` | AI Web検索で発見（**ルーティンのフォールバック**） | なし（手動のみ） | Claude + OpenAI |
 | `vod_import [YYYY-MM-DD]` | ルーティン成果物 + X抽出を統合→シート追記→Slack通知。任意引数は対象週の月曜日 | `routine-import.yml`（PRマージ時） | Claude + X API |

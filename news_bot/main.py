@@ -427,10 +427,10 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
     公開日、かつ投稿状態=承認済みの行。対象0件の場合は何もしない
     （空のWP投稿・Slack通知を出さない）。
 
-    cronは公開週の前日木曜 07:00 JST。week_range() は木曜に実行すると翌日の金曜を
-    起点に返すため、公開初日の前日に下書きが揃う。収集（theater_import）はその
-    1週間前の金曜に next_week_range() で同じ週を先に集めており、間の土〜水が
-    シート承認の猶予になる。
+    cronは対象週の月曜 07:00 JST。week_range() は月曜に実行すると同じ週の金曜を
+    起点に返すため、公開初日の4日前に下書きが揃う。収集（theater_import）はその
+    1週間前の金曜に next_week_range() で同じ週を先に集めており、間の土〜日（+月曜朝まで）が
+    シート承認の猶予になる（約2日22時間）。
 
     金曜以降に実行すると week_range() は1週先へ進むので、cronを金〜日へ動かさない
     こと。過去週・当週をやり直す場合は target_start にその週の金曜日を渡すと、
