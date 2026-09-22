@@ -24,8 +24,13 @@ def test_next_week_range_is_stable_across_the_collection_week():
 
 
 def test_week_range_on_publish_thursday_matches_collected_week():
-    """publish（木曜 07:00 JST）は収集済みの週を対象にする。"""
+    """木曜に実行しても収集済みの週を対象にする（月〜木は同じ週を指す）。"""
     assert theater_calendar.week_range(date(2026, 8, 27)) == TARGET
+
+
+def test_week_range_on_publish_monday_matches_collected_week():
+    """publish（月曜 07:00 JST）は収集済みの週を対象にする。"""
+    assert theater_calendar.week_range(date(2026, 8, 24)) == TARGET
 
 
 def test_week_range_advances_on_friday():

@@ -1,24 +1,27 @@
 name: Theater Calendar
 
 on:
-  # 0 22 * * 3 (UTC) = 毎週木曜 07:00 JST（公開初日の前日朝に下書きを作る）
+  # 0 22 * * 0 (UTC) = 毎週月曜 07:00 JST
   #
-  # 対象週は theater_calendar.week_range()＝翌日の金曜〜その翌木曜。日本の劇場公開は
-  # 金曜が基準日なので、公開週の前日に下書きが揃う。
+  # 対象週は theater_calendar.week_range()＝直近の金曜〜その翌週木曜。日本の劇場公開は
+  # 金曜が基準日なので、対象週の起点（金曜）から3日前の月曜に下書きが揃う
+  # （以前は木曜＝公開初日の前日朝だった。公開の4日前に前倒し）。
   #
   # 収集（ルーティン）はその1週間前の金曜 09:00 JST に翌週分を集めてPRを出す
-  # （theater_calendar.next_week_range()）。間の土〜水がシート承認の猶予になる。
+  # （theater_calendar.next_week_range()）。間の土〜日（+月曜朝まで）がシート承認の
+  # 猶予になる。以前の木曜publishと比べ猶予は約5日22時間→約2日22時間に縮む。
   # 以前は publish も金曜 07:00 JST で、同じ日の 09:00 に走る収集より2時間早く、
-  # その週の収集分が永久に載らなかった。
+  # その週の収集分が永久に載らなかった（木曜へ移動して解消）。
   #
-  # week_range() は金曜以降に実行すると1週先へ進むため、cronを金〜日へ動かさないこと。
+  # week_range() は金曜以降に実行すると1週先へ進むため、cronを金〜日へ動かさないこと
+  # （月〜木は同じ週を指すため安全）。
   #
   # theater_discover（AI Web検索）のcronは外した。Claudeのルーティンが週次で調査して
   # PRを作る方式へ移行し、従量課金のAPI呼び出しをサブスクリプション内に収めたため
   # （docs/feature/routine-discovery.md）。取り込みは routine-import.yml が担当する。
   # theater_discover はルーティンが止まった場合のフォールバックとして手動実行のみ残す。
   schedule:
-    - cron: "0 22 * * 3"
+    - cron: "0 22 * * 0"
   workflow_dispatch:
     inputs:
       command:
