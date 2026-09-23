@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 
@@ -99,3 +99,18 @@ def test_routine_range_picks_earliest_week_on_tie():
 def test_routine_range_rejects_unknown_kind():
     with pytest.raises(ValueError, match="不明な対象種別"):
         manual_week.routine_range([date(2026, 9, 18)], "movie", (date(2026, 9, 18), date(2026, 9, 24)))
+
+
+def test_jst_today_crosses_utc_date_boundary(monkeypatch):
+    # cronは07:00 JST起点だが、これはUTCでは前日22:00にあたる。GitHub Actions
+    # ランナー（UTC）上でdate.today()を使うとJSTの「今日」より1日前を返してしまう
+    # （2026-09-21 08:51 JST 実行時、UTCはまだ 2026-09-20 23:51）。
+    fixed_utc = datetime(2026, 9, 20, 23, 51, 35, tzinfo=timezone.utc)
+
+    class _FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_utc.astimezone(tz) if tz else fixed_utc
+
+    monkeypatch.setattr(manual_week, "datetime", _FixedDateTime)
+    assert manual_week.jst_today() == date(2026, 9, 21)
