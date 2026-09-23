@@ -190,7 +190,7 @@ def theater_cycle() -> dict:
     保存時は投稿状態="未判定"のまま（docs/feature/theater-release-calendar-spec.md 17.のTODO参照）。
     """
     sheets = NewsBotSheets()
-    start, end = theater_calendar.week_range(date.today())
+    start, end = theater_calendar.week_range(manual_week.jst_today())
     sources = sheets.get_active_theater_sources()
     existing_keys = sheets.get_existing_theater_keys()
 
@@ -337,7 +337,7 @@ def theater_discover_cycle() -> dict:
     対象は next_week_range()（翌週金曜〜その翌木曜）。ルーティンと同じ週を拾わないと
     フォールバックにならないため、ルーティン側の対象期間に合わせている。
     """
-    start, end = theater_calendar.next_week_range(date.today())
+    start, end = theater_calendar.next_week_range(manual_week.jst_today())
     entries = discover_theater.discover_all(start, end)
     return _save_theater_entries(entries, start, end, "theater_discover_cycle")
 
@@ -366,7 +366,7 @@ def theater_import_cycle(target_start: date | None = None) -> dict:
         manual_week.routine_range(
             [entry.release_date for entry in entries],
             "theater",
-            theater_calendar.next_week_range(date.today()),
+            theater_calendar.next_week_range(manual_week.jst_today()),
         ),
     )
     return _save_theater_entries(entries, start, end, "theater_import_cycle")
@@ -438,7 +438,7 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
     """
     sheets = NewsBotSheets()
     start, end = manual_week.resolve_range(
-        target_start, "theater", theater_calendar.week_range(date.today())
+        target_start, "theater", theater_calendar.week_range(manual_week.jst_today())
     )
     items = sheets.get_approved_theater_items(start, end)
     stats = {"target": len(items), "posted": 0, "notified": 0}
@@ -499,7 +499,7 @@ def vod_discover_cycle() -> dict:
     """
     ai_entries: list = []
     try:
-        start_tmp, end_tmp = vod_calendar.next_week_range(date.today())
+        start_tmp, end_tmp = vod_calendar.next_week_range(manual_week.jst_today())
         ai_entries = discover_vod.discover_all(start_tmp, end_tmp)
     except Exception:
         logger.exception("VOD AI Web検索失敗")
@@ -550,7 +550,9 @@ def _save_vod_entries(
     start, end = manual_week.resolve_range(
         target_start,
         "vod",
-        automatic_range if automatic_range is not None else vod_calendar.next_week_range(date.today()),
+        automatic_range
+        if automatic_range is not None
+        else vod_calendar.next_week_range(manual_week.jst_today()),
     )
     existing_keys = sheets.get_existing_vod_keys()
 
@@ -637,7 +639,7 @@ def vod_import_cycle(target_start: date | None = None) -> dict:
     automatic_range = manual_week.routine_range(
         [entry.available_from for entry in entries],
         "vod",
-        vod_calendar.next_week_range(date.today()),
+        vod_calendar.next_week_range(manual_week.jst_today()),
     )
     return _save_vod_entries(entries, "vod_import_cycle", target_start, automatic_range)
 
@@ -687,7 +689,7 @@ def vod_publish_cycle(target_start: date | None = None) -> dict:
     """
     sheets = NewsBotSheets()
     start, end = manual_week.resolve_range(
-        target_start, "vod", vod_calendar.current_week_range(date.today())
+        target_start, "vod", vod_calendar.current_week_range(manual_week.jst_today())
     )
     items = sheets.get_approved_vod_items(start, end)
     stats = {"target": len(items), "posted": 0, "notified": 0}

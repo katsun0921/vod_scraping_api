@@ -11,13 +11,28 @@
 import logging
 import re
 from collections import Counter
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
 _START_WEEKDAYS = {"theater": 4, "vod": 0}
 _KIND_LABELS = {"theater": "劇場", "vod": "VOD"}
 _WEEKDAY_LABELS = {"theater": "金曜日", "vod": "月曜日"}
+_JST = ZoneInfo("Asia/Tokyo")
+
+
+def jst_today() -> date:
+    """JSTでの「今日」を返す。
+
+    GitHub Actionsのcronランナーは UTC で動くが、cronは 07:00 JST 起点で組んでいる。
+    07:00 JST は 22:00 UTC（前日）にあたるため、date.today() をそのまま週範囲計算の
+    基準日に使うとUTC/JSTの日付境界をまたいだ分だけずれる。vod_publish_cycleの
+    current_week_range()（月曜始まり）ではこれが丸ごと1週間分のずれとして表面化した
+    （2026-09-21実行分: 2026-09-21週を処理すべきところ2026-09-14週になり対象0件で
+    完了扱いになった）。週範囲計算の基準日はここで揃える。
+    """
+    return datetime.now(_JST).date()
 
 
 def parse_target_start(raw: str | None, kind: str) -> date | None:
