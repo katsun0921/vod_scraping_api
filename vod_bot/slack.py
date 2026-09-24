@@ -6,6 +6,7 @@
 
 import logging
 import os
+from typing import Optional
 
 import requests
 
@@ -134,13 +135,19 @@ def _format_theater_item(item: dict, weeks: int) -> str:
     line = f"<{url}|{title}>" if url else title
 
     reason = item.get("reason", "")
+    days = item.get("elapsed_days")
+    release_date = item.get("release_date") or ""
+    elapsed = f"公開から{days // 7}週間経過" if isinstance(days, int) else f"公開から{weeks}週間以上経過"
+    dated = f"{elapsed}（{release_date}）" if release_date else elapsed
+
     if reason == "url_gone":
         detail = "劇場URLが404/410"
     elif reason == "expired":
-        days = item.get("elapsed_days")
-        release_date = item.get("release_date") or ""
-        elapsed = f"公開から{days // 7}週間経過" if isinstance(days, int) else f"公開から{weeks}週間以上経過"
-        detail = f"{elapsed}（{release_date}）" if release_date else elapsed
+        detail = f"{dated} ｜ 劇場URL未登録のため確認できず"
+    elif reason == "url_alive_extended":
+        detail = f"{dated} ｜ 劇場URLは生存（ロングラン継続中）"
+    elif reason == "url_uncheckable":
+        detail = f"{dated} ｜ 劇場URLを確認できず（翌週に再チェック）"
     else:
         detail = "公開日・劇場URLが未入力で判定できず"
 
@@ -151,23 +158,35 @@ def _format_theater_item(item: dict, weeks: int) -> str:
     return line
 
 
-def notify_theater_showing_result(ended: list[dict], unknown: list[dict], weeks: int) -> None:
+def notify_theater_showing_result(
+    ended: list[dict],
+    unknown: list[dict],
+    weeks: int,
+    longrun: Optional[list[dict]] = None,
+) -> None:
     """劇場公開チェックの結果を Slack に通知する。
 
-    上映終了として自動でフラグを外した記事と、判定できず据え置いた記事を
-    1通にまとめる。どちらも空の場合は通知しない。
+    上映終了として自動でフラグを外した記事・判定できず据え置いた記事・`weeks` を
+    超えてもなお上映中とみなした記事を1通にまとめる。すべて空の場合は通知しない。
+
+    ロングラン分を載せるのは、週数のしきい値を超えた作品を劇場URLの生存だけで
+    上映中に据え置くため。自動では下ろさない以上、実際に終映していないかを
+    人間が毎週確認できるようにしておく。
 
     Args:
         ended  : 上映終了と判定しフラグを OFF にした記事のリスト。
         unknown: 判定不能で据え置いた記事のリスト。
         weeks  : 上映終了とみなす経過週数。
+        longrun: weeks 超えだが劇場URLが生存していた記事のリスト。
     """
-    if not ended and not unknown:
+    longrun = longrun or []
+    if not ended and not unknown and not longrun:
         logger.info("Slack 通知スキップ: 劇場公開チェックの報告対象なし")
         return
 
     lines = [
-        f":performing_arts: *劇場公開の週次チェック* — 上映終了 {len(ended)}件 / 判定不能 {len(unknown)}件"
+        f":performing_arts: *劇場公開の週次チェック* — 上映終了 {len(ended)}件"
+        f" / 判定不能 {len(unknown)}件 / ロングラン {len(longrun)}件"
     ]
 
     if ended:
@@ -182,5 +201,14 @@ def notify_theater_showing_result(ended: list[dict], unknown: list[dict], weeks:
         for item in unknown:
             lines.append(f"  • {_format_theater_item(item, weeks)}")
 
+    if longrun:
+        lines.append("")
+        lines.append(f"*ロングラン継続中（{weeks}週超・フラグはそのまま）*")
+        for item in longrun:
+            lines.append(f"  • {_format_theater_item(item, weeks)}")
+
     _post({"text": "\n".join(lines)})
-    logger.info("Slack 通知送信: 劇場公開チェック 上映終了%d件 / 判定不能%d件", len(ended), len(unknown))
+    logger.info(
+        "Slack 通知送信: 劇場公開チェック 上映終了%d件 / 判定不能%d件 / ロングラン%d件",
+        len(ended), len(unknown), len(longrun),
+    )
