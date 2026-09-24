@@ -10,11 +10,18 @@ OFF にする。上映終了時にチェックを外し忘れると、フロン�
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   1. 劇場URL（`cinema_info_filed.cinema_list_filed`）へ GET
        404 / 410           → 上映終了（reason=url_gone）
-       2xx / 3xx           → 上映中
-       5xx / 429 / 接続失敗 → 判定不能（今回は据え置き）
+       2xx / 3xx           → 上映中（経過週数によらず上映中のまま）
+       5xx / 429 / 接続失敗 → 判定不能（据え置き）
   2. 劇場公開日（`release.release_date`）からの経過日数
-       SHOWING_WEEKS 週以上経過 → 上映終了（reason=expired）
+       SHOWING_WEEKS 週以上経過 かつ 劇場URLで確認できない
+         劇場URL未登録     → 上映終了（reason=expired）
+         URLを確認できない → 判定不能（reason=url_uncheckable、据え置き）
   3. 劇場URLも公開日も無い → 判定不能（reason=no_signal、据え置き）
+
+経過週数より劇場URLの生存を優先する。ヒット作はロングラン上映で SHOWING_WEEKS を
+超えても上映が続くため、週数だけで打ち切ると上映中の作品を一覧から落としてしまう。
+SHOWING_WEEKS を過ぎた作品もフラグが ON のまま残るので、終映して劇場URLが消える
+（404/410）まで毎週の実行でURLを見に行き続ける（reason=url_alive_extended）。
 
 外部の映画情報サイト（映画.com・MOVIE WALKER 等）はスクレイピングしない。
 利用規約上の判断は docs/feature/theater-sources-candidates.md のとおりで、
@@ -139,6 +146,10 @@ def check_cinema_url(url: str, session: requests.Session) -> str:
 def judge(item: dict, today: date, weeks: int, url_state: str) -> tuple[str, str]:
     """1記事の上映状況を判定する（外部アクセスなしの純粋関数）。
 
+    劇場URLの生存を経過週数より優先する。ヒット作はロングラン上映で `weeks` を
+    超えても上映が続くため、URL が生きているうちは経過週数だけで打ち切らない。
+    フラグを ON のまま残すことで、翌週以降も毎週この URL を見に行くことになる。
+
     Args:
         item     : get_theater_showing_posts() が返す記事1件。
         today    : 基準日。
@@ -153,11 +164,21 @@ def judge(item: dict, today: date, weeks: int, url_state: str) -> tuple[str, str
         return "ended", "url_gone"
 
     days = elapsed_days(item.get("release_date") or "", today)
-    if days is not None and days >= weeks * 7:
-        return "ended", "expired"
+    expired = days is not None and days >= weeks * 7
 
     if url_state == "alive":
-        return "showing", "url_alive"
+        # weeks を超えていても劇場URLが生きていればロングラン継続中とみなす
+        return "showing", "url_alive_extended" if expired else "url_alive"
+
+    # ここから url_state == "unknown"（劇場URL未登録、または 5xx/429/403/接続失敗）
+    if expired:
+        if item.get("cinema_url"):
+            # 劇場URLはあるのに確認できなかった。ロングランか終映かを判断できないため
+            # フラグは据え置き、翌週の再チェックへ回す
+            return "unknown", "url_uncheckable"
+        # 確認できる劇場URLが無いので経過週数だけで終映とみなす
+        return "ended", "expired"
+
     if days is not None:
         return "showing", "within_period"
     return "unknown", "no_signal"
@@ -224,16 +245,27 @@ def run(
         {
             "weeks": 8,
             "dry_run": false,
-            "posts": {"total": 12, "showing": 9, "ended": 2, "unknown": 1, "errors": 0},
+            "posts": {
+                "total": 12, "showing": 9, "longrun": 1,
+                "ended": 2, "unknown": 1, "errors": 0
+            },
             "ended": [
                 {
                     "id": 16233, "slug": "example-movie", "title": "作品A",
                     "reason": "expired", "release_date": "2026-06-01",
-                    "elapsed_days": 70, "cinema_url": "https://...",
+                    "elapsed_days": 70, "cinema_url": "",
                     "url": "https://katsumascore.blog/ja/movie/example-movie"
                 }
             ],
-            "unknown": []
+            "unknown": [],
+            "longrun": [
+                {
+                    "id": 16240, "slug": "long-run-movie", "title": "作品B",
+                    "reason": "url_alive_extended", "release_date": "2026-05-01",
+                    "elapsed_days": 131, "cinema_url": "https://...",
+                    "url": "https://katsumascore.blog/ja/movie/long-run-movie"
+                }
+            ]
         }
     """
     today = today or date.today()
@@ -249,9 +281,13 @@ def run(
             "weeks": weeks,
             "dry_run": dry_run,
             "error": str(e),
-            "posts": {"total": 0, "showing": 0, "ended": 0, "unknown": 0, "errors": 0},
+            "posts": {
+                "total": 0, "showing": 0, "longrun": 0,
+                "ended": 0, "unknown": 0, "errors": 0,
+            },
             "ended": [],
             "unknown": [],
+            "longrun": [],
         }
 
     targets = _select_targets(items, slug, post_id, limit)
@@ -268,6 +304,7 @@ def run(
     errors = 0
     ended_items: list[dict] = []
     unknown_items: list[dict] = []
+    longrun_items: list[dict] = []
     url_checked = 0
 
     for item in targets:
@@ -294,15 +331,32 @@ def run(
 
         if verdict == "showing":
             showing += 1
-            logger.info("上映中: post_id=%s slug=%s reason=%s", item.get("id"), item.get("slug"), reason)
+            if reason == "url_alive_extended":
+                # weeks 超えのロングラン。翌週以降も毎週URLを見に行くため人間にも知らせる
+                longrun_items.append(record)
+                logger.info(
+                    "ロングラン継続中（%d週超だが劇場URL生存）: post_id=%s slug=%s elapsed_days=%s",
+                    weeks, item.get("id"), item.get("slug"), days,
+                )
+            else:
+                logger.info(
+                    "上映中: post_id=%s slug=%s reason=%s",
+                    item.get("id"), item.get("slug"), reason,
+                )
             continue
 
         if verdict == "unknown":
             unknown_items.append(record)
-            logger.warning(
-                "判定不能（据え置き）: post_id=%s slug=%s（公開日が未入力で劇場URLも判定できない）",
-                item.get("id"), item.get("slug"),
-            )
+            if reason == "url_uncheckable":
+                logger.warning(
+                    "判定不能（据え置き）: post_id=%s slug=%s（%d週超だが劇場URLを確認できず）",
+                    item.get("id"), item.get("slug"), weeks,
+                )
+            else:
+                logger.warning(
+                    "判定不能（据え置き）: post_id=%s slug=%s（公開日が未入力で劇場URLも判定できない）",
+                    item.get("id"), item.get("slug"),
+                )
             continue
 
         # verdict == "ended"
@@ -336,18 +390,20 @@ def run(
         "posts": {
             "total": len(targets),
             "showing": showing,
+            "longrun": len(longrun_items),
             "ended": len(ended_items),
             "unknown": len(unknown_items),
             "errors": errors,
         },
         "ended": ended_items,
         "unknown": unknown_items,
+        "longrun": longrun_items,
     }
 
     if dry_run:
         logger.info("[dry-run] Slack 通知はスキップ: %s", result["posts"])
     else:
-        notify_theater_showing_result(ended_items, unknown_items, weeks)
+        notify_theater_showing_result(ended_items, unknown_items, weeks, longrun_items)
 
     logger.info("劇場公開チェック完了: %s", result["posts"])
     return result

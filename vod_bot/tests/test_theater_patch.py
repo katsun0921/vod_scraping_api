@@ -131,9 +131,15 @@ class TestJudge:
         item = _item(release_date="2026-09-01")
         assert judge(item, TODAY, 8, "gone") == ("ended", "url_gone")
 
-    def test_公開から8週間経過で上映終了(self):
-        item = _item(release_date="2026-07-14")  # 56日前
-        assert judge(item, TODAY, 8, "alive") == ("ended", "expired")
+    def test_8週間経過でも劇場URLが生きていれば上映中(self):
+        # ヒット作はロングラン上映で8週を超えるため、週数だけで打ち切らない
+        item = _item(release_date="2026-07-14", cinema_url="https://example.com/a")  # 56日前
+        assert judge(item, TODAY, 8, "alive") == ("showing", "url_alive_extended")
+
+    def test_ロングラン作品も劇場URLが404になれば上映終了(self):
+        # 8週超で据え置いた作品は、URLが消えた週に初めてOFFになる
+        item = _item(release_date="2026-06-01", cinema_url="https://example.com/a")  # 99日前
+        assert judge(item, TODAY, 8, "gone") == ("ended", "url_gone")
 
     def test_8週間未満なら上映中(self):
         item = _item(release_date="2026-07-15")  # 55日前
@@ -142,6 +148,16 @@ class TestJudge:
     def test_しきい値を変更できる(self):
         item = _item(release_date="2026-07-14")  # 56日前
         assert judge(item, TODAY, 12, "alive") == ("showing", "url_alive")
+
+    def test_8週間経過かつ劇場URL未登録なら上映終了(self):
+        # 生存を確かめる手段が無いので経過週数だけで終映とみなす
+        item = _item(release_date="2026-07-14")  # 56日前、cinema_url なし
+        assert judge(item, TODAY, 8, "unknown") == ("ended", "expired")
+
+    def test_8週間経過でも劇場URLを確認できなければ据え置く(self):
+        # 5xx/403/接続失敗。ロングランか終映かを判断できないため翌週へ回す
+        item = _item(release_date="2026-07-14", cinema_url="https://example.com/a")
+        assert judge(item, TODAY, 8, "unknown") == ("unknown", "url_uncheckable")
 
     def test_URL判定不能でも公開日が範囲内なら上映中(self):
         item = _item(release_date="2026-09-01")
@@ -201,7 +217,9 @@ def patched_run(monkeypatch):
     monkeypatch.setattr(
         theater_patch,
         "notify_theater_showing_result",
-        lambda ended, unknown, weeks: state["notified"].append((ended, unknown, weeks)),
+        lambda ended, unknown, weeks, longrun=None: state["notified"].append(
+            (ended, unknown, weeks, longrun)
+        ),
     )
     monkeypatch.setattr(
         theater_patch.requests, "Session", lambda: _FakeSession(state["responses"])
@@ -219,7 +237,9 @@ class TestRun:
         result = run(today=TODAY)
 
         assert patched_run["patched"] == [(1, False)]
-        assert result["posts"] == {"total": 2, "showing": 1, "ended": 1, "unknown": 0, "errors": 0}
+        assert result["posts"] == {
+            "total": 2, "showing": 1, "longrun": 0, "ended": 1, "unknown": 0, "errors": 0,
+        }
         assert result["ended"][0]["slug"] == "ended-movie"
         assert result["ended"][0]["reason"] == "expired"
         assert result["ended"][0]["url"] == "https://katsumascore.blog/ja/movie/ended-movie"
@@ -233,6 +253,34 @@ class TestRun:
 
         assert patched_run["patched"] == [(3, False)]
         assert result["ended"][0]["reason"] == "url_gone"
+
+    def test_8週超でも劇場URLが生きていればOFFにせずロングランとして報告する(self, patched_run):
+        patched_run["items"] = [
+            _item(post_id=7, slug="long-run", release_date="2026-06-01",  # 99日前
+                  cinema_url="https://example.com/alive"),
+        ]
+        patched_run["responses"] = {"https://example.com/alive": 200}
+        result = run(today=TODAY)
+
+        assert patched_run["patched"] == []
+        assert result["posts"]["showing"] == 1
+        assert result["posts"]["longrun"] == 1
+        assert result["posts"]["ended"] == 0
+        assert result["longrun"][0]["reason"] == "url_alive_extended"
+        # Slack へもロングラン分を渡す（毎週の目視確認用）
+        assert patched_run["notified"][0][3] == result["longrun"]
+
+    def test_8週超で劇場URLを確認できなければ据え置く(self, patched_run):
+        patched_run["items"] = [
+            _item(post_id=8, slug="unreachable", release_date="2026-06-01",
+                  cinema_url="https://example.com/down"),
+        ]
+        patched_run["responses"] = {"https://example.com/down": 503}
+        result = run(today=TODAY)
+
+        assert patched_run["patched"] == []
+        assert result["posts"]["unknown"] == 1
+        assert result["unknown"][0]["reason"] == "url_uncheckable"
 
     def test_判定不能は据え置く(self, patched_run):
         patched_run["items"] = [_item(post_id=4)]
@@ -258,7 +306,9 @@ class TestRun:
         patched_run["items"] = [_item(post_id=6, release_date="2026-06-01")]
         result = run(today=TODAY)
 
-        assert result["posts"] == {"total": 1, "showing": 0, "ended": 0, "unknown": 0, "errors": 1}
+        assert result["posts"] == {
+            "total": 1, "showing": 0, "longrun": 0, "ended": 0, "unknown": 0, "errors": 1,
+        }
 
     def test_一覧取得に失敗したら何も更新しない(self, patched_run, monkeypatch):
         def _boom():

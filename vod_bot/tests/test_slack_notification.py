@@ -119,7 +119,49 @@ def test_theater_notify_lists_ended_and_unknown(sent):
     )
     text = sent[0]["text"]
 
-    assert "上映終了 2件 / 判定不能 1件" in text
-    assert f"<{_FRONT_BASE_URL}/ja/movie/sakuhin-a|作品A> ｜ 公開から14週間経過（2026-06-01）" in text
+    assert "上映終了 2件 / 判定不能 1件 / ロングラン 0件" in text
+    assert (
+        f"<{_FRONT_BASE_URL}/ja/movie/sakuhin-a|作品A>"
+        " ｜ 公開から14週間経過（2026-06-01） ｜ 劇場URL未登録のため確認できず"
+    ) in text
     assert "作品B> ｜ 劇場URLが404/410 ｜ <https://example.com/theater-b|劇場ページ>" in text
     assert "作品C> ｜ 公開日・劇場URLが未入力で判定できず" in text
+
+
+def test_theater_notify_lists_longrun(sent):
+    # 8週超でも劇場URLが生きている作品は OFF にせず、毎週の目視確認用に載せる
+    slack.notify_theater_showing_result(
+        ended=[],
+        unknown=[
+            {
+                "title": "作品E",
+                "url": f"{_FRONT_BASE_URL}/ja/movie/sakuhin-e",
+                "reason": "url_uncheckable",
+                "release_date": "2026-06-01",
+                "elapsed_days": 99,
+                "cinema_url": "https://example.com/theater-e",
+            },
+        ],
+        weeks=8,
+        longrun=[
+            {
+                "title": "作品D",
+                "url": f"{_FRONT_BASE_URL}/ja/movie/sakuhin-d",
+                "reason": "url_alive_extended",
+                "release_date": "2026-06-01",
+                "elapsed_days": 99,
+                "cinema_url": "https://example.com/theater-d",
+            },
+        ],
+    )
+    text = sent[0]["text"]
+
+    assert "上映終了 0件 / 判定不能 1件 / ロングラン 1件" in text
+    assert "*ロングラン継続中（8週超・フラグはそのまま）*" in text
+    assert (
+        "作品D> ｜ 公開から14週間経過（2026-06-01） ｜ 劇場URLは生存（ロングラン継続中）"
+        " ｜ <https://example.com/theater-d|劇場ページ>"
+    ) in text
+    assert (
+        "作品E> ｜ 公開から14週間経過（2026-06-01） ｜ 劇場URLを確認できず（翌週に再チェック）"
+    ) in text
