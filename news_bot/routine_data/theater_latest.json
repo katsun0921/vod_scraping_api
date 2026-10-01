@@ -1,44 +1,68 @@
 [
   {
-    "title": "ファーストボイス ー私たちの逆転裁判ー",
-    "release_date": "2026-10-02",
-    "distributor": "松竹/ワーナー・ブラザース映画",
-    "official_url": "https://movies.shochiku.co.jp/firstvoicemovie/"
+    "title": "汝、星のごとく",
+    "release_date": "2026-10-09",
+    "distributor": "東宝",
+    "official_url": "https://nanji.toho-movie.jp/"
   },
   {
-    "title": "ママがもうこの世界にいなくても 私の命の日記",
-    "release_date": "2026-10-02",
-    "distributor": "東映",
-    "official_url": "https://www.mamaseka-movie.com/"
+    "title": "バイオハザード",
+    "release_date": "2026-10-09",
+    "distributor": "ソニー・ピクチャーズ エンタテインメント",
+    "official_url": ""
   },
   {
-    "title": "愛し合ってるかい？ 忌野清志郎が教えてくれた",
-    "release_date": "2026-10-02",
-    "distributor": "東映ビデオ",
-    "official_url": "https://www.toei-video.co.jp/kiyoshiro-movie/"
+    "title": "DIGGER／ディガー",
+    "release_date": "2026-10-09",
+    "distributor": "東和ピクチャーズ/東宝",
+    "official_url": ""
   },
   {
-    "title": "時給三〇〇円の死神",
-    "release_date": "2026-10-02",
-    "distributor": "ソニー・ピクチャーズエンタテインメント/ギャガ",
-    "official_url": "https://gaga.ne.jp/jikyu-300movie/"
+    "title": "どこよりも遠い場所にいる君へ",
+    "release_date": "2026-10-09",
+    "distributor": "松竹",
+    "official_url": "https://sh-anime.shochiku.co.jp/dokokimi-movie/"
   },
   {
-    "title": "キリコのタクト～YELL～",
-    "release_date": "2026-10-02",
-    "distributor": "KeyHolder Pictures",
-    "official_url": "https://surf-entertainment.com/kiriko.html"
+    "title": "ガールズ＆パンツァー 最終章 第5話",
+    "release_date": "2026-10-09",
+    "distributor": "",
+    "official_url": "https://girls-und-panzer-finale.jp/"
   },
   {
-    "title": "プーチンの愛国教室",
-    "release_date": "2026-10-03",
-    "distributor": "トランスフォーマー",
-    "official_url": "https://transformer.co.jp/movie/mrnobody/"
+    "title": "遥かな町へ",
+    "release_date": "2026-10-09",
+    "distributor": "ムービー・アクト・プロジェクト",
+    "official_url": ""
   },
   {
-    "title": "クイーン：ブダペスト",
-    "release_date": "2026-10-07",
-    "distributor": "カルチャヴィル",
-    "official_url": "https://www.culture-ville.jp/queen"
+    "title": "サクラマスのラストワルツ",
+    "release_date": "2026-10-09",
+    "distributor": "Whole Universe",
+    "official_url": "https://trout-lastwaltz.com/"
+  },
+  {
+    "title": "The Ozu Diaries／小津ダイアリー",
+    "release_date": "2026-10-09",
+    "distributor": "",
+    "official_url": ""
+  },
+  {
+    "title": "エヴィレンコ",
+    "release_date": "2026-10-09",
+    "distributor": "アンプラグド",
+    "official_url": ""
+  },
+  {
+    "title": "遠近を抱えた女 完全版",
+    "release_date": "2026-10-09",
+    "distributor": "リタピクチャル",
+    "official_url": "https://www.enkin-cinema.com/"
+  },
+  {
+    "title": "東京上空300メートル",
+    "release_date": "2026-10-10",
+    "distributor": "",
+    "official_url": ""
   }
 ]
