@@ -1,68 +1,15 @@
 [
-  {
-    "title": "汝、星のごとく",
-    "release_date": "2026-10-09",
-    "distributor": "東宝",
-    "official_url": "https://nanji.toho-movie.jp/"
-  },
-  {
-    "title": "バイオハザード",
-    "release_date": "2026-10-09",
-    "distributor": "ソニー・ピクチャーズ エンタテインメント",
-    "official_url": ""
-  },
-  {
-    "title": "DIGGER／ディガー",
-    "release_date": "2026-10-09",
-    "distributor": "東和ピクチャーズ/東宝",
-    "official_url": ""
-  },
-  {
-    "title": "どこよりも遠い場所にいる君へ",
-    "release_date": "2026-10-09",
-    "distributor": "松竹",
-    "official_url": "https://sh-anime.shochiku.co.jp/dokokimi-movie/"
-  },
-  {
-    "title": "ガールズ＆パンツァー 最終章 第5話",
-    "release_date": "2026-10-09",
-    "distributor": "",
-    "official_url": "https://girls-und-panzer-finale.jp/"
-  },
-  {
-    "title": "遥かな町へ",
-    "release_date": "2026-10-09",
-    "distributor": "ムービー・アクト・プロジェクト",
-    "official_url": ""
-  },
-  {
-    "title": "サクラマスのラストワルツ",
-    "release_date": "2026-10-09",
-    "distributor": "Whole Universe",
-    "official_url": "https://trout-lastwaltz.com/"
-  },
-  {
-    "title": "The Ozu Diaries／小津ダイアリー",
-    "release_date": "2026-10-09",
-    "distributor": "",
-    "official_url": ""
-  },
-  {
-    "title": "エヴィレンコ",
-    "release_date": "2026-10-09",
-    "distributor": "アンプラグド",
-    "official_url": ""
-  },
-  {
-    "title": "遠近を抱えた女 完全版",
-    "release_date": "2026-10-09",
-    "distributor": "リタピクチャル",
-    "official_url": "https://www.enkin-cinema.com/"
-  },
-  {
-    "title": "東京上空300メートル",
-    "release_date": "2026-10-10",
-    "distributor": "",
-    "official_url": ""
-  }
+  {"title": "mentor", "release_date": "2026-10-16", "distributor": "", "official_url": "https://www.mentor-movie.jp/"},
+  {"title": "わたしの知らない子どもたち", "release_date": "2026-10-16", "distributor": "K2 Pictures", "official_url": "https://k2pic.com/film/wsk"},
+  {"title": "クジラに落ちた男", "release_date": "2026-10-16", "distributor": "ウォルト・ディズニー・ジャパン", "official_url": "https://www.20thcenturystudios.jp/movies/whalefall"},
+  {"title": "ストリートファイター／ザ・ムービー", "release_date": "2026-10-16", "distributor": "東和ピクチャーズ/東宝", "official_url": ""},
+  {"title": "BanG Dream! Ave Mujica prima aurora", "release_date": "2026-10-16", "distributor": "ブシロード", "official_url": "https://avemujica-movie.bang-dream.com"},
+  {"title": "青春ブタ野郎はディアフレンドの夢を見ない", "release_date": "2026-10-16", "distributor": "ANIMEC", "official_url": ""},
+  {"title": "ハイファイブ！", "release_date": "2026-10-16", "distributor": "クロックワークス", "official_url": ""},
+  {"title": "真実と反逆～ナチスと闘った若きレジスタンス～", "release_date": "2026-10-16", "distributor": "ハーク", "official_url": "https://hark3.com/truth/"},
+  {"title": "演歌の坂道", "release_date": "2026-10-16", "distributor": "LUDIQUE/MinyMixCreati部", "official_url": "https://enkanosakamichi.com/"},
+  {"title": "呪区", "release_date": "2026-10-16", "distributor": "「呪区」フィルムパートナーズ", "official_url": "https://atemo.co.jp/juku/"},
+  {"title": "ごじゃっぺタクシー", "release_date": "2026-10-17", "distributor": "リアリーライクフィルムズ", "official_url": "https://gojyappe-taxi.com/"},
+  {"title": "愛しのサキュバス", "release_date": "2026-10-17", "distributor": "", "official_url": ""},
+  {"title": "ワンカモ", "release_date": "2026-10-17", "distributor": "SPOTTED PRODUCTIONS", "official_url": ""}
 ]
