@@ -11,6 +11,19 @@ on:
     paths-ignore:
       - "news_bot/**"
       - "docs/**"
+  # Dependabot の自動マージ後に dependabot-auto-merge.yml から起動される
+  # （GITHUB_TOKEN によるマージでは push のワークフローが起動しないため）。
+  # 手動での再デプロイにも使う。
+  workflow_dispatch:
+  # ベースイメージ（python:3.11-slim）の Python・OS パッチを取り込むため、
+  # コード変更がなくても毎月1日 03:00 JST に再ビルド・再デプロイする。
+  schedule:
+    - cron: "0 18 1 * *"
+
+# 自動マージが続いた場合などにデプロイが並行しないようにする
+concurrency:
+  group: deploy-cloud-run
+  cancel-in-progress: false
 
 jobs:
   test:

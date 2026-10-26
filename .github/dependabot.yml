@@ -1,0 +1,39 @@
+version: 2
+
+# 毎週月曜 09:00 JST に依存を確認する。
+# パッチ・マイナー更新は1つの PR にまとめ、テストが通れば dependabot-auto-merge.yml が自動でマージする。
+# メジャー更新は個別の PR になり、自動マージしない（内容を確認して手動でマージする）。
+
+updates:
+  - package-ecosystem: "pip"
+    directories:
+      - "/vod_bot"
+      - "/news_bot"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Tokyo"
+    groups:
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "chore"

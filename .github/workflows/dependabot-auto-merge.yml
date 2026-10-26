@@ -1,0 +1,60 @@
+name: Dependabot auto-merge
+
+# Dependabot の PR を、テスト（test.yml）が通りメジャー更新でなければ自動でマージする。
+# vod_bot / utils に影響する更新なら、マージ後に Cloud Run へのデプロイ（deploy.yml）を起動する。
+# news_bot だけの更新は deploy.yml の paths-ignore と同じ考え方でデプロイしない。
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    uses: ./.github/workflows/test.yml
+
+  auto-merge:
+    needs: test
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - name: Dependabot のメタデータを取得
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cloud Run の再デプロイが必要か判定
+        id: scope
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
+          echo "$files"
+          if echo "$files" | grep -qE '^(vod_bot|utils)/'; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: パッチ・マイナー更新ならマージ
+        id: merge
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge "$PR_URL" --merge --delete-branch
+
+      - name: Cloud Run へデプロイ
+        if: steps.merge.outcome == 'success' && steps.scope.outputs.deploy == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy.yml --ref main --repo "$GITHUB_REPOSITORY"
