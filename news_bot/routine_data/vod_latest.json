@@ -1,1 +1,38 @@
-[]
+[
+  {
+    "title": "Bass X Machina: バス X マキナ",
+    "title_orig": "Bass X Machina",
+    "service": "netflix",
+    "available_from": "2026-11-03",
+    "availability_type": "独占",
+    "category": "アニメ",
+    "url": "https://www.netflix.com/jp/title/81088875"
+  },
+  {
+    "title": "余命一年、男をかう",
+    "title_orig": "One Year to Live, Buy a Man",
+    "service": "netflix",
+    "available_from": "2026-11-05",
+    "availability_type": "独占",
+    "category": "映画",
+    "url": "https://www.netflix.com/jp/title/81505776"
+  },
+  {
+    "title": "ブラック・ダヴ: シーズン2",
+    "title_orig": "Black Doves",
+    "service": "netflix",
+    "available_from": "2026-11-05",
+    "availability_type": "独占",
+    "category": "ドラマ",
+    "url": "https://www.netflix.com/title/81682935"
+  },
+  {
+    "title": "もしもの愛",
+    "title_orig": "Possible Love",
+    "service": "netflix",
+    "available_from": "2026-11-06",
+    "availability_type": "見放題",
+    "category": "映画",
+    "url": "https://www.netflix.com/jp/title/82106490"
+  }
+]
