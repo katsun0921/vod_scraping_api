@@ -4,5 +4,5 @@ beautifulsoup4==4.15.0
 gspread==6.2.1
 google-auth==2.62.0
 anthropic==2.2.0
-openai==2.45.0
+openai==3.37.0
 tweepy==4.17.0
