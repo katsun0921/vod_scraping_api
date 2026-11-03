@@ -117,7 +117,7 @@ PROVIDERS = {
 }
 
 # WordPress
-WP_API_BASE = os.environ["WP_API_BASE"]   # https://katsumascore.conohawing.com
+WP_API_BASE = os.environ["WP_API_BASE"]   # https://cms.katsumascore.blog
 WP_APP_USER = os.environ["WP_APP_USER"]
 WP_APP_PASS = os.environ["WP_APP_PASS"]
 
@@ -343,7 +343,7 @@ jobs:
 | Secret | 値 |
 |---|---|
 | `TMDB_API_KEY` | TMDb API キー |
-| `WP_API_BASE` | `https://katsumascore.conohawing.com` |
+| `WP_API_BASE` | `https://cms.katsumascore.blog` |
 | `WP_APP_USER` | WordPress Application Password ユーザー名 |
 | `WP_APP_PASS` | WordPress Application Password |
 | `STORAGE_DEST` | R2 バケット名 or GCS バケット URL（確定後） |
@@ -452,6 +452,6 @@ add_filter( 'rest_post_query', function( $args, $request ) {
 
 動作確認URL:
 ```
-https://katsumascore.conohawing.com/wp-json/wp/v2/posts
+https://cms.katsumascore.blog/wp-json/wp/v2/posts
   ?coming_soon_active=1&acf_format=standard&per_page=5
 ```
