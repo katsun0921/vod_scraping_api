@@ -1,25 +1,31 @@
-"""週範囲計算・重複キー生成（VOD配信情報収集パイプライン専用）。
+"""対象期間・重複キー生成（VOD配信情報収集パイプライン専用）。
 
 仕様書 6.（取得対象期間）/ 9.（重複判定）: `docs/feature/vod-release-calendar-spec.md`
 
-タイトル正規化・期間内判定は theater_calendar.py のロジックをそのまま流用する
-（仕様書9.: 「theater仕様9.の正規化ルールを流用」）。VOD固有なのは週範囲の
-計算方法（金曜始まりではなく月曜始まり）と、重複判定キーにサービスを含める点。
+タイトル正規化・期間内判定・対象期間（暦月）の計算は theater_calendar.py のロジックを
+そのまま流用する（仕様書9.: 「theater仕様9.の正規化ルールを流用」）。以前は週次公開で
+VODだけ月曜始まりの週を使っていたが、月次公開へ移行して劇場と同じ暦月区切りになった。
+VOD固有なのは重複判定キーにサービスを含める点。
 """
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 
-from news_bot.theater_calendar import in_range, normalize_title
+from news_bot.theater_calendar import (
+    in_range,
+    month_range,
+    next_month_range,
+    normalize_title,
+)
 
 __all__ = [
-    "next_week_range",
-    "current_week_range",
-    "normalize_title",
-    "in_range",
-    "dedupe_key",
     "SERVICES",
     "VodEntry",
+    "dedupe_key",
+    "in_range",
+    "month_range",
+    "next_month_range",
+    "normalize_title",
 ]
 
 # 対象サービス（仕様書6.）。キーは vod_bot/wordpress.py の VOD_TERM_IDS と揃えた命名規則。
@@ -49,21 +55,6 @@ class VodEntry:
     availability_type: str = ""  # 見放題・レンタル・購入・独占 等
     url: str = ""
     category: str = ""  # 映画・ドラマ・アニメ
-
-
-def next_week_range(today: date) -> tuple[date, date]:
-    """翌週月曜〜日曜を返す（`vod_discover`の対象期間、仕様書6.）。"""
-    days_until_next_monday = 7 - today.weekday()
-    start = today + timedelta(days=days_until_next_monday)
-    end = start + timedelta(days=6)
-    return start, end
-
-
-def current_week_range(today: date) -> tuple[date, date]:
-    """当週月曜〜日曜を返す（`vod_publish`の対象期間、仕様書6.）。"""
-    start = today - timedelta(days=today.weekday())
-    end = start + timedelta(days=6)
-    return start, end
 
 
 def dedupe_key(release_date: str, service: str, title: str) -> str:

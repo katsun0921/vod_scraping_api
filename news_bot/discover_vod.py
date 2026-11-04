@@ -2,7 +2,7 @@
 
 discover_theater.pyと同じ設計思想: 特定VODサービス公式サイトの自動取得はすべて
 規約上不採用のため（docs/feature/vod-sources-candidates.md B節）、Claude/OpenAIの
-Web検索サーバーツールで対象週の配信開始作品を調べさせ、事実情報のみを構造化して返す。
+Web検索サーバーツールで対象期間（対象月）の配信開始作品を調べさせ、事実情報のみを構造化して返す。
 
 - 保存するのは事実情報のみ（タイトル・原題・サービス・配信開始日・配信種別・公式URL）。
   あらすじ等の表現は保存しない
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 _ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 _OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 _MAX_TOKENS = 8192
-_MAX_WEB_SEARCHES = 8  # 週次1回の実行なので検索回数を絞ってコストを抑える
+_MAX_WEB_SEARCHES = 8  # 隔週1回・1ヶ月分の実行だが検索回数を絞ってコストを抑える
 _MAX_CONTINUATIONS = 3  # サーバー側ツールのpause_turn継続上限
 
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
@@ -116,7 +116,7 @@ def _parse_entries(text: str, source: str) -> list[VodEntry]:
 
 
 def discover_claude(start: date, end: date) -> list[VodEntry]:
-    """Claude APIのWeb検索サーバーツールで対象週の配信開始作品を調べる。
+    """Claude APIのWeb検索サーバーツールで対象期間（対象月）の配信開始作品を調べる。
 
     サーバー側ツールはstop_reason="pause_turn"で中断されることがあるため、
     その場合はassistant応答を積んで再送し継続する（discover_theater.pyと同型）。
@@ -149,7 +149,7 @@ def discover_claude(start: date, end: date) -> list[VodEntry]:
 
 
 def discover_openai(start: date, end: date) -> list[VodEntry]:
-    """OpenAI Responses APIのweb_searchツールで対象週の配信開始作品を調べる。"""
+    """OpenAI Responses APIのweb_searchツールで対象期間（対象月）の配信開始作品を調べる。"""
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     response = client.responses.create(
         model=_OPENAI_MODEL,

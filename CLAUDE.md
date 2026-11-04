@@ -35,10 +35,10 @@ vod_scraping_api/
 ├── news_bot/                  # 情報収集・記事化（GitHub Actions）
 │   ├── main.py                # 全サイクルのエントリーポイント（サブコマンド方式）
 │   ├── import_routine.py      # ルーティン成果物JSONの読み込み
-│   ├── routine_data/          # ルーティンが週次で上書きコミットする成果物
+│   ├── routine_data/          # ルーティンが隔週で上書きコミットする成果物
 │   ├── compose_theater.py     # 劇場公開まとめ本文・SNS投稿案の生成
 │   ├── compose_vod.py         # VOD配信まとめ本文・Xスレッド案の生成
-│   ├── theater_calendar.py    # 週範囲計算・正規化・重複キー + TheaterEntry
+│   ├── theater_calendar.py    # 対象月計算・正規化・重複キー + TheaterEntry
 │   ├── vod_calendar.py        # 同上（VOD）+ SERVICES / VodEntry
 │   ├── wp_client.py           # WP REST API クライアント（CPT投稿・既存記事照合）
 │   ├── sheets.py              # Google Sheets I/O（gspread）
@@ -80,10 +80,13 @@ vod_scraping_api/
 | | 劇場公開 | VOD配信 |
 |---|---|---|
 | 取り込み | `theater_import` | `vod_import`（+ X公式アカウント抽出） |
-| 公開 | `theater_publish`（月 07:00 JST） | `vod_publish`（月 07:00 JST） |
+| 公開 | `theater_publish`（毎月1日 07:00 JST・当月分） | `vod_publish`（毎月1日 07:00 JST・当月分） |
 | CPT | `theater_release` | `vod_release` |
-| 区切り方 | 公開日別 | サービス別 |
+| 区切り方 | 暦月（1日〜末日）を公開日別 | 暦月（1日〜末日）をサービス別 |
 
+- **公開は月1回、収集は隔週。** ルーティンは隔週で「実行日の翌月」分を集め、`*_publish` は
+  毎月1日に当月（1日〜末日）の承認済み行を1記事にまとめる。cronは28〜31日 22:00 UTC に起動し、
+  JSTで1日のときだけ実行する（UTCのcronで月初JSTを指定できないため）
 - **ルーティンはAIからは設定・起動できない。** `/schedule` から人間が設定する
   （プロンプトは [docs/feature/routine-prompts.md](docs/feature/routine-prompts.md)）
 - `*_discover`（AI API方式）は cron 停止済みだがコードは残す。ルーティンが止まった際の
@@ -102,7 +105,7 @@ vod_scraping_api/
 | Web フレームワーク | Flask + gunicorn（`vod_bot`） |
 | スクレイピング | requests + BeautifulSoup / Playwright（U-NEXT / DMM TV / Crunchyroll） |
 | データストア | Google Sheets（`news_bot` の情報源・収集データ管理、gspread） |
-| AI | Claude API（判定・抽出）/ Claudeルーティン（週次のWeb検索） |
+| AI | Claude API（判定・抽出）/ Claudeルーティン（隔週のWeb検索・翌月分） |
 | 認証（GCP） | Workload Identity Federation（SA キー不要） |
 | CI/CD | GitHub Actions（main push → Cloud Run 自動デプロイ） |
 
@@ -142,7 +145,7 @@ vod_scraping_api/
 |---|---|---|
 | `承認待ち` | 発見直後。人間の確認前 | `*_import` / `*_discover` |
 | `承認済み` | 人間が実在・日付を確認した | 人間（シート上で手動） |
-| `投稿済み` | 週次まとめに掲載しWP投稿済み | `*_publish` |
+| `投稿済み` | 月次まとめに掲載しWP投稿済み | `*_publish` |
 
 > 各仕様書8.の投稿状態テーブル（`投稿候補`/`保存のみ`等）は初期設計のもので実装では使っていない。
 

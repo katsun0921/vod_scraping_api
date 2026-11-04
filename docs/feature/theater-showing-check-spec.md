@@ -14,11 +14,11 @@ ON/OFF する運用のため、**終映後にチェックを外し忘れると�
 対象は「上映中フラグが ON の記事」だけで、フラグを ON にする（＝上映開始を検知する）
 処理は行わない。ON にするのは引き続き人間の作業である。
 
-### 週次まとめ記事（`theater_release` CPT）との違い
+### 月次まとめ記事（`theater_release` CPT）との違い
 
 | | `theater_release` CPT | 本チェック |
 |---|---|---|
-| 実体 | 週次の劇場公開まとめ記事 | レビュー記事（`post`）の ACF フラグ |
+| 実体 | 月次の劇場公開まとめ記事 | レビュー記事（`post`）の ACF フラグ |
 | 担当 | `news_bot`（`theater_publish`） | `vod_bot`（`theater_patch.py`） |
 | 向き | これから公開する作品を**載せる** | 公開が終わった作品を**下ろす** |
 
@@ -224,6 +224,6 @@ curl -X POST https://<cloud-run-url>/theater-check \
 
 | ドキュメント | 内容 |
 |---|---|
-| [theater-release-calendar-spec.md](./theater-release-calendar-spec.md) | 週次の劇場公開まとめ記事（`news_bot`） |
+| [theater-release-calendar-spec.md](./theater-release-calendar-spec.md) | 月次の劇場公開まとめ記事（`news_bot`） |
 | [theater-sources-candidates.md](./theater-sources-candidates.md) | 劇場情報源の利用規約調査（外部サイトを使わない根拠） |
 | [../vod-scraping-api.md](../vod-scraping-api.md) | vod_bot の API 仕様 |

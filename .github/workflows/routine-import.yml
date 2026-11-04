@@ -23,8 +23,8 @@ on:
         options:
           - "theater_import"
           - "vod_import"
-      target_start:
-        description: "対象週の開始日 YYYY-MM-DD（劇場は金曜、VODは月曜。空欄は通常週）"
+      target_month:
+        description: "対象月 YYYY-MM（空欄は成果物の日付から自動判定）"
         required: false
         type: string
 
@@ -90,10 +90,10 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
-          TARGET_START: ${{ github.event.inputs.target_start }}
+          TARGET_MONTH: ${{ github.event.inputs.target_month }}
         run: |
           args=(theater_import)
-          [ -n "$TARGET_START" ] && args+=("$TARGET_START")
+          [ -n "$TARGET_MONTH" ] && args+=("$TARGET_MONTH")
           python -m news_bot.main "${args[@]}"
 
   vod:
@@ -129,8 +129,8 @@ jobs:
           SLACK_BOT_TOKEN: ${{ secrets.NEWS_BOT_SLACK_BOT_TOKEN }}
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           SLACK_VOD_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_VOD_CHANNEL_ID }}
-          TARGET_START: ${{ github.event.inputs.target_start }}
+          TARGET_MONTH: ${{ github.event.inputs.target_month }}
         run: |
           args=(vod_import)
-          [ -n "$TARGET_START" ] && args+=("$TARGET_START")
+          [ -n "$TARGET_MONTH" ] && args+=("$TARGET_MONTH")
           python -m news_bot.main "${args[@]}"

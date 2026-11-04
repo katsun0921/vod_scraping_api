@@ -5,16 +5,16 @@
 
 ## 1. 目的
 
-Katsumascore への流入を増やすため、毎週公開される劇場映画情報を収集し、X投稿・Slack確認・Katsumascore作品ページへの導線作成に利用する。
+Katsumascore への流入を増やすため、毎月公開される劇場映画情報を収集し、X投稿・Slack確認・Katsumascore作品ページへの導線作成に利用する。
 
 通常のニュース記事は外部メディアURLへの送客になりやすい。一方で「今週公開の映画」は、Katsumascore の作品ページ・レビュー・公開予定まとめへ直接誘導しやすく、毎週のSNS運用テーマとして再利用性が高い。
 
 ## 2. ゴール
 
-- 今週公開される劇場映画を週次で収集する
+- 翌月公開される劇場映画を隔週で収集し、毎月1日に当月分をまとめて公開する
 - 作品情報をGoogle Sheetsに構造化して保存する
 - Katsumascore内の既存作品ページと照合する
-- X投稿用の「今週公開まとめ」「注目作個別投稿案」をSlackに送る
+- X投稿用の「今月公開まとめ」「注目作個別投稿案」をSlackに送る
 - 未登録作品をKatsumascore側の追加候補として可視化する
 
 ## 3. 非ゴール
@@ -51,7 +51,7 @@ Katsumascore への流入を増やすため、毎週公開される劇場映画�
 ```bash
 python -m news_bot.main theater_import        # ルーティン成果物を取り込み（承認待ちで保存）
 python -m news_bot.main theater_resolve_approvals  # Slack承認スタンプを反映（ワンクリック承認）
-python -m news_bot.main theater_publish       # 承認済み行から週次まとめを展開
+python -m news_bot.main theater_publish       # 当月の承認済み行から月次まとめを展開（任意引数 YYYY-MM）
 python -m news_bot.main theater_add <URL>     # 人間が見つけたURLから1件追記
 python -m news_bot.main theater_discover      # [フォールバック] AI Web検索で発見（従量課金）
 python -m news_bot.main theater               # [実質未使用] 「劇場情報源」シート巡回
@@ -60,21 +60,24 @@ python -m news_bot.main theater               # [実質未使用] 「劇場情�
 ### 現行: ルーティン方式
 
 **AI Web検索部分は Claude のルーティンへ移行した**（[routine-discovery.md](./routine-discovery.md)）。
-Claude APIを従量課金で呼ぶ代わりに、ルーティンが週次で調査してPRを作り、人間のレビュー（1次承認）を
+Claude APIを従量課金で呼ぶ代わりに、ルーティンが隔週で翌月分を調査してPRを作り、人間のレビュー（1次承認）を
 経てマージされたものを取り込む。
 
 | ジョブ | タイミング | 内容 |
 |---|---|---|
-| ルーティン | 毎週金曜 09:00 JST | 対象週の公開作品を調査し、`routine_data/theater_latest.json` を更新してPR作成 |
+| ルーティン | 隔週金曜 09:00 JST | 翌月（1日〜末日）の公開作品を調査し、`routine_data/theater_latest.json` を更新してPR作成 |
 | `theater_import` | PRマージ時（`routine-import.yml`） | 成果物JSONを取り込み、Katsumascore照合の上で承認待ちで保存。Slackに確認依頼を通知 |
 | `theater_resolve_approvals` | 毎時（`approval-check.yml`） | 承認待ち行のSlack承認スタンプを確認し、投稿状態を承認済みへ自動更新（8.1） |
-| `theater_publish` | 毎週金曜 07:00 JST | 対象週の承認済み行から週次まとめを生成し、WP CPT投稿・SNS投稿案をSlackへ送信 |
+| `theater_publish` | 毎月1日 07:00 JST | 当月（1日〜末日）の承認済み行から月次まとめを生成し、WP CPT投稿・SNS投稿案をSlackへ送信 |
 
-`theater_publish` を金曜にしているのは2つの理由による。
+**2026-11 改修: 公開は月1回、収集は隔週。** それまでは収集・公開とも週次（金曜〜翌木曜の7日分）だった。
 
-1. **日本の劇場公開は金曜が基準日**のため、公開初日の朝に記事が出るのが読者にとって最も有用
-2. `week_range()` は**土日に実行すると翌週にずれる**。月〜金なら同じ週（直近の金曜起点）を
-   返すため、発見と publish を同じ週に揃えられる
+- `theater_publish` は毎月1日の朝に「今月公開の映画」を1記事にまとめる。月初に1か月分の
+  公開予定を一覧できる形にし、読者が月の観賞計画を立てやすくする
+- GitHub Actions のcronはUTCで月末指定（`L`）が使えないため、`0 22 28-31 * *`（UTC）で起動し、
+  workflowのguardステップでJSTの日付が1日のときだけ実行する
+- ルーティンは隔週で毎回「実行日の翌月」分を集めるため、1つの月は前月中に2回前後収集される。
+  2回目以降は重複キーで既存行が弾かれ、新たに判明した作品だけが追加される
 
 ### フォールバック: API方式
 
@@ -84,21 +87,25 @@ Claude APIを従量課金で呼ぶ代わりに、ルーティンが週次で調�
 
 ## 6. 取得対象期間
 
-基準日は実行日とする。
+暦月（1日〜末日）を単位とする（2026-11 改修。以前は「直近の金曜日〜その翌週木曜日」の7日間）。
 
-初期MVP:
-
-- 対象開始日: 直近の金曜日
-- 対象終了日: その翌週木曜日
+| 処理 | 関数 | 対象期間 |
+|---|---|---|
+| 収集（ルーティン / `theater_discover`） | `theater_calendar.next_month_range()` | 実行日の**翌月**1日〜末日 |
+| 取り込み（`theater_import`） | `target_month.routine_range()` | 成果物JSONの公開日で最多の月（空なら実行日の翌月） |
+| 公開（`theater_publish`） | `theater_calendar.month_range()` | 実行日の**当月**1日〜末日（JST） |
 
 例:
 
-- 月曜実行の場合、その週の金曜〜翌週木曜を対象にする
-- 金曜実行の場合、当日金曜〜翌週木曜を対象にする
+- 2026-11-06 に収集 → 2026-12-01〜2026-12-31
+- 2026-11-20 に収集 → 2026-12-01〜2026-12-31（同じ月の2回目。新規判明分だけ追加される）
+- 2026-12-01 07:00 JST に公開 → 2026-12-01〜2026-12-31 の承認済み行
+
+手動で過去月を再処理する場合は `YYYY-MM` を任意引数（workflowでは `target_month`）で渡す。
 
 将来拡張:
 
-- 2週間先、1か月先の公開予定も取得し、事前告知投稿に利用する
+- 月の途中で判明した当月公開作品を、公開済みの月次まとめへ追記する
 - 公開延期・公開日変更を差分検知する
 
 ## 7. 取得元方針
@@ -211,8 +218,8 @@ VOD側（[vod-release-calendar-spec.md](vod-release-calendar-spec.md) 8.1）と�
 
 | ランク | 意味 | 扱い |
 |---|---|---|
-| `S` | 大型新作、話題作、Katsumascore内導線が強い作品 | 週次まとめ + 個別投稿 |
-| `A` | ジャンル読者に刺さる注目作 | 週次まとめ対象 |
+| `S` | 大型新作、話題作、Katsumascore内導線が強い作品 | 月次まとめ + 個別投稿 |
+| `A` | ジャンル読者に刺さる注目作 | 月次まとめ対象 |
 | `B` | 記録はするが投稿優先度は低い | 保存のみ |
 | `C` | 対象外・情報不足・重複 | 除外または保存のみ |
 
@@ -265,23 +272,26 @@ VOD側（[vod-release-calendar-spec.md](vod-release-calendar-spec.md) 8.1）と�
 
 初期MVPでは2種類の投稿案を生成する。
 
-### 11.1 今週公開まとめ
+### 11.1 今月公開まとめ
 
 目的:
 
-- 毎週の定番投稿にする
+- 毎月1日の定番投稿にする
 - Katsumascoreへの入口を作る
 
 例:
 
 ```text
-今週公開の注目映画
+今月公開の注目映画
 
+12月5日(金)
 ・作品A
 ・作品B
+
+12月12日(金)
 ・作品C
 
-週末に観るならどれ？
+今月観るならどれ？
 ```
 
 リプライ:
@@ -301,8 +311,8 @@ VOD側（[vod-release-calendar-spec.md](vod-release-calendar-spec.md) 8.1）と�
 例:
 
 ```text
-今週公開の注目作。
-〇〇がいよいよ劇場公開。
+今月公開の注目作。
+『〇〇』が12月5日(金)、いよいよ劇場公開。
 
 観る前に押さえておきたいポイントは...
 ```
@@ -320,18 +330,18 @@ VOD側（[vod-release-calendar-spec.md](vod-release-calendar-spec.md) 8.1）と�
 news_bot/
 ├── fetch_theater.py        # 劇場公開情報の取得（RSS/TMDb。規約上の理由で現在未使用）
 ├── discover_theater.py     # AI Web検索による発見（フォールバック）+ URLからの個別抽出
-├── theater_calendar.py     # 週範囲計算・正規化・重複キー生成 + TheaterEntry のデータ定義
+├── theater_calendar.py     # 対象月計算・正規化・重複キー生成 + TheaterEntry のデータ定義
 │                            #   （AI SDK非依存にするため fetch_theater.py から移動。
 │                            #     fetch_theater.py 側で再エクスポート）
 ├── import_routine.py       # ルーティン成果物JSONの読み込み（VODと共用）
 ├── routine_data/
-│   └── theater_latest.json # ルーティンが週次で上書きコミットする成果物
-├── compose_theater.py      # 週次まとめ本文（WP用HTML）・SNS投稿案生成
+│   └── theater_latest.json # ルーティンが隔週で上書きコミットする成果物
+├── compose_theater.py      # 月次まとめ本文（WP用HTML）・SNS投稿案生成
 ├── wp_client.py            # WP REST API クライアント（CPT投稿・既存記事照合。VODと共用）
 ├── main.py                 # theater_import / theater_publish / theater_discover /
 │                            #   theater_add / theater サブコマンド
 ├── sheets.py               # 劇場公開予定シート対応
-└── approval.py             # 発見結果の確認依頼・週次まとめ通知
+└── approval.py             # 発見結果の確認依頼・月次まとめ通知
 
 .github/workflows/
 ├── routine-import.yml      # ルーティンPRのマージを検知して theater_import を実行
@@ -362,18 +372,18 @@ news_bot/
 投稿先CPTは VOD（`vod_release`）とは**別**にした。理由は
 [THEATER_RELEASE_CPT_SPEC.md](../../../katsumascore_wordpress_theme/docs/feature/THEATER_RELEASE_CPT_SPEC.md)
 を参照（「映画館で観たい」と「家で観たい」は別の検索意図であるため）。
-個別投稿のスラッグは対象週の開始日を使い、`theater-release-yyyy-mm-dd` とする。
+個別投稿のスラッグは対象月を使い、`theater-release-yyyy-mm` とする（例: `theater-release-2026-12`）。記事タイトルは「YYYY年M月公開の映画まとめ」。
 
 ## 14. MVPスコープ
 
 - [x] `劇場公開予定` シートを自動作成する
-- [x] 今週金曜〜翌週木曜の対象期間を計算する
+- [x] 対象月（1日〜末日）の対象期間を計算する（2026-11 に週次から変更）
 - [x] 劇場公開情報を取得する（ルーティン方式 + AI Web検索フォールバック + URL手動追記）
 - [x] タイトル・公開日・公式URL・情報源を保存する
 - [x] `公開日 + 正規化タイトル` で重複判定する
 - [x] Katsumascore照合（正規化タイトルの完全一致。一致しなければ空欄＝誤リンクを作らない）
 - [ ] SNS優先度をAIまたはルールで判定する（**現状は承認時に人間が`S`を手入力**）
-- [x] 週次まとめ投稿案をSlackに送る（X / Facebook等 / 注目作個別の3種類）
+- [x] 月次まとめ投稿案をSlackに送る（X / Facebook等 / 注目作個別の3種類）
 - [x] WP CPT（`theater_release`）へ下書き投稿する
 
 ## 15. 将来拡張
@@ -411,7 +421,7 @@ news_bot/
   **規約上の理由でいずれも現在未使用**（コードは残存）
 - `main.py`: `theater_discover_cycle()` — AI発見→対象期間フィルタ→重複チェック→保存
   （投稿状態=`承認待ち`）。旧`theater_cycle()`（劇場情報源シート巡回）も残存するが実質未使用
-- `compose_theater.py`: 週次まとめ本文（WP用HTML）・SNS投稿案の生成（11.）。
+- `compose_theater.py`: 月次まとめ本文（WP用HTML）・SNS投稿案の生成（11.）。
   公開日別に区切り、SNS優先度=`S`を注目作として冒頭に置く。X（スレッド2分割）/
   Facebook等（1投稿完結）/ 注目作の個別投稿 の3種類を生成する
 - `main.py`: `theater_publish_cycle()` — 承認済み行→まとめ生成→`theater_release` CPTへ
@@ -419,8 +429,8 @@ news_bot/
 - `sheets.py`: `get_approved_theater_items()` / `update_theater_item_status()`
 - `approval.py`: `notify_theater_weekly_summary()` — 親メッセージ（WP投稿結果+Xスレッド）+
   スレッド返信（他SNS用・注目作個別）
-- `.github/workflows/theater-calendar.yml`: 毎週月曜 06:00 JST に`theater_discover`、
-  毎週金曜 07:00 JST に`theater_publish`を実行（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`を渡す）
+- `.github/workflows/theater-calendar.yml`: 毎月1日 07:00 JST に`theater_publish`を実行
+  （`theater_discover`は手動のみ）（`ANTHROPIC_API_KEY`/`OPENAI_API_KEY`を渡す）
 
 ### 投稿状態の実際の値
 
@@ -431,7 +441,7 @@ news_bot/
 |---|---|---|
 | `承認待ち` | AI発見直後。人間の確認前 | `theater_discover_cycle()` |
 | `承認済み` | 人間が実在・公開日を確認した | 人間（シート上で手動） |
-| `投稿済み` | 週次まとめに掲載しWP投稿済み | `theater_publish_cycle()` |
+| `投稿済み` | 月次まとめに掲載しWP投稿済み | `theater_publish_cycle()` |
 
 `theater_publish` の対象は `承認済み` のみ。SNS優先度=`C` の行は承認済みでも本文・投稿案から
 除外する（対象外・情報不足・重複のため）。
@@ -487,12 +497,12 @@ TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates
 **AIのWeb検索（Claude API `web_search_20260209` + OpenAI Responses API `web_search` の併用）**
 に転換した（`discover_theater.py` / `main.theater_discover_cycle()`）。
 
-- **規約上の整理**: AIに対象週の公開作品を調べさせ、**事実情報のみ**（タイトル・公開日・
+- **規約上の整理**: AIに対象月の公開作品を調べさせ、**事実情報のみ**（タイトル・公開日・
   配給会社名・公式URL）を構造化して保存する。事実は著作権の保護対象ではなく、特定サービスの
   フィード/APIを機械巡回してコンテンツを取り込む構造でもないため、撤回した各方式とはリスクの
   性質が異なる。あらすじ・紹介文などの表現は保存しない
 - **人間の承認**: AI検索結果は誤り得るため、保存時は投稿状態=`承認待ち`。人間がシートを確認・
-  修正した上で承認するまで下流（週次サマリー・Slack/WP投稿）には流さない。両AIが同じ作品を
+  修正した上で承認するまで下流（月次サマリー・Slack/WP投稿）には流さない。両AIが同じ作品を
   挙げた場合は情報源=`AI検索(claude+openai)`となり、承認時の実在確度シグナルとして使える
 - **今後の拡張**: 「劇場公開予定」シートの確定行をGoogleカレンダーへ自動同期する
   （シート=データストア、カレンダー=管理者向けビューの併用構成）
@@ -505,7 +515,7 @@ TMDb以外の候補（[theater-sources-candidates.md](theater-sources-candidates
 | 2 | Googleカレンダー同期 | 確定行をGoogle Calendar APIでイベント化する（サービスアカウントにスコープ追加・重複防止はextendedPropertiesに重複キーを保持）。未実装 |
 | 2b | URL入力ツールの改善 | 現状はActionsタブの`Theater Add URL` workflow（`workflow_dispatch`）でURLを入力する。Slackチャンネル巡回（投稿されたURLをcronで拾う。要`channels:history`スコープ+since管理）やGoogle Form経由は将来の選択肢。いずれも`theater_add_url()`をそのまま流用できる |
 | 3 | `tmdb_id` ACFフィールドの実在確認 | `docs/drop/coming-soon-pipeline.md`（2026-07-22に`docs/drop/`へ移動・凍結）の未決定事項#2と共通。10.の照合優先順位1位が前提にしている |
-| 4 | Katsumascore照合（10.） | **`theater_publish`の効果を直接制約している最優先項目。** `news_bot/wp_client.py` の `find_post_by_title()`（VOD側で実装済み・正規化タイトル完全一致）を `theater_discover_cycle()` から呼べば流用できる。現状 `Katsumascore URL` は常に空欄のため、週次まとめ記事から自サイトのレビューへの内部リンクが1本も張られず、注目作の個別投稿案も0件になる（`build_featured_posts()` はURLがある作品のみ対象） |
+| 4 | Katsumascore照合（10.） | **`theater_publish`の効果を直接制約している最優先項目。** `news_bot/wp_client.py` の `find_post_by_title()`（VOD側で実装済み・正規化タイトル完全一致）を `theater_discover_cycle()` から呼べば流用できる。現状 `Katsumascore URL` は常に空欄のため、月次まとめ記事から自サイトのレビューへの内部リンクが1本も張られず、注目作の個別投稿案も0件になる（`build_featured_posts()` はURLがある作品のみ対象） |
 | 5 | SNS優先度(S/A/B/C)判定（8./9.） | AI判定かルールベースか未決定。**現状は常に空欄で保存されるため、`compose_theater.featured_items()` が常に0件を返し、記事冒頭の注目作セクションが出ない。** 当面は人間がシート上で`S`を手入力する運用で回せる（承認作業と同時に行える） |
 | 6 | AI発見の精度検証 | `theater_discover_cycle()`を実データで数週回し、取りこぼし（網羅性）・実在しない作品（ハルシネーション）・公開日誤りの頻度を確認する。プロンプトや`_MAX_WEB_SEARCHES`の調整はこの結果を見て行う |
 | ~~7~~ | ~~`compose_theater.py`（11.）~~ | **実装済み**（2026-08-04）。公開日別セクション+注目作。X/Facebook等/個別投稿の3種類 |

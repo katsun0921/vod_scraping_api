@@ -17,7 +17,7 @@ def _item(title: str, service: str, *, pick: bool = False, **extra: object) -> d
 def test_editor_pick_also_appears_in_service_section():
     """編集部おすすめは冒頭で強調しつつ、サービス別の配信一覧にも残す。
 
-    冒頭セクションだけに載せて一覧から除外すると、その週の配信一覧としての
+    冒頭セクションだけに載せて一覧から除外すると、その月の配信一覧としての
     網羅性が崩れる（改善提案1.は「記事冒頭に追加する」であって置き換えではない）。
     """
     content = compose_vod.build_wp_content(
@@ -67,6 +67,6 @@ def test_x_thread_lists_every_item_and_ends_with_wp_url():
     assert parts[1].endswith("https://katsumascore.blog/vod-news/w2")
 
 
-def test_week_label_and_title():
-    assert compose_vod.week_label(2026, 8, 10) == "2026年8月第2週"
-    assert compose_vod.build_wp_title("2026年8月第2週") == "2026年8月第2週配信開始のVOD作品まとめ"
+def test_month_label_and_title():
+    assert compose_vod.month_label(2026, 12) == "2026年12月"
+    assert compose_vod.build_wp_title("2026年12月") == "2026年12月配信開始のVOD作品まとめ"

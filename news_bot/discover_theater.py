@@ -6,7 +6,7 @@
 利用規約（複製・転載禁止、有償目的利用の禁止、非商用誓約）とKatsumascoreの
 AdSense収益化が衝突するためすべて撤回した）
 
-代わりに、Claude APIとOpenAI APIのWeb検索ツールを併用して対象週の日本の
+代わりに、Claude APIとOpenAI APIのWeb検索ツールを併用して対象期間（対象月）の日本の
 劇場公開作品を調べさせ、**事実情報のみ**（タイトル・公開日・配給会社名・
 公式URL）を構造化して返す方式を採る。事実は著作権の保護対象ではなく、
 特定サイトのフィード/API利用者として規約に拘束される構造でもないため、
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 _ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 _OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o")
 _MAX_TOKENS = 8192
-_MAX_WEB_SEARCHES = 8  # 週次1回の実行なので検索回数を絞ってコストを抑える
+_MAX_WEB_SEARCHES = 8  # 隔週1回・1ヶ月分の実行だが検索回数を絞ってコストを抑える
 _MAX_CONTINUATIONS = 3  # サーバー側ツールのpause_turn継続上限
 
 _CODE_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
@@ -181,7 +181,7 @@ def _parse_url_result(text: str, url: str) -> TheaterEntry:
 
 
 def discover_claude(start: date, end: date) -> list[TheaterEntry]:
-    """Claude APIのWeb検索サーバーツールで対象週の劇場公開作品を調べる。
+    """Claude APIのWeb検索サーバーツールで対象期間（対象月）の劇場公開作品を調べる。
 
     サーバー側ツールはstop_reason="pause_turn"で中断されることがあるため、
     その場合はassistant応答を積んで再送し継続する。
@@ -214,7 +214,7 @@ def discover_claude(start: date, end: date) -> list[TheaterEntry]:
 
 
 def discover_openai(start: date, end: date) -> list[TheaterEntry]:
-    """OpenAI Responses APIのweb_searchツールで対象週の劇場公開作品を調べる。"""
+    """OpenAI Responses APIのweb_searchツールで対象期間（対象月）の劇場公開作品を調べる。"""
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     response = client.responses.create(
         model=_OPENAI_MODEL,
