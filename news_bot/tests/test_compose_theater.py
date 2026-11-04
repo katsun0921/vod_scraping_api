@@ -14,20 +14,20 @@ def _item(title: str, release_date: str = "2026-08-07", *, priority: str = "A", 
 def test_featured_also_appears_in_date_section():
     """注目作は冒頭で強調しつつ、公開日別の一覧にも残す。
 
-    冒頭セクションだけに載せて一覧から除外すると、その週の公開一覧としての
+    冒頭セクションだけに載せて一覧から除外すると、その月の公開一覧としての
     網羅性が崩れる（compose_vod の編集部おすすめと同じ方針）。
     """
     content = compose_theater.build_wp_content(
         [_item("インターステラー", priority="S"), _item("作品B", priority="A")]
     )
     assert content.count("インターステラー") == 2
-    assert "今週の注目作: インターステラー" in content
+    assert "今月の注目作: インターステラー" in content
 
 
 def test_featured_section_omitted_when_none_selected():
     """SNS優先度=Sが無ければ注目作セクション自体を出さない。"""
     content = compose_theater.build_wp_content([_item("作品A"), _item("作品B")])
-    assert "今週の注目作" not in content
+    assert "今月の注目作" not in content
 
 
 def test_sections_sorted_by_release_date():
@@ -68,7 +68,7 @@ def test_invalid_date_does_not_crash():
     """公開日が不正な行があっても例外にせず、値をそのまま見出しに使う。
 
     シートは人間が手で編集するため、日付形式が崩れた行が混ざり得る。
-    1行の不備で週次まとめ全体が落ちるのは避ける。
+    1行の不備で月次まとめ全体が落ちるのは避ける。
     """
     content = compose_theater.build_wp_content([_item("作品A", "未定")])
     assert "作品A" in content
@@ -111,9 +111,9 @@ def test_html_is_escaped():
 
 
 def test_wp_title_uses_search_wording():
-    """記事タイトルは対象週を先頭に置き、検索語の「公開」を使う。
+    """記事タイトルは対象月を先頭に置き、検索語の「公開」を使う。
 
     「劇場公開」は業界の分類語であり検索語ではないため、タイトルには使わない。
     """
-    title = compose_theater.build_wp_title(compose_theater.week_label(2026, 8, 7))
-    assert title == "2026年8月第1週公開の映画まとめ"
+    title = compose_theater.build_wp_title(compose_theater.month_label(2026, 12))
+    assert title == "2026年12月公開の映画まとめ"

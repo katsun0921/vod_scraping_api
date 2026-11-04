@@ -1,45 +1,44 @@
-"""対象週計算の検証。
+"""対象期間（暦月）計算の検証。
 
-収集（next_week_range）と公開（week_range）が、それぞれの実行曜日で同じ週を指すことを
-確かめる。両者がずれると、収集した行が取り込み時に期間外で落ちるか、公開時に拾われない。
+収集（next_month_range: 隔週ルーティンが翌月分を集める）と公開（month_range: 毎月1日に
+当月分を公開する）が同じ月を指すことを確かめる。両者がずれると、収集した行が
+取り込み時に期間外で落ちるか、公開時に拾われない。
 """
 
 from datetime import date, timedelta
 
-from news_bot import theater_calendar
+from news_bot import theater_calendar, vod_calendar
 
-# 2026-08-21 は金曜。対象週は 2026-08-28（金）〜2026-09-03（木）。
-TARGET = (date(2026, 8, 28), date(2026, 9, 3))
-
-
-def test_next_week_range_is_stable_across_the_collection_week():
-    """収集週（金〜木）のどの日に実行しても同じ翌週を返す。
-
-    ルーティンは金曜に走るが、PRのレビュー・マージが土日や翌週にずれ込んでも
-    theater_import が同じ週を取り込めることを保証する。
-    """
-    for day in range(7):  # 2026-08-21(金) 〜 2026-08-27(木)
-        today = date(2026, 8, 21) + timedelta(days=day)
-        assert theater_calendar.next_week_range(today) == TARGET, today
+DECEMBER = (date(2026, 12, 1), date(2026, 12, 31))
 
 
-def test_week_range_on_publish_thursday_matches_collected_week():
-    """木曜に実行しても収集済みの週を対象にする（月〜木は同じ週を指す）。"""
-    assert theater_calendar.week_range(date(2026, 8, 27)) == TARGET
+def test_month_range_covers_calendar_month():
+    assert theater_calendar.month_range(date(2026, 12, 1)) == DECEMBER
+    assert theater_calendar.month_range(date(2026, 12, 31)) == DECEMBER
 
 
-def test_week_range_on_publish_monday_matches_collected_week():
-    """publish（月曜 07:00 JST）は収集済みの週を対象にする。"""
-    assert theater_calendar.week_range(date(2026, 8, 24)) == TARGET
+def test_month_range_handles_february_and_leap_year():
+    assert theater_calendar.month_range(date(2027, 2, 15)) == (date(2027, 2, 1), date(2027, 2, 28))
+    assert theater_calendar.month_range(date(2028, 2, 1)) == (date(2028, 2, 1), date(2028, 2, 29))
 
 
-def test_week_range_advances_on_friday():
-    """金曜以降は1週先へ進む。cronを金〜日へ動かせない根拠。"""
-    assert theater_calendar.week_range(date(2026, 8, 28)) == (
-        date(2026, 8, 28),
-        date(2026, 9, 3),
-    )
-    assert theater_calendar.next_week_range(date(2026, 8, 28)) == (
-        date(2026, 9, 4),
-        date(2026, 9, 10),
-    )
+def test_next_month_range_is_stable_across_the_collection_month():
+    """11月のどの日に収集しても12月を返す（隔週ルーティンの実行日・PRマージ日に左右されない）。"""
+    for offset in range(30):
+        today = date(2026, 11, 1) + timedelta(days=offset)
+        assert theater_calendar.next_month_range(today) == DECEMBER, today
+
+
+def test_next_month_range_crosses_year_boundary():
+    assert theater_calendar.next_month_range(date(2026, 12, 16)) == (date(2027, 1, 1), date(2027, 1, 31))
+
+
+def test_publish_on_first_matches_collected_month():
+    """毎月1日の公開は、前月中に next_month_range() で集めた月を対象にする。"""
+    collected = theater_calendar.next_month_range(date(2026, 11, 18))
+    assert theater_calendar.month_range(date(2026, 12, 1)) == collected
+
+
+def test_vod_uses_same_month_ranges():
+    assert vod_calendar.month_range(date(2026, 12, 1)) == DECEMBER
+    assert vod_calendar.next_month_range(date(2026, 11, 4)) == DECEMBER

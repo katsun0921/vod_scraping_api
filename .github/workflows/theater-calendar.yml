@@ -1,27 +1,23 @@
 name: Theater Calendar
 
 on:
-  # 0 22 * * 0 (UTC) = 毎週月曜 07:00 JST
+  # 毎月1日 07:00 JST に theater_publish を実行し、その月（1日〜末日）に公開される作品の
+  # 月次まとめを下書き投稿する（theater_calendar.month_range()）。
   #
-  # 対象週は theater_calendar.week_range()＝直近の金曜〜その翌週木曜。日本の劇場公開は
-  # 金曜が基準日なので、対象週の起点（金曜）から3日前の月曜に下書きが揃う
-  # （以前は木曜＝公開初日の前日朝だった。公開の4日前に前倒し）。
+  # GitHub Actions のcronはUTCで「L（月末）」も使えないため、JSTの毎月1日 07:00
+  # （＝UTCの前月末日 22:00）を直接指定できない。そこで 28〜31日の 22:00 UTC に起動し、
+  # 下の guard ステップで「JSTで今日が1日か」を判定して1日以外はスキップする。
   #
-  # 収集（ルーティン）はその1週間前の金曜 09:00 JST に翌週分を集めてPRを出す
-  # （theater_calendar.next_week_range()）。間の土〜日（+月曜朝まで）がシート承認の
-  # 猶予になる。以前の木曜publishと比べ猶予は約5日22時間→約2日22時間に縮む。
-  # 以前は publish も金曜 07:00 JST で、同じ日の 09:00 に走る収集より2時間早く、
-  # その週の収集分が永久に載らなかった（木曜へ移動して解消）。
+  # 収集（ルーティン）は隔週で「翌月分」を集めてPRを出す（theater_calendar.next_month_range()）。
+  # 1つの月は前月中に2回前後収集され、2回目以降は重複キーで弾かれて新規判明分だけが
+  # 追加される。前月中に「承認待ち」→「承認済み」にした行だけが1日のまとめに載る。
   #
-  # week_range() は金曜以降に実行すると1週先へ進むため、cronを金〜日へ動かさないこと
-  # （月〜木は同じ週を指すため安全）。
-  #
-  # theater_discover（AI Web検索）のcronは外した。Claudeのルーティンが週次で調査して
+  # theater_discover（AI Web検索）のcronは外した。Claudeのルーティンが隔週で調査して
   # PRを作る方式へ移行し、従量課金のAPI呼び出しをサブスクリプション内に収めたため
   # （docs/feature/routine-discovery.md）。取り込みは routine-import.yml が担当する。
   # theater_discover はルーティンが止まった場合のフォールバックとして手動実行のみ残す。
   schedule:
-    - cron: "0 22 * * 0"
+    - cron: "0 22 28-31 * *"
   workflow_dispatch:
     inputs:
       command:
@@ -34,8 +30,8 @@ on:
         options:
           - "theater_discover"
           - "theater_publish"
-      target_start:
-        description: "CPT作成対象週の金曜日 YYYY-MM-DD（空欄は通常週）"
+      target_month:
+        description: "CPT作成対象月 YYYY-MM（空欄は実行日の当月）"
         required: false
         type: string
 
@@ -44,10 +40,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # cronは28〜31日に起動するので、JSTで毎月1日のときだけ後続を実行する。
+      # 手動実行（workflow_dispatch）は日付に関係なく実行する。
+      - name: Guard first day of month (JST)
+        id: guard
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$(TZ=Asia/Tokyo date +%d)" != "01" ]; then
+            echo "JSTで毎月1日ではないためスキップします（$(TZ=Asia/Tokyo date +%F)）"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.guard.outputs.run == 'true'
         uses: actions/checkout@v7
 
       - name: Set up Python
+        if: steps.guard.outputs.run == 'true'
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -55,17 +67,19 @@ jobs:
           cache-dependency-path: news_bot/requirements.txt
 
       - name: Install dependencies
+        if: steps.guard.outputs.run == 'true'
         run: pip install -r news_bot/requirements.txt
 
-      # theater_discover: AI Web検索（Claude/OpenAI併用）で対象週の劇場公開作品を発見し、
+      # theater_discover: AI Web検索（Claude/OpenAI併用）で翌月の劇場公開作品を発見し、
       #   「劇場公開予定」シートに投稿状態="承認待ち"で保存する。新規保存分は Slack に
       #   親メッセージ+作品ごとのスレッド返信で確認依頼を通知する。
       #   人間がシートを確認・修正・承認（投稿状態="承認済み"）するまで下流には流れない。
-      # theater_publish: 承認済み行から週次まとめを生成し、theater_release CPT へ下書き投稿。
+      # theater_publish: 承認済み行から当月分の月次まとめを生成し、theater_release CPT へ下書き投稿。
       #   X スレッド案・Facebook等向けテキスト・注目作の個別投稿案を Slack へ送る（投稿は手動）。
       # （旧: 「劇場情報源」シート巡回の `theater` コマンド。レイヤー1データソース
       #  撤回によりシート未登録のため、cronからは外した。手動実行は引き続き可能）
       - name: Run theater calendar pipeline
+        if: steps.guard.outputs.run == 'true'
         env:
           # workflow_dispatchはinputsのcommandを使う。cronはpublishの1本だけなので
           # scheduleで起動した場合は常にtheater_publish。
@@ -84,10 +98,10 @@ jobs:
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           # 劇場公開通知の専用チャンネル。未設定(空)の場合は上の承認チャンネルに送る
           SLACK_THEATER_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_THEATER_CHANNEL_ID }}
-          TARGET_START: ${{ github.event.inputs.target_start }}
+          TARGET_MONTH: ${{ github.event.inputs.target_month }}
         run: |
           args=("$COMMAND")
-          if [ "$COMMAND" = "theater_publish" ] && [ -n "$TARGET_START" ]; then
-            args+=("$TARGET_START")
+          if [ "$COMMAND" = "theater_publish" ] && [ -n "$TARGET_MONTH" ]; then
+            args+=("$TARGET_MONTH")
           fi
           python -m news_bot.main "${args[@]}"

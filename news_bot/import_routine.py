@@ -26,7 +26,7 @@ from news_bot.vod_calendar import SERVICES, VodEntry
 logger = logging.getLogger(__name__)
 
 # ルーティンが成果物をコミットする場所。日付別に残すのは、あとから
-# 「どの週に何を拾ったか」を追跡できるようにするため（シートの情報源列だけでは
+# 「どの回に何を拾ったか」を追跡できるようにするため（シートの情報源列だけでは
 # AIが何を根拠にしたか遡れない）。
 ROUTINE_DATA_DIR = Path("news_bot/routine_data")
 

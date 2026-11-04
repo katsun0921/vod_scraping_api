@@ -21,7 +21,7 @@ Slack Web API（Bot Token）で chat.postMessage / reactions.get を使用する
                                 （任意。未設定ならSLACK_APPROVAL_CHANNEL_IDに送る。
                                 Botを対象チャンネルに招待しておくこと）
     SLACK_VOD_CHANNEL_ID      : VOD配信情報通知(notify_vod_discovered/
-                                notify_vod_weekly_summary)専用のチャンネルID
+                                notify_vod_monthly_summary)専用のチャンネルID
                                 （任意。未設定ならSLACK_APPROVAL_CHANNEL_IDに送る）
 """
 
@@ -95,7 +95,7 @@ def notify_theater_discovered(start: date, end: date, entries: list) -> dict[str
     定期的にリアクションを確認して自動反映する）。notify_vod_discovered()と同型。
 
     Args:
-        start, end: 対象期間（theater_calendar.week_range()）
+        start, end: 対象期間（対象月の1日〜末日。theater_calendar.next_month_range() 等）
         entries: 保存済みのfetch_theater.TheaterEntry一覧（release_dateは必ず設定済み）
 
     Returns:
@@ -175,7 +175,7 @@ def notify_vod_discovered(start: date, end: date, entries: list) -> dict[str, tu
     vod_resolve_approvals_cycle()が定期的にリアクションを確認して自動反映する）。
 
     Args:
-        start, end: 対象期間（vod_calendar.next_week_range()）
+        start, end: 対象期間（対象月の1日〜末日。vod_calendar.next_month_range() 等）
         entries: 保存済みのdiscover_vod.VodEntry一覧（available_fromは必ず設定済み）
 
     Returns:
@@ -219,8 +219,8 @@ def notify_vod_discovered(start: date, end: date, entries: list) -> dict[str, tu
     return refs
 
 
-def notify_vod_weekly_summary(item_count: int, wp_post_url: str, x_thread_parts: list[str]) -> tuple[str, str]:
-    """週次まとめ（`vod_publish`）の結果をSlackへ通知する（仕様書11.1）。
+def notify_vod_monthly_summary(item_count: int, wp_post_url: str, x_thread_parts: list[str]) -> tuple[str, str]:
+    """月次まとめ（`vod_publish`）の結果をSlackへ通知する（仕様書11.1）。
 
     WP投稿結果（下書きURL）とXスレッド投稿案テンプレートを1回のメッセージで送る。
     Xへの実際の投稿はx-news-bot仕様書4.4と同じく人間が手動で行う（自動投稿はしない）。
@@ -229,7 +229,7 @@ def notify_vod_weekly_summary(item_count: int, wp_post_url: str, x_thread_parts:
         f"――― 投稿 {i}/{len(x_thread_parts)} ―――\n{part}" for i, part in enumerate(x_thread_parts, 1)
     )
     text = (
-        f"*週次VODまとめを生成しました（{item_count}件）*\n"
+        f"*月次VODまとめを生成しました（{item_count}件）*\n"
         f"WP投稿（下書き）: {wp_post_url or '投稿失敗（ログを確認してください）'}\n\n"
         f"以下を1つのXスレッドとして1→2の順に手動で投稿してください"
         f"（2件目は1件目への返信）。\n\n{thread_sections}"
@@ -237,16 +237,16 @@ def notify_vod_weekly_summary(item_count: int, wp_post_url: str, x_thread_parts:
     return _post_message(text, channel=os.environ.get("SLACK_VOD_CHANNEL_ID") or None)
 
 
-def notify_theater_weekly_summary(
+def notify_theater_monthly_summary(
     item_count: int,
     wp_post_url: str,
     x_thread_parts: list[str],
     social_post: str,
     featured_posts: list[str],
 ) -> tuple[str, str]:
-    """週次まとめ（`theater_publish`）の結果をSlackへ通知する（劇場仕様書11.）。
+    """月次まとめ（`theater_publish`）の結果をSlackへ通知する（劇場仕様書11.）。
 
-    notify_vod_weekly_summary()と同型だが、投稿先ごとに文面が異なるため
+    notify_vod_monthly_summary()と同型だが、投稿先ごとに文面が異なるため
     親メッセージ（WP投稿結果+Xスレッド）とスレッド返信（他SNS用・注目作個別）に分ける。
     1メッセージに全部入れると長すぎてコピーしづらいため。
 
@@ -260,7 +260,7 @@ def notify_theater_weekly_summary(
         f"――― 投稿 {i}/{len(x_thread_parts)} ―――\n{part}" for i, part in enumerate(x_thread_parts, 1)
     )
     parent_text = (
-        f"*今週公開の映画まとめを生成しました（{item_count}件）*\n"
+        f"*今月公開の映画まとめを生成しました（{item_count}件）*\n"
         f"WP投稿（下書き）: {wp_post_url or '投稿失敗（ログを確認してください）'}\n\n"
         f"*X（スレッド）* — 1→2の順に手動で投稿してください（2件目は1件目への返信）。\n\n"
         f"{thread_sections}"

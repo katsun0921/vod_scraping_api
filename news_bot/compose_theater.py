@@ -19,7 +19,7 @@ from datetime import date
 # 仕様書11.2「注目作個別投稿」の対象。SNS優先度がこの値の作品を記事冒頭とSNS個別投稿に回す。
 _FEATURED_PRIORITY = "S"
 
-# 週次まとめ本文に載せる優先度。C（対象外・情報不足・重複）は承認済みでも本文からは省く。
+# 月次まとめ本文に載せる優先度。C（対象外・情報不足・重複）は承認済みでも本文からは省く。
 _EXCLUDED_PRIORITIES = {"C"}
 
 _WEEKDAY_JA = ["月", "火", "水", "木", "金", "土", "日"]
@@ -72,7 +72,7 @@ def _work_card_html(item: dict) -> str:
 def _featured_html(item: dict) -> str:
     """注目作セクション（記事冒頭）。compose_vod._editor_pick_html と対の構成。"""
     title = html.escape(item.get("タイトル", ""))
-    lines = [f"<h3>今週の注目作: {title}</h3>"]
+    lines = [f"<h3>今月の注目作: {title}</h3>"]
 
     release = item.get("公開日", "")
     if release:
@@ -97,12 +97,12 @@ def _group_by_date(items: list[dict]) -> "OrderedDict[str, list[dict]]":
 
 
 def build_wp_content(items: list[dict]) -> str:
-    """週次まとめ記事のWP投稿本文（HTML）を生成する。
+    """月次まとめ記事のWP投稿本文（HTML）を生成する。
 
     構成: 注目作（SNS優先度=S） → 公開日別セクション（統一フォーマットの作品カード）。
 
     注目作に選ばれた作品も公開日別セクションには通常どおり掲載する。冒頭の注目作は
-    「今週の一覧」に対する強調であって置き換えではないため（compose_vod.build_wp_content
+    「今月の一覧」に対する強調であって置き換えではないため（compose_vod.build_wp_content
     と同じ方針）、ここで除外すると公開一覧としての網羅性が崩れる。
     """
     visible = _visible_items(items)
@@ -121,19 +121,18 @@ def build_wp_content(items: list[dict]) -> str:
     return "\n\n".join(sections)
 
 
-def build_wp_title(week_label: str) -> str:
-    """記事タイトルを生成する（例: "2026年8月第1週公開の映画まとめ"）。
+def build_wp_title(month_label: str) -> str:
+    """記事タイトルを生成する（例: "2026年12月公開の映画まとめ"）。
 
     「劇場公開」ではなく「公開」としているのは、ユーザーの検索語が
-    「今週公開 映画」「〇〇 公開日」であり、「劇場公開」は業界の分類語であるため。
+    「12月公開 映画」「今月公開 映画」「〇〇 公開日」であり、「劇場公開」は業界の分類語であるため。
     """
-    return f"{week_label}公開の映画まとめ"
+    return f"{month_label}公開の映画まとめ"
 
 
-def week_label(start_year: int, start_month: int, start_day: int) -> str:
-    """対象週の開始日から「YYYY年MM月第N週」形式のラベルを生成する。"""
-    week_of_month = (start_day - 1) // 7 + 1
-    return f"{start_year}年{start_month}月第{week_of_month}週"
+def month_label(year: int, month: int) -> str:
+    """対象月から「YYYY年M月」形式のラベルを生成する。"""
+    return f"{year}年{month}月"
 
 
 def _thread_line(item: dict) -> str:
@@ -141,20 +140,20 @@ def _thread_line(item: dict) -> str:
 
 
 def build_x_thread(items: list[dict], wp_url: str) -> list[str]:
-    """週次まとめのXスレッド投稿案を生成する（仕様書11.1）。
+    """月次まとめのXスレッド投稿案を生成する（仕様書11.1）。
 
     x-news-bot仕様書4.4のスレッドまとめ方式を踏襲: ①作品リスト → ②リプライにWP記事URL。
-    自動投稿はせず、Slackへテンプレートとして送るだけ（approval.notify_theater_weekly_summary()）。
+    自動投稿はせず、Slackへテンプレートとして送るだけ（approval.notify_theater_monthly_summary()）。
     """
     visible = _visible_items(items)
 
-    lines = ["今週公開の注目映画"]
+    lines = ["今月公開の注目映画"]
     for release_date, date_items in _group_by_date(visible).items():
         lines.append("")
         lines.append(_date_label(release_date))
         lines.extend(_thread_line(item) for item in date_items)
     lines.append("")
-    lines.append("週末に観るならどれ？")
+    lines.append("今月観るならどれ？")
 
     main_part = "\n".join(lines)
     reply_part = f"各作品のレビュー・評価はこちら\n{wp_url}"
@@ -173,7 +172,7 @@ def build_social_post(items: list[dict], wp_url: str) -> str:
     """
     visible = _visible_items(items)
 
-    lines = ["今週公開の映画をまとめました。", ""]
+    lines = ["今月公開の映画をまとめました。", ""]
     for release_date, date_items in _group_by_date(visible).items():
         lines.append(f"【{_date_label(release_date)}】")
         lines.extend(_thread_line(item) for item in date_items)
@@ -189,7 +188,7 @@ def build_featured_posts(items: list[dict]) -> list[str]:
 
     対象は SNS優先度=S かつ Katsumascore URL がある作品。URLが無い作品を除くのは、
     個別投稿の目的が単体作品ページへの送客であり、リンク先が無ければ投稿の意味が
-    無いため（週次まとめには引き続き掲載される）。
+    無いため（月次まとめには引き続き掲載される）。
     """
     posts = []
     for item in featured_items(_visible_items(items)):
@@ -199,7 +198,7 @@ def build_featured_posts(items: list[dict]) -> list[str]:
         title = item.get("タイトル", "")
         release = _date_label(str(item.get("公開日", "")))
         posts.append(
-            f"今週公開の注目作。\n"
+            f"今月公開の注目作。\n"
             f"『{title}』が{release}、いよいよ劇場公開。\n\n"
             f"観る前に押さえておきたいポイントはこちら\n{url}"
         )

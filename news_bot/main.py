@@ -6,16 +6,16 @@ GitHub Actions cron から呼び出す想定（仕様書 3.: 1〜2時間おき�
     fetch_x_cycle(region): 公式Xアカウント取得（地域ごとに1日1回）→ 上記と同じ処理
     theater_cycle():      「劇場情報源」シート巡回による劇場公開情報取得
                            （レイヤー1データソース撤回により現在シート未登録＝実質未使用）
-    theater_discover_cycle(): AI Web検索（Claude/OpenAI併用）による劇場公開作品の発見（週次）
+    theater_discover_cycle(): AI Web検索（Claude/OpenAI併用）による劇場公開作品の発見（翌月分）
                            → 対象期間フィルタ → 重複チェック → 承認待ちとして保存
                            （docs/feature/theater-release-calendar-spec.md）
-    theater_publish_cycle(): 承認済みの劇場公開予定行から週次まとめを生成し、WP CPT投稿+
-                           SNS投稿案のSlack通知まで行う（週次、月曜。同spec 11.）
+    theater_publish_cycle(): 承認済みの劇場公開予定行から月次まとめを生成し、WP CPT投稿+
+                           SNS投稿案のSlack通知まで行う（月次、毎月1日に当月分。同spec 11.）
     vod_discover_cycle():  AI Web検索 + VOD公式Xアカウント投稿の構造化抽出によるVOD配信開始
-                           作品の発見（週次、木曜）→ 重複マージ → Katsumascore照合 → 承認待ち
+                           作品の発見（翌月分）→ 重複マージ → Katsumascore照合 → 承認待ち
                            として保存（docs/feature/vod-release-calendar-spec.md 7./10.）
-    vod_publish_cycle():   承認済みのVOD配信予定行から週次まとめを生成し、WP CPT投稿+
-                           Xスレッド案のSlack通知まで行う（週次、月曜。同spec 11.）
+    vod_publish_cycle():   承認済みのVOD配信予定行から月次まとめを生成し、WP CPT投稿+
+                           Xスレッド案のSlack通知まで行う（月次、毎月1日に当月分。同spec 11.）
     vod_resolve_approvals_cycle(): 承認待ち行のSlack承認スタンプ（ワンクリック承認）を確認し、
                            付いていれば投稿状態を承認済みへ自動更新する（高頻度、時間単位）
     theater_resolve_approvals_cycle(): 上記の劇場公開版（同じく高頻度、時間単位）
@@ -49,8 +49,8 @@ from news_bot import (
     fetch_x,
     import_routine,
     judge,
-    manual_week,
     post_x,
+    target_month,
     theater_calendar,
     vod_calendar,
     wp_client,
@@ -64,11 +64,11 @@ logger = logging.getLogger(__name__)
 _POSTABLE_RANKS = {"S", "A"}
 
 
-def _target_start_arg(kind: str) -> date | None:
-    """サブコマンドの第2引数から任意の対象週開始日を取得する。"""
+def _target_month_arg() -> date | None:
+    """サブコマンドの第2引数から任意の対象月（YYYY-MM）を取得し、その月の1日を返す。"""
     raw = sys.argv[2] if len(sys.argv) > 2 else None
     try:
-        return manual_week.parse_target_start(raw, kind)
+        return target_month.parse_target_month(raw)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
 
@@ -190,7 +190,7 @@ def theater_cycle() -> dict:
     保存時は投稿状態="未判定"のまま（docs/feature/theater-release-calendar-spec.md 17.のTODO参照）。
     """
     sheets = NewsBotSheets()
-    start, end = theater_calendar.week_range(manual_week.jst_today())
+    start, end = theater_calendar.next_month_range(target_month.jst_today())
     sources = sheets.get_active_theater_sources()
     existing_keys = sheets.get_existing_theater_keys()
 
@@ -273,7 +273,7 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
             stats["duplicate"] += 1
             continue
 
-        # Katsumascore照合（仕様書10.）。既存レビュー記事が見つかれば週次まとめから
+        # Katsumascore照合（仕様書10.）。既存レビュー記事が見つかれば月次まとめから
         # 内部リンクを張れる。照合はタイトル完全一致のみで、一致しなければ空欄のまま
         # （誤リンクを作らないことを優先する）。
         katsumascore_url = ""
@@ -325,7 +325,7 @@ def _save_theater_entries(entries: list, start: date, end: date, label: str) -> 
 
 
 def theater_discover_cycle() -> dict:
-    """AIのWeb検索で対象週の劇場公開作品を発見し、承認待ちとして保存する。
+    """AIのWeb検索で対象月の劇場公開作品を発見し、承認待ちとして保存する。
 
     レイヤー1データソース（特定サイトの自動取得）が規約上すべて撤回されたため、
     Claude/OpenAIのWeb検索併用で事実情報のみを収集する方式（discover_theater.py）。
@@ -334,10 +334,10 @@ def theater_discover_cycle() -> dict:
     止まった場合のフォールバックとして手動実行できるようにするため
     （docs/feature/routine-discovery.md）。
 
-    対象は next_week_range()（翌週金曜〜その翌木曜）。ルーティンと同じ週を拾わないと
+    対象は next_month_range()（実行日の翌月1日〜末日）。ルーティンと同じ月を拾わないと
     フォールバックにならないため、ルーティン側の対象期間に合わせている。
     """
-    start, end = theater_calendar.next_week_range(manual_week.jst_today())
+    start, end = theater_calendar.next_month_range(target_month.jst_today())
     entries = discover_theater.discover_all(start, end)
     return _save_theater_entries(entries, start, end, "theater_discover_cycle")
 
@@ -345,28 +345,26 @@ def theater_discover_cycle() -> dict:
 def theater_import_cycle(target_start: date | None = None) -> dict:
     """ルーティンが出力した劇場公開JSONを取り込み、承認待ちとして保存する。
 
-    Claude APIのWeb検索を従量課金で呼ぶ代わりに、Claudeのルーティンが週次で調査して
+    Claude APIのWeb検索を従量課金で呼ぶ代わりに、Claudeのルーティンが隔週で翌月分を調査して
     リポジトリにJSONをコミットし、そのPRを人間がレビュー（＝1次承認）してマージする。
     本サイクルはマージ後に走り、既存の保存処理へ流す（docs/feature/routine-discovery.md）。
 
     PRレビューを通っていても投稿状態は"承認待ち"で保存する。PRレビューは「AIが拾った
     情報が妥当か」の確認であり、シート上の承認は「記事に載せるか」の判断で目的が異なるため。
 
-    対象週は成果物JSONに入っている公開日から決める（manual_week.routine_range()）。
-    実行日から next_week_range() で逆算すると、ルーティンが走った曜日とPRがマージされた
-    曜日がずれた瞬間に集めた行がすべて期間外で落ちるため（#76 / #83 で実際に発生）。
-    成果物が空の場合のみ next_week_range()（翌週金曜〜その翌木曜）にフォールバックする。
+    対象月は成果物JSONに入っている公開日から決める（target_month.routine_range()）。
+    実行日から next_month_range() で逆算すると、ルーティンが走った日とPRがマージされた
+    日が月をまたいだ瞬間に集めた行がすべて期間外で落ちるため（週次時代の #76 / #83 で実際に発生）。
+    成果物が空の場合のみ next_month_range()（実行日の翌月）にフォールバックする。
 
-    target_startを指定した場合は、その金曜日から7日間を対象にする。
+    target_start（対象月の1日）を指定した場合は、その月の1日〜末日を対象にする。
     """
     entries = import_routine.load_theater_entries(import_routine.latest_path("theater"))
-    start, end = manual_week.resolve_range(
+    start, end = target_month.resolve_range(
         target_start,
-        "theater",
-        manual_week.routine_range(
+        target_month.routine_range(
             [entry.release_date for entry in entries],
-            "theater",
-            theater_calendar.next_week_range(manual_week.jst_today()),
+            theater_calendar.next_month_range(target_month.jst_today()),
         ),
     )
     return _save_theater_entries(entries, start, end, "theater_import_cycle")
@@ -375,7 +373,7 @@ def theater_import_cycle(target_start: date | None = None) -> dict:
 def theater_add_url(url: str) -> dict:
     """人間が見つけた劇場公開情報のURLから事実を抽出し、シートに承認待ちで追記する。
 
-    週次のAI発見（theater_discover_cycle）と違い対象期間ではフィルタしない
+    AI発見（theater_discover_cycle）と違い対象期間ではフィルタしない
     （人間は来月公開の作品のURLを入れることもあるため）。公開日が抽出できなかった
     場合もメモ付きで保存し、人間がシートで補完する。抽出失敗（タイトルすら取れない）
     は例外で落とし、Actionsの実行失敗として入力者に見えるようにする。
@@ -420,25 +418,19 @@ def theater_add_url(url: str) -> dict:
 
 
 def theater_publish_cycle(target_start: date | None = None) -> dict:
-    """承認済みの劇場公開予定行から週次まとめを生成し、WP CPT投稿+SNS投稿案の
+    """承認済みの劇場公開予定行から月次まとめを生成し、WP CPT投稿+SNS投稿案の
     Slack通知まで行う（docs/feature/theater-release-calendar-spec.md 11.）。
 
-    対象は theater_calendar.week_range() の期間（これから来る金曜〜その翌木曜）が
-    公開日、かつ投稿状態=承認済みの行。対象0件の場合は何もしない
-    （空のWP投稿・Slack通知を出さない）。
+    対象は実行日が属する暦月（1日〜末日、theater_calendar.month_range()）が公開日、
+    かつ投稿状態=承認済みの行。対象0件の場合は何もしない（空のWP投稿・Slack通知を出さない）。
 
-    cronは対象週の月曜 07:00 JST。week_range() は月曜に実行すると同じ週の金曜を
-    起点に返すため、公開初日の4日前に下書きが揃う。収集（theater_import）はその
-    1週間前の金曜に next_week_range() で同じ週を先に集めており、間の土〜日（+月曜朝まで）が
-    シート承認の猶予になる（約2日22時間）。
-
-    金曜以降に実行すると week_range() は1週先へ進むので、cronを金〜日へ動かさない
-    こと。過去週・当週をやり直す場合は target_start にその週の金曜日を渡すと、
-    その金曜日から7日間を対象にして再処理できる。
+    cronは毎月1日 07:00 JST。当月分は前月中に隔週のルーティンで2回前後収集済み
+    （next_month_range()）で、その間にシート承認を済ませておく。
+    過去月・当月をやり直す場合は target_start に対象月の1日を渡す（CLIでは YYYY-MM）。
     """
     sheets = NewsBotSheets()
-    start, end = manual_week.resolve_range(
-        target_start, "theater", theater_calendar.week_range(manual_week.jst_today())
+    start, end = target_month.resolve_range(
+        target_start, theater_calendar.month_range(target_month.jst_today())
     )
     items = sheets.get_approved_theater_items(start, end)
     stats = {"target": len(items), "posted": 0, "notified": 0}
@@ -447,7 +439,7 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
         logger.info("theater_publish_cycle(%s〜%s): 対象0件", start, end)
         return stats
 
-    label = compose_theater.week_label(start.year, start.month, start.day)
+    label = compose_theater.month_label(start.year, start.month)
     title = compose_theater.build_wp_title(label)
     content_html = compose_theater.build_wp_content(items)
 
@@ -456,7 +448,7 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
         wp_post = wp_client.create_post(
             title,
             content_html,
-            slug=f"theater-release-{start.isoformat()}",
+            slug=f"theater-release-{start:%Y-%m}",
             cpt_slug_env="THEATER_NEWS_CPT_SLUG",
             cpt_slug_default="theater_release",
             status_env="THEATER_NEWS_WP_STATUS",
@@ -464,10 +456,10 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
         wp_post_url = wp_post.get("link", "")
         stats["posted"] = 1
     except Exception:
-        logger.exception("劇場公開週次まとめWP投稿失敗")
+        logger.exception("劇場公開月次まとめWP投稿失敗")
 
     try:
-        approval.notify_theater_weekly_summary(
+        approval.notify_theater_monthly_summary(
             len(items),
             wp_post_url,
             compose_theater.build_x_thread(items, wp_post_url),
@@ -476,7 +468,7 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
         )
         stats["notified"] = 1
     except Exception:
-        logger.exception("劇場公開週次まとめSlack通知失敗")
+        logger.exception("劇場公開月次まとめSlack通知失敗")
 
     for item in items:
         key = item.get("重複キー")
@@ -488,7 +480,7 @@ def theater_publish_cycle(target_start: date | None = None) -> dict:
 
 
 def vod_discover_cycle() -> dict:
-    """AI Web検索 + VOD公式Xアカウント投稿の構造化抽出で対象週のVOD配信開始作品を発見し、
+    """AI Web検索 + VOD公式Xアカウント投稿の構造化抽出で対象月のVOD配信開始作品を発見し、
     承認待ちとして保存する（docs/feature/vod-release-calendar-spec.md 7./9./10.）。
 
     discover_vod.discover_all()（Claude/OpenAI併用のAI Web検索）と
@@ -499,7 +491,7 @@ def vod_discover_cycle() -> dict:
     """
     ai_entries: list = []
     try:
-        start_tmp, end_tmp = vod_calendar.next_week_range(manual_week.jst_today())
+        start_tmp, end_tmp = vod_calendar.next_month_range(target_month.jst_today())
         ai_entries = discover_vod.discover_all(start_tmp, end_tmp)
     except Exception:
         logger.exception("VOD AI Web検索失敗")
@@ -542,17 +534,16 @@ def _save_vod_entries(
     Args:
         source_entries: AI Web検索またはルーティンJSON由来のVodEntry一覧
         label: ログ表示用の呼び出し元名
-        target_start: 手動再取り込み時の対象週開始日（月曜日）
-        automatic_range: 自動判定の対象期間。未指定なら実行日から計算する。
-            vod_import_cycle はルーティン成果物の日付から決めた週を渡す。
+        target_start: 手動再取り込み時の対象月の1日
+        automatic_range: 自動判定の対象期間。未指定なら実行日から計算する（翌月）。
+            vod_import_cycle はルーティン成果物の日付から決めた月を渡す。
     """
     sheets = NewsBotSheets()
-    start, end = manual_week.resolve_range(
+    start, end = target_month.resolve_range(
         target_start,
-        "vod",
         automatic_range
         if automatic_range is not None
-        else vod_calendar.next_week_range(manual_week.jst_today()),
+        else vod_calendar.next_month_range(target_month.jst_today()),
     )
     existing_keys = sheets.get_existing_vod_keys()
 
@@ -563,7 +554,7 @@ def _save_vod_entries(
     saved_entries = []
     for entry in merged:
         if not vod_calendar.in_range(entry.available_from, start, end):
-            # 劇場側と同じ方針。X抽出分は対象週外の告知が混ざるのが通常なのでINFO。
+            # 劇場側と同じ方針。X抽出分は対象月外の告知が混ざるのが通常なのでINFO。
             logger.info(
                 "対象期間外のためスキップ: %s / %s (%s)", entry.service, entry.title, entry.available_from
             )
@@ -631,15 +622,14 @@ def vod_import_cycle(target_start: date | None = None) -> dict:
     X API v2の認証が必要でルーティンでは代替できないため、本サイクル内で
     引き続き実行し、ルーティンの結果と統合する（docs/feature/routine-discovery.md）。
 
-    対象週は成果物JSONに入っている配信開始日から決める（theater_import_cycle と同じ理由）。
-    X抽出分は成果物の週に対してフィルタされる。
-    target_startを指定した場合は、その月曜日から7日間を対象にする。
+    対象月は成果物JSONに入っている配信開始日から決める（theater_import_cycle と同じ理由）。
+    X抽出分は成果物の月に対してフィルタされる。
+    target_start（対象月の1日）を指定した場合は、その月の1日〜末日を対象にする。
     """
     entries = import_routine.load_vod_entries(import_routine.latest_path("vod"))
-    automatic_range = manual_week.routine_range(
+    automatic_range = target_month.routine_range(
         [entry.available_from for entry in entries],
-        "vod",
-        vod_calendar.next_week_range(manual_week.jst_today()),
+        vod_calendar.next_month_range(target_month.jst_today()),
     )
     return _save_vod_entries(entries, "vod_import_cycle", target_start, automatic_range)
 
@@ -648,7 +638,7 @@ def vod_resolve_approvals_cycle() -> dict:
     """「VOD配信予定」シートの承認待ち行を確認し、Slackで承認スタンプ（:white_check_mark:）が
     付いていれば投稿状態を承認済みへ自動更新する（ワンクリック承認）。
 
-    `vod_publish`（週次・月曜のみ）と違い、承認してからシートに反映されるまでのラグを
+    `vod_publish`（月次・毎月1日のみ）と違い、承認してからシートに反映されるまでのラグを
     抑えるため高頻度（時間単位）で回す想定。対象0件・承認0件でも正常終了する。
     """
     sheets = NewsBotSheets()
@@ -665,7 +655,7 @@ def theater_resolve_approvals_cycle() -> dict:
     """「劇場公開予定」シートの承認待ち行を確認し、Slackで承認スタンプ（:white_check_mark:）が
     付いていれば投稿状態を承認済みへ自動更新する（ワンクリック承認）。
 
-    vod_resolve_approvals_cycle()と同型。`theater_publish`（週次・金曜のみ）と違い、
+    vod_resolve_approvals_cycle()と同型。`theater_publish`（月次・毎月1日のみ）と違い、
     承認してからシートに反映されるまでのラグを抑えるため高頻度（時間単位）で回す想定。
     対象0件・承認0件でも正常終了する。
     """
@@ -680,16 +670,16 @@ def theater_resolve_approvals_cycle() -> dict:
 
 
 def vod_publish_cycle(target_start: date | None = None) -> dict:
-    """承認済みのVOD配信予定行から週次まとめを生成し、WP CPT投稿+Xスレッド案の
+    """承認済みのVOD配信予定行から月次まとめを生成し、WP CPT投稿+Xスレッド案の
     Slack通知まで行う（docs/feature/vod-release-calendar-spec.md 11.）。
 
-    対象は当週月曜〜日曜が配信開始日、かつ投稿状態=承認済みの行。対象0件の場合は
-    何もしない（空のWP投稿・Slack通知を出さない）。target_startを指定した場合は、
-    その月曜日から7日間を対象にして過去週を再処理できる。
+    対象は実行日が属する暦月（1日〜末日）が配信開始日、かつ投稿状態=承認済みの行。
+    cronは毎月1日 07:00 JST。対象0件の場合は何もしない（空のWP投稿・Slack通知を出さない）。
+    target_start（対象月の1日）を指定した場合は、その月を対象にして過去月を再処理できる。
     """
     sheets = NewsBotSheets()
-    start, end = manual_week.resolve_range(
-        target_start, "vod", vod_calendar.current_week_range(manual_week.jst_today())
+    start, end = target_month.resolve_range(
+        target_start, vod_calendar.month_range(target_month.jst_today())
     )
     items = sheets.get_approved_vod_items(start, end)
     stats = {"target": len(items), "posted": 0, "notified": 0}
@@ -698,7 +688,7 @@ def vod_publish_cycle(target_start: date | None = None) -> dict:
         logger.info("vod_publish_cycle(%s〜%s): 対象0件", start, end)
         return stats
 
-    label = compose_vod.week_label(start.year, start.month, start.day)
+    label = compose_vod.month_label(start.year, start.month)
     title = compose_vod.build_wp_title(label)
     content_html = compose_vod.build_wp_content(items)
 
@@ -707,12 +697,12 @@ def vod_publish_cycle(target_start: date | None = None) -> dict:
         wp_post = wp_client.create_post(
             title,
             content_html,
-            slug=f"vod-release-{start.isoformat()}",
+            slug=f"vod-release-{start:%Y-%m}",
         )
         wp_post_url = wp_post.get("link", "")
         stats["posted"] = 1
     except Exception:
-        logger.exception("VOD週次まとめWP投稿失敗")
+        logger.exception("VOD月次まとめWP投稿失敗")
         # CPTが作成されていないのにworkflowを成功扱いにすると、下のステータス更新で
         # 対象行が「投稿済み」になり、次回実行でも再処理できなくなる。詳細をerror logへ
         # 残したうえで例外を再送出し、対象行を「承認済み」のまま保持する。
@@ -720,10 +710,10 @@ def vod_publish_cycle(target_start: date | None = None) -> dict:
 
     x_thread_parts = compose_vod.build_x_thread(items, wp_post_url)
     try:
-        approval.notify_vod_weekly_summary(len(items), wp_post_url, x_thread_parts)
+        approval.notify_vod_monthly_summary(len(items), wp_post_url, x_thread_parts)
         stats["notified"] = 1
     except Exception:
-        logger.exception("VOD週次まとめSlack通知失敗")
+        logger.exception("VOD月次まとめSlack通知失敗")
 
     for item in items:
         key = item.get("重複キー")
@@ -784,11 +774,11 @@ if __name__ == "__main__":
     # "theater": 劇場情報源シート巡回（theater_cycle、現在シート未登録のため実質未使用）。
     # "theater_discover": AI Web検索による劇場公開作品の発見（theater_discover_cycle）。
     # "theater_add <URL>": 人間が見つけたURLからの追記（theater_add_url）。
-    # "theater_publish": 承認済み劇場公開予定の週次まとめ生成・WP投稿・Slack通知（theater_publish_cycle）。
+    # "theater_publish": 承認済み劇場公開予定の月次まとめ生成・WP投稿・Slack通知（theater_publish_cycle）。
     # "theater_import": ルーティン成果物JSONの取り込み（theater_import_cycle）。
     # "vod_import": ルーティン成果物JSON+X抽出の取り込み（vod_import_cycle）。
     # "vod_discover": AI Web検索+VOD公式X投稿抽出によるVOD配信開始作品の発見（vod_discover_cycle）。
-    # "vod_publish": 承認済みVOD配信予定の週次まとめ生成・WP投稿・Slack通知（vod_publish_cycle）。
+    # "vod_publish": 承認済みVOD配信予定の月次まとめ生成・WP投稿・Slack通知（vod_publish_cycle）。
     # "vod_resolve_approvals": 承認待ち行のSlack承認スタンプを確認し自動承認（vod_resolve_approvals_cycle）。
     # "theater_resolve_approvals": 同上の劇場公開版（theater_resolve_approvals_cycle）。
     if len(sys.argv) > 1 and sys.argv[1] == "x":
@@ -802,15 +792,15 @@ if __name__ == "__main__":
             raise SystemExit("使い方: python -m news_bot.main theater_add <URL>")
         theater_add_url(sys.argv[2])
     elif len(sys.argv) > 1 and sys.argv[1] == "theater_publish":
-        theater_publish_cycle(_target_start_arg("theater"))
+        theater_publish_cycle(_target_month_arg())
     elif len(sys.argv) > 1 and sys.argv[1] == "theater_import":
-        theater_import_cycle(_target_start_arg("theater"))
+        theater_import_cycle(_target_month_arg())
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_import":
-        vod_import_cycle(_target_start_arg("vod"))
+        vod_import_cycle(_target_month_arg())
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_discover":
         vod_discover_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_publish":
-        vod_publish_cycle(_target_start_arg("vod"))
+        vod_publish_cycle(_target_month_arg())
     elif len(sys.argv) > 1 and sys.argv[1] == "vod_resolve_approvals":
         vod_resolve_approvals_cycle()
     elif len(sys.argv) > 1 and sys.argv[1] == "theater_resolve_approvals":

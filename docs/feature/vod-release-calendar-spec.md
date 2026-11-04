@@ -9,10 +9,10 @@
 「公開情報を集める施策」（AI Web検索による発見 + Google Sheetsでの情報源・データ管理 + 人間承認）を
 **VODの配信情報（配信開始・配信予定）**に応用する。
 
-集めた配信情報は週次で以下の3経路に展開し、Katsumascoreへの流入を増やす。
+集めた配信情報は月次（毎月1日に当月分）で以下の3経路に展開し、Katsumascoreへの流入を増やす。
 
-1. **Slack通知**: 週次まとめを管理者へ通知（承認・確認用）
-2. **WordPress CPT投稿**: 「今週配信開始のVOD作品まとめ」をカスタム投稿タイプとして自サイトに投稿
+1. **Slack通知**: 月次まとめを管理者へ通知（承認・確認用）
+2. **WordPress CPT投稿**: 「YYYY年M月配信開始のVOD作品まとめ」をカスタム投稿タイプとして自サイトに投稿
 3. **SNS（X）投稿**: x-news-botのスレッドまとめ方式で投稿案を生成し、リプライURLに自サイトのCPT記事URLを使って送客する
 
 外部ニュースの転載ではなく、**自サイトのまとめ記事を受け皿にした送客**を主目的とする点で、
@@ -38,10 +38,10 @@ Katsumascoreを「レビューサイト」から「映画・アニメ総合メ�
 
 ### ゴール
 
-- 対象週に配信開始されるVOD作品を週次で収集する
+- 翌月に配信開始されるVOD作品を隔週で収集する
 - 情報源をGoogle Sheetsで管理する（コードへのハードコード禁止）
 - 収集結果をGoogle Sheetsに構造化保存し、人間の承認を経てから下流に流す
-- 承認済みデータから週次まとめを生成し、Slack通知・WP CPT投稿・X投稿案生成を行う
+- 承認済みデータから月次まとめを生成し、Slack通知・WP CPT投稿・X投稿案生成を行う
 - Katsumascore内の既存レビュー記事と照合し、内部リンクで回遊を作る
 
 ### 非ゴール
@@ -75,7 +75,7 @@ Katsumascoreを「レビューサイト」から「映画・アニメ総合メ�
                               ↓
               ┌───────────────┼───────────────┐
               ↓               ↓               ↓
-      [Slack週次まとめ]  [WP CPT投稿]   [X投稿案生成]
+      [Slack月次まとめ]  [WP CPT投稿]   [X投稿案生成]
        （管理者通知）   （自サイト記事）  （Slackテンプレ
                               ↑           →手動投稿）
                               └── リプライURLはCPT記事URL
@@ -87,26 +87,31 @@ Katsumascoreを「レビューサイト」から「映画・アニメ総合メ�
 
 ```bash
 python -m news_bot.main vod_import     # ルーティン成果物+X抽出を取り込み（承認待ちで保存）
-python -m news_bot.main vod_publish    # 承認済み行から週次まとめを展開
+python -m news_bot.main vod_publish    # 当月の承認済み行から月次まとめを展開（任意引数 YYYY-MM）
 python -m news_bot.main vod_discover   # [フォールバック] AI Web検索で発見（従量課金）
 ```
 
 ### 現行: ルーティン方式
 
 **AI Web検索部分は Claude のルーティンへ移行した**（[routine-discovery.md](./routine-discovery.md)）。
-Claude APIを従量課金で呼ぶ代わりに、ルーティンが週次で調査してPRを作り、人間のレビュー（1次承認）を
+Claude APIを従量課金で呼ぶ代わりに、ルーティンが隔週で翌月分を調査してPRを作り、人間のレビュー（1次承認）を
 経てマージされたものを取り込む。
 
 | ジョブ | タイミング | 内容 |
 |---|---|---|
-| ルーティン | 毎週水曜 09:00 JST | **翌週月曜〜日曜**に配信開始する作品を調査し、`routine_data/vod_latest.json` を更新してPR作成 |
+| ルーティン | 隔週水曜 09:00 JST | **翌月1日〜末日**に配信開始する作品を調査し、`routine_data/vod_latest.json` を更新してPR作成 |
 | `vod_import` | PRマージ時（`routine-import.yml`） | 成果物JSON + X公式アカウント抽出を統合し、承認待ちで保存。Slackに確認依頼を通知 |
-| `vod_publish` | 毎週月曜 07:00 JST | **当週月曜〜日曜**の承認済み行から週次まとめを生成し、Slack通知・WP CPT投稿・X投稿案送信 |
+| `vod_publish` | 毎月1日 07:00 JST | **当月1日〜末日**の承認済み行から月次まとめを生成し、Slack通知・WP CPT投稿・X投稿案送信 |
 
 **X公式アカウントからの抽出はルーティンで代替できない**（X API v2の認証が必要）ため、
 `vod_import` 内でActionsが実行し、ルーティンのWeb検索結果と `extract_vod.merge_all()` で統合する。
 
-水曜にルーティンを置くことで、PRレビュー（1次承認）とシート承認（2次承認）に月曜まで猶予を持たせる。
+**2026-11 改修: 公開は月1回、収集は隔週。** それまでは収集・公開とも週次（月曜〜日曜の7日分）だった。
+ルーティンは隔週で毎回「実行日の翌月」分を集めるため、1つの月は前月中に2回前後収集される。
+2回目以降は重複キーで既存行が弾かれ、新たに判明した作品だけが追加される。各サービスの翌月
+ラインナップは前月20日前後に発表されることが多いため、月後半の収集で拾い直せる。
+PRレビュー（1次承認）とシート承認（2次承認）は翌月1日朝の `vod_publish` までに済ませる。
+cronはUTCで月末指定（`L`）が使えないため `0 22 28-31 * *`（UTC）で起動し、JSTで1日のときだけ実行する。
 承認されなかった行（承認待ちのまま）は `vod_publish` の対象外とし、誤情報の公開を防ぐ。
 
 ### フォールバック: API方式
@@ -117,9 +122,11 @@ Claude APIを従量課金で呼ぶ代わりに、ルーティンが週次で調�
 
 ## 6. 取得対象期間
 
-- 基準日は実行日とする
-- ルーティン / `vod_import`: 翌週月曜 00:00 〜 翌週日曜 23:59（JST）に配信開始する作品
-- `vod_publish`: 当週月曜〜日曜が対象の承認済み行
+- 暦月（1日〜末日）を単位とする（2026-11 改修。以前は月曜〜日曜の7日間）
+- ルーティン / `vod_discover`: 実行日の**翌月**1日〜末日（JST）に配信開始する作品（`vod_calendar.next_month_range()`）
+- `vod_import`: 成果物JSONの配信開始日で最多の月（`target_month.routine_range()`。空なら実行日の翌月）
+- `vod_publish`: 実行日（毎月1日）の**当月**1日〜末日が配信開始日の承認済み行（`vod_calendar.month_range()`）
+- 過去月の再処理は `YYYY-MM` を任意引数（workflowでは `target_month`）で渡す
 
 対象サービス（初期MVP）は Netflix / Prime Video / U-NEXT / Disney+ / Hulu / DMM TV の6サービスとし、
 シート運用で増減できるようにする（8.①「対象サービス」列）。
@@ -169,7 +176,7 @@ Hulu / DMM TV）の公式サイトスクレイピングが規約上不採用確�
 
 theater施策の`discover_theater.py`と同じく、**AIのWeb検索
 （Claude API `web_search` + OpenAI Responses API `web_search` の併用）**で
-対象週の配信開始作品を調べさせ、**事実情報のみ**を構造化して保存する。
+対象月の配信開始作品を調べさせ、**事実情報のみ**を構造化して保存する。
 
 - 保存するのは: タイトル / 原題 / サービス / 配信開始日 / 配信種別（見放題・レンタル等）/
   公式URL / 情報源URL。あらすじ・紹介文は保存しない
@@ -315,11 +322,11 @@ Slackメッセージts
 | `承認待ち` | AI発見直後。人間の確認前 |
 | `承認済み` | 人間が確認済み。`vod_publish` の対象 |
 | `除外` | 誤り・対象外と人間が判断 |
-| `投稿済み` | 週次まとめに含めて展開済み |
+| `投稿済み` | 月次まとめに含めて展開済み |
 
 ### SNS優先度
 
-theater仕様8.と同じS/A/B/Cの4段階。Sは週次まとめに加えて個別投稿案も作る。
+theater仕様8.と同じS/A/B/Cの4段階。Sは月次まとめに加えて個別投稿案も作る。
 初期MVPでは判定ロジックは実装せず空欄とし、人間が承認時に手で付ける
 （theater側の未決定事項#5と共通。AI判定化は両施策まとめて将来検討）。
 
@@ -340,7 +347,7 @@ WP REST APIで既存レビュー記事を検索し、ヒットしたら `WP post
 - 照合順: `tmdb_id`（ACFに実在すれば）→ 正規化タイトル → 原題
 - theater側の未実装事項#4（WP検索関数が無い）と共通の課題。実装する検索関数は
   theater / vod の両方から使える共通関数として `news_bot/` に置く
-- 照合できた作品は週次まとめ記事・X投稿の中でレビュー記事へ内部リンクし、回遊を作る
+- 照合できた作品は月次まとめ記事・X投稿の中でレビュー記事へ内部リンクし、回遊を作る
 
 ### 10.1 `coming-soon-pipeline.md`（`enrich_events.py`）からの転用
 
@@ -358,19 +365,19 @@ WP REST APIで既存レビュー記事を検索し、ヒットしたら `WP post
 TMDb API自体（`tmdb_upcoming.py`・`config.py`の`TMDB_API_KEY`/`PROVIDERS`）は
 商用契約が未成立のため使わない（7.2参照）。WP照合部分のみを切り出して再利用する。
 
-## 11. 週次まとめの展開（要件2: 毎週通知 + WP CPT + SNS）
+## 11. 月次まとめの展開（要件2: 毎月通知 + WP CPT + SNS）
 
-`vod_publish` は承認済み行から週次まとめを1つ生成し、3経路に展開する。
+`vod_publish` は承認済み行から月次まとめを1つ生成し、3経路に展開する。
 
 ### 11.1 Slack通知
 
-週次まとめの内容（作品リスト・WP投稿結果・X投稿テンプレート）を管理者チャンネルへ通知する。
+月次まとめの内容（作品リスト・WP投稿結果・X投稿テンプレート）を管理者チャンネルへ通知する。
 `approval.py` の既存テンプレート送信パターンを流用する。
 
 ### 11.2 WP CPT投稿
 
 WordPressのカスタム投稿タイプ（RESTスラッグ: `vod_release`）へ
-「今週配信開始のVOD作品まとめ（YYYY年MM月第N週）」をREST APIで投稿する。
+「YYYY年M月配信開始のVOD作品まとめ」をREST APIで投稿する。
 
 **記事構成**（[vod-release-calendar-improvements.md](vod-release-calendar-improvements.md)
 1./2./9.節を反映。Google Discover対策として構成順序を統一する）:
@@ -379,7 +386,7 @@ WordPressのカスタム投稿タイプ（RESTスラッグ: `vod_release`）へ
 編集部おすすめ（Editor's Pick）
   ★評価 + 作品名 + 一言コメント + レビューリンク
   ↓
-今週追加作品（サービス別セクション）
+今月追加作品（サービス別セクション）
   統一フォーマットの「作品カード」を並べる
   ↓
 （将来）サービス別まとめへの導線（16.将来拡張）
@@ -399,7 +406,7 @@ WordPressのカスタム投稿タイプ（RESTスラッグ: `vod_release`）へ
 - あらすじ等の外部表現は含めない（事実情報 + 自サイトコンテンツへのリンクのみ）
 - 初期MVPでは**下書き（`status=draft`）で投稿**し、人間が確認して公開する。
   運用が安定したら `publish` に切り替える
-- 個別投稿のスラッグは対象週の開始日を使い、`vod-release-yyyy-mm-dd` とする
+- 個別投稿のスラッグは対象月を使い、`vod-release-yyyy-mm` とする（例: `vod-release-2026-12`）
 - 認証は既存の WordPress Application Password（`vod_bot` と同じ方式）
 
 **WordPress側で必要な対応（このリポジトリ外）**:
@@ -424,7 +431,7 @@ x-news-botのスレッドまとめ方式を流用し、**自動投稿はせず**
 構成:
 
 ```text
-① 今週配信開始のVOD作品まとめ
+① 今月配信開始のVOD作品まとめ
 
 Netflix
 ・作品A（7/28〜）
@@ -439,7 +446,7 @@ U-NEXT
 
 - リプライ（最終パーツ）のURLは**外部媒体ではなくWP CPT記事のURL**とする。
   x-news-bot仕様書4.7の「ニュースの転載ではなく自サイトへの送客を主目的とする」方針の実践
-- SNS優先度Sの作品は、週次まとめとは別に個別投稿案も生成する（theater仕様11.2と同型）
+- SNS優先度Sの作品は、月次まとめとは別に個別投稿案も生成する（theater仕様11.2と同型）
 - 見出し文の生成が必要な場合は `compose.compose_headline()` のトーン制約
   （事実ベース・誇張禁止）に従う
 
@@ -453,19 +460,19 @@ news_bot/
 │                            #   重複マージ（merge_all()）。ai_clients.py を再利用、新規APIキー不要
 ├── prompts/
 │   └── vod_extract_system_prompt.md  # X抽出用system prompt（cache_control対象）
-├── vod_calendar.py         # 週範囲計算・正規化・重複キー生成（theater_calendar.py を流用/共通化）
+├── vod_calendar.py         # 対象月計算・正規化・重複キー生成（theater_calendar.py を流用/共通化）
 │                            #   + SERVICES / VodEntry のデータ定義（AI SDK非依存にするため
 │                            #     discover_vod.py から移動。discover_vod.py 側で再エクスポート）
 ├── import_routine.py       # ルーティン成果物JSONの読み込み（theaterと共用）
 ├── routine_data/
-│   └── vod_latest.json     # ルーティンが週次で上書きコミットする成果物
-├── compose_vod.py          # 週次まとめ本文（WP用HTML）・Xスレッド案の生成
+│   └── vod_latest.json     # ルーティンが隔週で上書きコミットする成果物
+├── compose_vod.py          # 月次まとめ本文（WP用HTML）・Xスレッド案の生成
 ├── wp_client.py            # WP REST API クライアント（CPT投稿・既存記事照合。theaterと共用。
 │                            #   照合部分は coming-soon/enrich_events.py の
 │                            #   fetch_wp_post_by_tmdb_id()/build_auth() を土台に
 │                            #   タイトル検索フォールバックを追加して移植、10.1参照）
 ├── sheets.py               # 「VOD情報源」「VOD配信予定」シート対応を追加
-├── approval.py             # 発見結果の確認依頼・週次まとめ通知を追加
+├── approval.py             # 発見結果の確認依頼・月次まとめ通知を追加
 └── main.py                 # vod_import / vod_publish / vod_discover サブコマンド
 
 .github/workflows/
@@ -499,14 +506,14 @@ news_bot/
 発見部分はルーティン方式へ移行した（[routine-discovery.md](./routine-discovery.md)）。
 
 - [x] 「VOD情報源」「VOD配信予定」シートを自動作成する
-- [x] 翌週月曜〜日曜の対象期間を計算する
+- [x] 対象月（1日〜末日）の対象期間を計算する（2026-11 に週次から変更）
 - [x] 公式Xアカウント（取得方式=x）のポストを取得する（生テキストのまま）
-- [x] AI Web検索（Claude/OpenAI併用）で対象週の配信開始作品を発見する
+- [x] AI Web検索（Claude/OpenAI併用）で対象月の配信開始作品を発見する
 - [x] AI統合レイヤー（`extract_vod.py`）でXポストを構造化抽出し、Web検索結果と重複マージする
 - [x] `配信開始日 + サービス + 正規化タイトル` で重複判定し、承認待ちで保存する
 - [x] 発見結果の確認依頼をSlackに通知する
 - [x] Slack承認スタンプ（:white_check_mark:）でのワンクリック承認（`vod_resolve_approvals`、8.1参照）
-- [x] 承認済み行から週次まとめを生成する（`vod_publish`）
+- [x] 承認済み行から月次まとめを生成する（`vod_publish`）
 - [x] WP CPTへ下書き投稿する（編集部おすすめ + 統一フォーマットの作品カードを含む記事構成、11.2）
 - [x] Xスレッド投稿案をSlackへ送信する（手動投稿）
 - [x] GitHub Actions cron（月曜=`vod_publish`）を設定する
@@ -558,5 +565,5 @@ news_bot/
 - 新しい情報源をシートに登録する前に、必ず人間がブラウザで利用規約を確認する
 - 情報源URLを必ず保存し、後から確認できるようにする
 - X投稿は初期MVPでは手動運用を維持する
-- 週次まとめ記事は「配信情報の羅列」で終わらせず、レビュー記事への内部リンクを必ず入れて
+- 月次まとめ記事は「配信情報の羅列」で終わらせず、レビュー記事への内部リンクを必ず入れて
   回遊・流入の受け皿として機能させる

@@ -1,16 +1,20 @@
 name: VOD Calendar
 
 on:
-  # 0 22 * * 0 (UTC) = 毎週月曜 07:00 JST
-  # 月曜=vod_publish（承認済み行から週次まとめ生成+WP投稿+Slack通知、仕様書5.）
+  # 毎月1日 07:00 JST に vod_publish を実行し、その月（1日〜末日）に配信開始される作品の
+  # 月次まとめを下書き投稿する（vod_calendar.month_range()、仕様書5.）。
   #
-  # vod_discover（AI Web検索）のcronは外した。Claudeのルーティンが週次で調査して
+  # cronはUTCで「L（月末）」も使えないため、28〜31日の 22:00 UTC に起動し、
+  # guard ステップで「JSTで今日が1日か」を判定して1日以外はスキップする
+  # （theater-calendar.yml と同じ方式）。
+  #
+  # vod_discover（AI Web検索）のcronは外した。Claudeのルーティンが隔週で翌月分を調査して
   # PRを作る方式へ移行し、従量課金のAPI呼び出しをサブスクリプション内に収めたため
   # （docs/feature/routine-discovery.md）。取り込みは routine-import.yml が担当し、
   # X公式アカウントからの抽出（X API v2の認証が必要でルーティンでは代替不可）も
   # そちらで実行する。vod_discover はフォールバックとして手動実行のみ残す。
   schedule:
-    - cron: "0 22 * * 0"
+    - cron: "0 22 28-31 * *"
   workflow_dispatch:
     inputs:
       command:
@@ -23,8 +27,8 @@ on:
         options:
           - "vod_discover"
           - "vod_publish"
-      target_start:
-        description: "CPT作成対象週の月曜日 YYYY-MM-DD（空欄は通常週）"
+      target_month:
+        description: "CPT作成対象月 YYYY-MM（空欄は実行日の当月）"
         required: false
         type: string
 
@@ -33,10 +37,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # cronは28〜31日に起動するので、JSTで毎月1日のときだけ後続を実行する。
+      # 手動実行（workflow_dispatch）は日付に関係なく実行する。
+      - name: Guard first day of month (JST)
+        id: guard
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "schedule" ] && [ "$(TZ=Asia/Tokyo date +%d)" != "01" ]; then
+            echo "JSTで毎月1日ではないためスキップします（$(TZ=Asia/Tokyo date +%F)）"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.guard.outputs.run == 'true'
         uses: actions/checkout@v7
 
       - name: Set up Python
+        if: steps.guard.outputs.run == 'true'
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -44,9 +64,11 @@ jobs:
           cache-dependency-path: news_bot/requirements.txt
 
       - name: Install dependencies
+        if: steps.guard.outputs.run == 'true'
         run: pip install -r news_bot/requirements.txt
 
       - name: Run VOD calendar pipeline
+        if: steps.guard.outputs.run == 'true'
         env:
           # workflow_dispatchはinputsのcommandを使う。cronはpublishの1本だけなので
           # scheduleで起動した場合は常にvod_publish。
@@ -65,10 +87,10 @@ jobs:
           SLACK_APPROVAL_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_APPROVAL_CHANNEL_ID }}
           # VOD配信情報通知の専用チャンネル。未設定(空)の場合は上の承認チャンネルに送る
           SLACK_VOD_CHANNEL_ID: ${{ secrets.NEWS_BOT_SLACK_VOD_CHANNEL_ID }}
-          TARGET_START: ${{ github.event.inputs.target_start }}
+          TARGET_MONTH: ${{ github.event.inputs.target_month }}
         run: |
           args=("$COMMAND")
-          if [ "$COMMAND" = "vod_publish" ] && [ -n "$TARGET_START" ]; then
-            args+=("$TARGET_START")
+          if [ "$COMMAND" = "vod_publish" ] && [ -n "$TARGET_MONTH" ]; then
+            args+=("$TARGET_MONTH")
           fi
           python -m news_bot.main "${args[@]}"

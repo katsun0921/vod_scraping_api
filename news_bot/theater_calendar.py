@@ -2,7 +2,8 @@
 
 仕様書 6.（取得対象期間）/ 9.（重複判定）: `docs/feature/theater-release-calendar-spec.md`
 
-初期MVPの対象期間は「直近の金曜日〜その翌週木曜日」の7日間固定。
+対象期間は暦月（1日〜末日）。まとめ記事は毎月1日に当月分を公開し、収集は隔週で翌月分を集める
+（以前は「直近の金曜日〜その翌週木曜日」の7日間で週次公開していた）。
 重複判定キーは「公開日 + 正規化タイトル」の完全一致のみ（フェーズ1スコープ）。
 tmdb_id・類似度判定によるあいまい一致は将来拡張（仕様書9.将来拡張）。
 """
@@ -45,38 +46,35 @@ _SYMBOL_UNIFY = {
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
-def week_range(today: date) -> tuple[date, date]:
-    """基準日から対象期間（直近の金曜日〜その翌週木曜日）を返す。
+def month_range(day: date) -> tuple[date, date]:
+    """``day`` が属する暦月の1日〜末日を返す（公開 `theater_publish` / `vod_publish` の対象期間）。
+
+    まとめ記事は毎月1日に「その月に公開・配信開始される作品」を1本にまとめて公開する。
+    区切りは暦月（1日〜末日）で、劇場（公開日別）・VOD（サービス別）で共通。
 
     例:
-        月曜実行 → その週の金曜〜翌週木曜
-        金曜実行 → 当日金曜〜翌週木曜
+        2026-12-01 → 2026-12-01〜2026-12-31
+        2027-02-15 → 2027-02-01〜2027-02-28
     """
-    days_until_friday = (4 - today.weekday()) % 7
-    start = today + timedelta(days=days_until_friday)
-    end = start + timedelta(days=6)
-    return start, end
+    start = day.replace(day=1)
+    next_first = (start + timedelta(days=32)).replace(day=1)
+    return start, next_first - timedelta(days=1)
 
 
-def next_week_range(today: date) -> tuple[date, date]:
-    """基準日の次の金曜週（翌週金曜〜その翌木曜）を返す。
+def next_month_range(day: date) -> tuple[date, date]:
+    """``day`` の翌月1日〜末日を返す（収集＝ルーティン / `*_discover` の対象期間）。
 
-    収集（ルーティン / theater_discover）用。publish が対象週の前日木曜に走るため、
-    収集はその1週間前の金曜に回して承認の猶予を作る。week_range() は「これから来る
-    金曜」を返すので金曜当日に実行すると当日起点になってしまい、収集には使えない。
-
-    起点は「基準日が属する金曜週の金曜」の7日後。金〜木のどの曜日に実行しても同じ週を
-    返すため、ルーティンPRのマージが土日にずれ込んでも対象週は動かない
-    （vod_calendar.next_week_range() と同じ考え方）。
+    収集は隔週で走り、毎回「翌月分」を集める。月内のどの日に実行しても同じ月を返すため、
+    同じ月を2回（以上）収集することになるが、重複キーで弾かれるので2回目以降は
+    新たに判明した作品だけが追加される（後から発表された作品の拾い直しを兼ねる）。
 
     例:
-        金曜 2026-08-21 実行 → 2026-08-28〜2026-09-03
-        月曜 2026-08-24 実行 → 2026-08-28〜2026-09-03
-        木曜 2026-08-27 実行 → 2026-08-28〜2026-09-03
+        2026-11-04 → 2026-12-01〜2026-12-31
+        2026-11-30 → 2026-12-01〜2026-12-31
+        2026-12-16 → 2027-01-01〜2027-01-31
     """
-    days_since_friday = (today.weekday() - 4) % 7
-    start = today - timedelta(days=days_since_friday) + timedelta(days=7)
-    return start, start + timedelta(days=6)
+    first = day.replace(day=1)
+    return month_range(first + timedelta(days=32))
 
 
 def normalize_title(title: str) -> str:

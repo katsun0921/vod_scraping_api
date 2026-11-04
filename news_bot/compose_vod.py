@@ -1,4 +1,4 @@
-"""週次まとめ本文（WP用HTML）・Xスレッド案の生成（仕様書11.）。
+"""月次まとめ本文（WP用HTML）・Xスレッド案の生成（仕様書11.）。
 
 `vod_publish`（main.py）が「VOD配信予定」シートから取得した承認済み行
 （sheets.get_approved_vod_items()が返すdictのリスト。列名は仕様書8.②のヘッダーと一致）
@@ -50,13 +50,13 @@ def _editor_pick_html(item: dict) -> str:
 
 
 def build_wp_content(items: list[dict]) -> str:
-    """週次まとめ記事のWP投稿本文（HTML）を生成する。
+    """月次まとめ記事のWP投稿本文（HTML）を生成する。
 
     構成: 編集部おすすめ → サービス別セクション（統一フォーマットの作品カード）。
     「編集部おすすめ」列（チェックボックス）がTrueの行を冒頭にまとめる。
 
     おすすめに選ばれた作品もサービス別セクションには通常どおり掲載する。
-    冒頭のおすすめは「今週の一覧」に対する強調であって置き換えではないため
+    冒頭のおすすめは「今月の一覧」に対する強調であって置き換えではないため
     （vod-release-calendar-improvements.md 1.「記事冒頭に編集部おすすめ作品を設置する」）、
     ここで除外すると配信一覧としての網羅性が崩れる。
     """
@@ -79,15 +79,14 @@ def build_wp_content(items: list[dict]) -> str:
     return "\n\n".join(sections)
 
 
-def build_wp_title(week_label: str) -> str:
-    """記事タイトルを生成する（例: "2026年7月第4週配信開始のVOD作品まとめ"）。"""
-    return f"{week_label}配信開始のVOD作品まとめ"
+def build_wp_title(month_label: str) -> str:
+    """記事タイトルを生成する（例: "2026年12月配信開始のVOD作品まとめ"）。"""
+    return f"{month_label}配信開始のVOD作品まとめ"
 
 
-def week_label(start_year: int, start_month: int, start_day: int) -> str:
-    """対象週の開始日から「YYYY年MM月第N週」形式のラベルを生成する。"""
-    week_of_month = (start_day - 1) // 7 + 1
-    return f"{start_year}年{start_month}月第{week_of_month}週"
+def month_label(year: int, month: int) -> str:
+    """対象月から「YYYY年M月」形式のラベルを生成する。"""
+    return f"{year}年{month}月"
 
 
 def _thread_line(item: dict) -> str:
@@ -95,16 +94,16 @@ def _thread_line(item: dict) -> str:
 
 
 def build_x_thread(items: list[dict], wp_url: str) -> list[str]:
-    """週次まとめのXスレッド投稿案を生成する（仕様書11.3）。
+    """月次まとめのXスレッド投稿案を生成する（仕様書11.3）。
 
     x-news-bot仕様書4.4のスレッドまとめ方式を踏襲: ①作品リスト → ②リプライにWP記事URL。
-    自動投稿はせず、Slackへテンプレートとして送るだけ（approval.notify_vod_weekly_summary()）。
+    自動投稿はせず、Slackへテンプレートとして送るだけ（approval.notify_vod_monthly_summary()）。
     """
     by_service: dict[str, list[dict]] = {}
     for item in items:
         by_service.setdefault(item.get("サービス", ""), []).append(item)
 
-    lines = ["今週配信開始の注目作品"]
+    lines = ["今月配信開始の注目作品"]
     for service_key, service_items in by_service.items():
         lines.append("")
         lines.append(_service_label(service_key))
