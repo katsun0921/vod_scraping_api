@@ -2,7 +2,7 @@ feedparser==6.0.14
 requests==2.34.2
 beautifulsoup4==4.15.0
 gspread==6.2.1
-google-auth==2.62.0
-anthropic==2.3.0
-openai==3.41.0
+google-auth==2.62.1
+anthropic==2.6.0
+openai==3.46.0
 tweepy==4.17.0
