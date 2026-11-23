@@ -1,0 +1,25 @@
+# PRがmainにマージされたら、次の版のタグ（vMAJOR.MINOR.PATCH）とGitHub Releaseを自動で作る。
+# 処理は共通の再利用可能ワークフロー（katsun0921/katsumascore-workflows）にあり、ここは起動条件と権限だけを書く。
+# 版の上げ方：既定はパッチ。PRに `minor` ラベルで2桁目、`major` ラベルで1桁目を上げる。ラベルはマージする前に付ける。
+# 詳しい動きは https://github.com/katsun0921/katsumascore-workflows#release-tag を参照する。
+# 注意：Dependabotの自動マージ（GITHUB_TOKENでのマージ）では起動しない。その変更は、次に人がマージしたときの版に含まれる。
+name: release-tag
+
+# forkやDependabotのPRでも書き込めるよう、pull_request ではなく pull_request_target で起動する。
+# 共通ワークフローは、このリポジトリのコードを実行しない。
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    # 共通ワークフローに渡す権限の上限。タグとReleaseの作成に contents: write が要る。
+    # concurrency はここに付けない（共通ワークフローのジョブが持つ。同じグループを付けると待ち合う）。
+    permissions:
+      contents: write
+    # 共通ワークフローは、タグの付け替えで中身が変わらないようコミットSHAで固定する。
+    uses: katsun0921/katsumascore-workflows/.github/workflows/release-tag.yml@d0479eeea12a4fdd6580337fc508a5909db5c659
