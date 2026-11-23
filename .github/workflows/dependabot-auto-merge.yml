@@ -1,6 +1,6 @@
 name: Dependabot auto-merge
 
-# Dependabot の PR を、テスト（test.yml）が通りメジャー更新でなければ自動でマージする。
+# Dependabot の PR を、テスト（test.yml）が通りパッチ・マイナー更新なら自動でマージする（共通ワークフロー）。
 # vod_bot / utils に影響する更新なら、マージ後に Cloud Run へのデプロイ（deploy.yml）を起動する。
 # news_bot だけの更新は deploy.yml の paths-ignore と同じ考え方でデプロイしない。
 
@@ -15,46 +15,29 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
     uses: ./.github/workflows/test.yml
 
+  # 処理は共通の再利用可能ワークフロー（katsun0921/katsumascore-workflows）にあり、コミットSHAで固定して呼ぶ。
+  # パッチ・マイナー更新だけをマージし、メジャー更新と種類が不明な更新は手動でマージする。
   auto-merge:
     needs: test
     if: github.event.pull_request.user.login == 'dependabot[bot]'
-    runs-on: ubuntu-latest
+    # マージとブランチの削除に要る権限の上限。
     permissions:
       contents: write
       pull-requests: write
+    uses: katsun0921/katsumascore-workflows/.github/workflows/dependabot-auto-merge.yml@fcdbe0815555c8c922ec34fa657b173f02464d08
+    with:
+      # vod_bot / utils に影響する更新だけ、Cloud Run へのデプロイが要る（deploy.yml の paths-ignore と同じ考え方）。
+      deploy-paths: '^(vod_bot|utils)/'
+
+  # マージ後、vod_bot / utils の更新なら Cloud Run へデプロイする（GITHUB_TOKEN によるマージでは push の deploy.yml が起動しないため）。
+  deploy:
+    needs: auto-merge
+    if: needs.auto-merge.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
       actions: write
     steps:
-      - name: Dependabot のメタデータを取得
-        id: meta
-        uses: dependabot/fetch-metadata@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Cloud Run の再デプロイが必要か判定
-        id: scope
-        if: steps.meta.outputs.update-type != 'version-update:semver-major'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          files=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --paginate --jq '.[].filename')
-          echo "$files"
-          if echo "$files" | grep -qE '^(vod_bot|utils)/'; then
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "deploy=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: パッチ・マイナー更新ならマージ
-        id: merge
-        if: steps.meta.outputs.update-type != 'version-update:semver-major'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge "$PR_URL" --merge --delete-branch
-
       - name: Cloud Run へデプロイ
-        if: steps.merge.outcome == 'success' && steps.scope.outputs.deploy == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: gh workflow run deploy.yml --ref main --repo "$GITHUB_REPOSITORY"
