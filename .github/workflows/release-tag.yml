@@ -22,4 +22,4 @@ jobs:
     permissions:
       contents: write
     # 共通ワークフローは、タグの付け替えで中身が変わらないようコミットSHAで固定する。
-    uses: katsun0921/katsumascore-workflows/.github/workflows/release-tag.yml@fcdbe0815555c8c922ec34fa657b173f02464d08
+    uses: katsun0921/katsumascore-workflows/.github/workflows/release-tag.yml@626141c290434f33bd230cf63207524608cee580
