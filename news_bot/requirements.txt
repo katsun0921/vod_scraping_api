@@ -3,6 +3,6 @@ requests==2.34.2
 beautifulsoup4==4.15.0
 gspread==6.2.1
 google-auth==2.62.2
-anthropic==2.8.0
-openai==3.50.0
+anthropic==2.11.0
+openai==3.56.0
 tweepy==4.17.0
