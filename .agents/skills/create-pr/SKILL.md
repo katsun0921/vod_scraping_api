@@ -9,7 +9,7 @@ description: Validate, commit, push, and open a GitHub pull request for the curr
 
 ## 手順
 
-1. `CLAUDE.md` を最後まで読み、リポジトリ固有の規約を確認する。
+1. `AGENTS.md` を最後まで読み、リポジトリ固有の規約を確認する。
 2. `git status --short --branch`、`git diff`、`git diff --cached`、`git log origin/main..HEAD` を確認する。
 3. 次の条件を満たさない場合は停止して理由を報告する。
    - 現在のブランチが `main` ではない。
@@ -32,6 +32,7 @@ description: Validate, commit, push, and open a GitHub pull request for the curr
     - 本文に `Summary` と `Tests` を含める。
     - 実行していない検証を実行済みと書かない。
     - ユーザーがReady for reviewを明示した場合のみDraftを外す。
+    - 作成後に `gh pr edit <PR番号> --add-label <patch|minor|major>` でラベルを1つ付ける（`AGENTS.md` のルールによる）。
 11. `gh pr view --json url,title,isDraft,state` で作成結果を確認し、URL、コミット、検証結果を報告する。
 
 ## 禁止事項
