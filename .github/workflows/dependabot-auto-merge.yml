@@ -24,7 +24,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: katsun0921/katsumascore-workflows/.github/workflows/dependabot-auto-merge.yml@1689af975182fdba7fb1a957913f1d4876f2fb51
+    uses: katsun0921/katsumascore-workflows/.github/workflows/dependabot-auto-merge.yml@d0479eeea12a4fdd6580337fc508a5909db5c659
     with:
       # vod_bot / utils に影響する更新だけ、Cloud Run へのデプロイが要る（deploy.yml の paths-ignore と同じ考え方）。
       deploy-paths: '^(vod_bot|utils)/'
